@@ -1,0 +1,8 @@
+.git/
+node_modules/
+dist/
+public/
+.env*
+!.env.example
+docker-compose.override.yml
+.dockerignore

@@ -1,0 +1,7 @@
+model Roles {
+  id          Int      @id @default(autoincrement())
+  description String   @db.VarChar(250)
+  status      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  users       User[]
+}
