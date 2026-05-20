@@ -1,0 +1,39 @@
+model Result {
+  id              Int  @id @default(autoincrement())
+  questionnaireId Int  @unique
+  studentId       Int
+  mlModelId       Int?
+
+  // ML output
+  predominantStyle       String?  @db.VarChar(20) // 'Visual' | 'Auditory' | 'Kinesthetic' | 'Mixed'
+  visualProbability      Float?
+  auditoryProbability    Float?
+  kinestheticProbability Float?
+  isMixedProfile         Boolean  @default(false)
+  classifierType         String?  @db.VarChar(50) // 'xgboost' | 'simple_score'
+  modelVersion           String?  @db.VarChar(20)
+
+  // Generative AI feedback
+  aiFeedback     String? @db.Text
+  feedbackSource String? @db.VarChar(50) // 'gemini' | 'predefined'
+
+  // Pilot phase label correction
+  correctedVakLabel   String? @db.VarChar(20)
+  correctingTeacherId Int?
+
+  resultDate DateTime?
+
+  // Audit
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  // Relations
+  questionnaire     Questionnaire @relation(fields: [questionnaireId], references: [id])
+  student           User          @relation("StudentResults", fields: [studentId], references: [id])
+  mlModel           MLModel?      @relation(fields: [mlModelId], references: [id])
+  correctingTeacher User?         @relation("CorrectingTeacherResults", fields: [correctingTeacherId], references: [id])
+
+  // Inverse relations
+  notifications Notification[]
+}

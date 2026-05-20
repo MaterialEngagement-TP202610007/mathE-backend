@@ -1,0 +1,23 @@
+model Questionnaire {
+  id                   Int       @id @default(autoincrement())
+  studentId            Int
+  status               String    @db.VarChar(50) // 'in_progress' | 'completed' | 'abandoned'
+  totalTimeSeconds     Float?
+  completionPercentage Float?
+  usedFallback         Boolean   @default(false) // true when Gemini API fallback used
+  startTime            DateTime
+  endTime              DateTime?
+
+  // Audit
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  // Relations
+  student User @relation("StudentQuestionnaires", fields: [studentId], references: [id])
+
+  // Inverse relations
+  answers   Answer[]
+  result    Result?
+  mlDataset MLDataset?
+}

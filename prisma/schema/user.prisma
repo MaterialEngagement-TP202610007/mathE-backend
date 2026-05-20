@@ -1,11 +1,29 @@
 model User {
-  id        Int      @id @default(autoincrement())
-  username  String   @unique @db.VarChar(250)
-  password  String   @db.VarChar(100)
-  email     String   @unique @db.VarChar(100)
-  name      String   @db.VarChar(250)
-  status    Boolean  @default(false)
-  createdAt DateTime @default(now())
-  roleId    Int?
-  role      Roles?   @relation(fields: [roleId], references: [id])
+  id            Int       @id @default(autoincrement())
+  password      String    @db.VarChar(100)
+  email         String    @unique @db.VarChar(100)
+  name          String    @db.VarChar(250)
+  birthDate     DateTime  @db.Date
+  phoneNumber   String?   @db.VarChar(20)
+  schoolName    String?   @db.VarChar(100)
+
+  // Audit
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime? @db.Timestamp(0)
+
+  // Relations
+  roleId          Int?
+  academicGradeId Int?
+
+  role          Roles?         @relation(fields: [roleId], references: [id])
+  academicGrade AcademicGrade? @relation(fields: [academicGradeId], references: [id])
+
+  // Inverse relations
+  questionnaires    Questionnaire[] @relation("StudentQuestionnaires")
+  questions         Question[]      @relation("TeacherQuestions")
+  results           Result[]        @relation("StudentResults")
+  correctingResults Result[]        @relation("CorrectingTeacherResults")
+  mlDatasets        MLDataset[]     @relation("StudentMLDatasets")
+  notifications     Notification[]
 }

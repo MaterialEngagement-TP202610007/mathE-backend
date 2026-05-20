@@ -1,0 +1,26 @@
+model MLModel {
+  id        Int    @id @default(autoincrement())
+  version   String @db.VarChar(20)
+  fileUrl   String @db.VarChar(500) // AWS S3 URL of serialized .pkl
+  algorithm String @db.VarChar(50)
+
+  // Evaluation metrics
+  accuracy        Float?
+  f1Visual        Float?
+  f1Auditory      Float?
+  f1Kinesthetic   Float?
+  trainingSamples Int?
+  testSamples     Int?
+
+  // Status
+  isActive     Boolean   @default(false) // only one active model at a time
+  trainingDate DateTime?
+  notes        String?   @db.Text
+
+  // Audit
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Inverse relations
+  results Result[]
+}

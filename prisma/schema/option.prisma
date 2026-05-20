@@ -1,0 +1,17 @@
+model Option {
+  id         Int    @id @default(autoincrement())
+  questionId Int
+  text       String @db.Text
+  vakValue   String @db.VarChar(1) // 'V' | 'A' | 'K'
+
+  // Audit
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  // Relations
+  question Question @relation(fields: [questionId], references: [id])
+
+  // Inverse relations
+  answers Answer[]
+}

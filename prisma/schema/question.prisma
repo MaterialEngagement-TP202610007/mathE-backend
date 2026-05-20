@@ -1,0 +1,25 @@
+model Question {
+  id               Int      @id @default(autoincrement())
+  teacherId        Int?
+  statement        String   @db.Text
+  contentType      String   @db.VarChar(50) // 'text' | 'image' | 'audio' | 'interactive'
+  vakStyle         String   @db.VarChar(20) // 'Visual' | 'Auditory' | 'Kinesthetic'
+  mediaUrl         String?  @db.VarChar(500)
+  origin           String   @db.VarChar(50) // 'ai_generated' | 'fallback_bank'
+  validationStatus String   @db.VarChar(50) // 'pending' | 'approved' | 'rejected'
+  rejectionReason  String?  @db.Text
+  generationDate   DateTime
+
+  // Audit
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  // Relations
+  teacher User? @relation("TeacherQuestions", fields: [teacherId], references: [id])
+
+  // Inverse relations
+  embedding QuestionEmbedding?
+  options   Option[]
+  answers   Answer[]
+}

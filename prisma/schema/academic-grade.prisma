@@ -1,0 +1,14 @@
+model AcademicGrade {
+  id    Int    @id @default(autoincrement())
+  name  String @db.VarChar(100) // '1ro Primaria', '2do Primaria', ... '5to Secundaria'
+  level String @db.VarChar(50)  // 'Primaria' | 'Secundaria'
+  order Int                     // ordering in reports
+
+  // Audit
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime? @db.Timestamp(0)
+
+  // Inverse relations
+  users User[]
+}

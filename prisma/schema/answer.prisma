@@ -1,0 +1,21 @@
+model Answer {
+  id                  Int    @id @default(autoincrement())
+  questionnaireId     Int
+  questionId          Int
+  selectedOptionId    Int?   // null if abandoned
+  navigationSequence  Int?
+  questionTimeSeconds Float?
+  numberOfChanges     Int?
+  numberOfClicks      Int?
+  timesReviewed       Int?
+
+  // Audit
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  // Relations
+  questionnaire  Questionnaire @relation(fields: [questionnaireId], references: [id])
+  question       Question      @relation(fields: [questionId], references: [id])
+  selectedOption Option?       @relation(fields: [selectedOptionId], references: [id])
+}

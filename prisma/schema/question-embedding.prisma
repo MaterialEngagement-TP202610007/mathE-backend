@@ -1,0 +1,13 @@
+model QuestionEmbedding {
+  id              Int    @id @default(autoincrement())
+  questionId      Int    @unique
+  embeddingVector String @db.Text          // JSON vector from Gemini Embeddings
+  modelVersion    String @db.VarChar(50)
+
+  // Audit
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  question Question @relation(fields: [questionId], references: [id])
+}

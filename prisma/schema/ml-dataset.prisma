@@ -1,0 +1,32 @@
+model MLDataset {
+  id              Int @id @default(autoincrement())
+  questionnaireId Int @unique
+  studentId       Int
+
+  // VAK score features
+  visualScore      Int?
+  auditoryScore    Int?
+  kinestheticScore Int?
+
+  // Behavior features
+  avgQuestionTime      Float?
+  totalTime            Float?
+  totalChanges         Int?
+  totalClicks          Int?
+  engagementLevel      Float?
+  responseConsistency  Float?
+  completionPercentage Float?
+
+  // Ground truth label
+  vakLabel           String? @db.VarChar(20)
+  labelSource        String? @db.VarChar(50) // 'simple_score' | 'teacher_validated'
+  includedInTraining Boolean @default(false)
+
+  // Audit
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  questionnaire Questionnaire @relation(fields: [questionnaireId], references: [id])
+  student       User          @relation("StudentMLDatasets", fields: [studentId], references: [id])
+}
