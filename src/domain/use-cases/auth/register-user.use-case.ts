@@ -16,12 +16,8 @@ export class RegisterUserUseCase {
 
     const hashedPassword = this.passwordAdapter.hash(dto.password);
 
-    return this.userRepository.create({
-      username: dto.username,
-      email: dto.email,
-      password: hashedPassword,
-      name: dto.name,
-      roleId: dto.roleId,
-    });
+    dto.password = hashedPassword;
+
+    return this.userRepository.create(dto);
   }
 }

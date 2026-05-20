@@ -1,30 +1,63 @@
 import { regularExps } from "../../../config/helpers/regular-exp.js";
 
 export class RegisterUserDto {
-  constructor(
-    public username: string,
+  private constructor(
     public password: string,
     public email: string,
     public name: string,
+    public birthDate: Date,
     public roleId: number,
+    public phoneNumber: string | null,
+    public schoolName: string | null,
+    public academicGradeId: number | null,
   ) {}
 
   static create(object: { [key: string]: any }): [string?, RegisterUserDto?] {
-    const { username, password, email, name, roleId } = object;
+    const {
+      password,
+      email,
+      name,
+      birthDate,
+      roleId,
+      phoneNumber,
+      schoolName,
+      academicGradeId,
+    } = object;
 
-    if (!username) return ["Missing Username"];
     if (!password) return ["Missing Password"];
     if (!email) return ["Missing Email"];
     if (!name) return ["Missing Name"];
+    if (!birthDate) return ["Missing Birth Date"];
     if (!roleId) return ["Missing Role Id"];
 
-    if (!regularExps.username.test(username)) return ["Invalid Username"];
     if (!regularExps.password.test(password)) return ["Invalid Password"];
     if (!regularExps.email.test(email)) return ["Invalid Email"];
 
+    const parsedBirthDate = new Date(birthDate);
+    if (isNaN(parsedBirthDate.getTime())) return ["Invalid Birth Date"];
+
+    if (
+      phoneNumber !== undefined &&
+      phoneNumber !== null &&
+      !regularExps.phone.test(phoneNumber)
+    ) {
+      return ["Invalid Phone Number"];
+    }
+
     return [
       undefined,
-      new RegisterUserDto(username, password, email, name, roleId),
+      new RegisterUserDto(
+        password,
+        email,
+        name,
+        parsedBirthDate,
+        Number(roleId),
+        phoneNumber ?? null,
+        schoolName ?? null,
+        academicGradeId !== undefined && academicGradeId !== null
+          ? Number(academicGradeId)
+          : null,
+      ),
     ];
   }
 }

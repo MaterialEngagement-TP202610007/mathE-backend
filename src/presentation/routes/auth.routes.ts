@@ -60,10 +60,8 @@ export class AuthRoutes {
      *         application/json:
      *           schema:
      *             type: object
-     *             required: [username, password, email, name, roleId]
+     *             required: [password, email, name, birthDate, roleId]
      *             properties:
-     *               username:
-     *                 type: string
      *               password:
      *                 type: string
      *               email:
@@ -71,8 +69,20 @@ export class AuthRoutes {
      *                 format: email
      *               name:
      *                 type: string
+     *               birthDate:
+     *                 type: string
+     *                 format: date
      *               roleId:
      *                 type: integer
+     *               phoneNumber:
+     *                 type: string
+     *                 nullable: true
+     *               schoolName:
+     *                 type: string
+     *                 nullable: true
+     *               academicGradeId:
+     *                 type: integer
+     *                 nullable: true
      *     responses:
      *       201:
      *         description: User created successfully

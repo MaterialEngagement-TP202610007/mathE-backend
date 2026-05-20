@@ -4,40 +4,57 @@ import { CustomError } from "../error/custom-error.js";
 export class UserEntity {
   constructor(
     public id: number,
-    public username: string,
     public password: string,
     public email: string,
     public name: string,
-    public status: boolean,
+    public birthDate: Date,
     public createdAt: Date,
+    public updatedAt: Date,
+    public phoneNumber: string | null,
+    public schoolName: string | null,
     public roleId: number | null,
+    public academicGradeId: number | null,
+    public deletedAt: Date | null,
   ) {}
 
   static fromObject(object: { [key: string]: any }): UserEntity {
-    const { id, username, password, email, name, status, createdAt, roleId } =
-      object;
+    const {
+      id,
+      password,
+      email,
+      name,
+      birthDate,
+      createdAt,
+      updatedAt,
+      phoneNumber,
+      schoolName,
+      roleId,
+      academicGradeId,
+      deletedAt,
+    } = object;
 
     if (!id) throw CustomError.badRequest("Missing Id");
-    if (typeof status !== "boolean") {
-      throw CustomError.badRequest("Status must be a boolean");
-    }
     if (!name) throw CustomError.badRequest("Missing Name");
-    if (!username) throw CustomError.badRequest("Missing Username");
     if (!email) throw CustomError.badRequest("Missing Email");
     if (!regularExps.email.test(email)) {
       throw CustomError.badRequest("Invalid Email");
     }
     if (!password) throw CustomError.badRequest("Missing Password");
+    if (!birthDate) throw CustomError.badRequest("Missing Birth Date");
 
     return new UserEntity(
       id,
-      username,
       password,
       email,
       name,
-      status,
-      createdAt,
+      new Date(birthDate),
+      createdAt ? new Date(createdAt) : new Date(),
+      updatedAt ? new Date(updatedAt) : new Date(),
+      phoneNumber ?? null,
+      schoolName ?? null,
       roleId ?? null,
+      academicGradeId ?? null,
+      deletedAt ? new Date(deletedAt) : null,
     );
   }
 }

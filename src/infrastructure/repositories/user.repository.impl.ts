@@ -17,7 +17,9 @@ export class UserRepositoryImpl implements UserRepository {
   }
 
   async create(dto: RegisterUserDto): Promise<UserEntity> {
-    const user = await prisma.user.create({ data: dto });
+    const user = await prisma.user.create({
+      data: dto,
+    });
     return UserEntity.fromObject(user);
   }
 }
