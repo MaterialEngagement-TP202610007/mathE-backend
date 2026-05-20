@@ -26,6 +26,7 @@ export class LoginUserUseCase {
     const token = await this.tokenAdapter.generate({
       id: user.id,
       email: user.email,
+      roleId: user.roleId,
     });
     if (!token) throw CustomError.internalServer("Error generating token");
 

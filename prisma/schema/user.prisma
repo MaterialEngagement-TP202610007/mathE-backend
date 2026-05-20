@@ -5,7 +5,7 @@ model User {
   name        String   @db.VarChar(250)
   birthDate   DateTime @db.Date
   phoneNumber String?  @db.VarChar(20)
-  isActive    Boolean  @default(true)
+  isActive    Boolean  @default(false)
 
   // Audit
   createdAt DateTime  @default(now())

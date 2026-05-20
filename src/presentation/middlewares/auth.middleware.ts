@@ -1,6 +1,5 @@
 import { NextFunction, Request, Response } from "express";
 import { JwtAdapter } from "../../infrastructure/adapters/jwt.adapter.impl.js";
-import { TokenPayload } from "../../domain/adapters/token.adapter.js";
 
 const tokenAdapter = new JwtAdapter();
 

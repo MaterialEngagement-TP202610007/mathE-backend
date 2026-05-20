@@ -1,6 +1,7 @@
 export interface TokenPayload {
   id: number;
   email: string;
+  roleId: number | null;
 }
 
 export interface TokenAdapter {
