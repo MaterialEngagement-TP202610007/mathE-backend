@@ -1,4 +1,4 @@
-# CLAUDE.md
+# AGENTS.md
 
 ## Project
 Backend REST API — educational platform with VAK learning style detection via Gemini AI and XGBoost. Roles: Student and Teacher (RBAC).

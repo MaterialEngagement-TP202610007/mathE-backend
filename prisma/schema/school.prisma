@@ -1,0 +1,16 @@
+model School {
+  id           Int    @id @default(autoincrement())
+  codMod       String @unique @db.VarChar(20)  // COD_MOD — MINEDU modular code
+  cenEdu       String @db.VarChar(250)         // CEN_EDU — name
+  level        String @db.VarChar(50)          // D_NIV_MOD — level (Primaria/Secundaria/...)
+  address      String @db.VarChar(500)         // DIR_CEN
+  district     String @db.VarChar(150)         // D_DIST
+  businessName String @db.VarChar(250)         // RZSOCIAL
+
+  // Audit
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Inverse relations
+  users User[]
+}

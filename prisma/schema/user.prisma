@@ -1,11 +1,11 @@
 model User {
-  id            Int       @id @default(autoincrement())
-  password      String    @db.VarChar(100)
-  email         String    @unique @db.VarChar(100)
-  name          String    @db.VarChar(250)
-  birthDate     DateTime  @db.Date
-  phoneNumber   String?   @db.VarChar(20)
-  schoolName    String?   @db.VarChar(100)
+  id          Int      @id @default(autoincrement())
+  password    String   @db.VarChar(100)
+  email       String   @unique @db.VarChar(100)
+  name        String   @db.VarChar(250)
+  birthDate   DateTime @db.Date
+  phoneNumber String?  @db.VarChar(20)
+  isActive    Boolean  @default(true)
 
   // Audit
   createdAt DateTime  @default(now())
@@ -15,9 +15,11 @@ model User {
   // Relations
   roleId          Int?
   academicGradeId Int?
+  schoolId        Int?
 
   role          Roles?         @relation(fields: [roleId], references: [id])
   academicGrade AcademicGrade? @relation(fields: [academicGradeId], references: [id])
+  school        School?        @relation(fields: [schoolId], references: [id])
 
   // Inverse relations
   questionnaires    Questionnaire[] @relation("StudentQuestionnaires")

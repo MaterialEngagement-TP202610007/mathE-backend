@@ -8,8 +8,8 @@ export class RegisterUserDto {
     public birthDate: Date,
     public roleId: number,
     public phoneNumber: string | null,
-    public schoolName: string | null,
     public academicGradeId: number | null,
+    public schoolId: number | null,
   ) {}
 
   static create(object: { [key: string]: any }): [string?, RegisterUserDto?] {
@@ -20,8 +20,8 @@ export class RegisterUserDto {
       birthDate,
       roleId,
       phoneNumber,
-      schoolName,
       academicGradeId,
+      schoolId,
     } = object;
 
     if (!password) return ["Missing Password"];
@@ -53,10 +53,10 @@ export class RegisterUserDto {
         parsedBirthDate,
         Number(roleId),
         phoneNumber ?? null,
-        schoolName ?? null,
         academicGradeId !== undefined && academicGradeId !== null
           ? Number(academicGradeId)
           : null,
+        schoolId !== undefined && schoolId !== null ? Number(schoolId) : null,
       ),
     ];
   }

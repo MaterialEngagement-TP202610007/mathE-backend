@@ -44,7 +44,7 @@ export class AuthRoutes {
      *       400:
      *         description: Validation error
      *       401:
-     *         description: Invalid credentials
+     *         description: Invalid credentials or inactive account
      */
     router.post("/login", controller.login);
 
@@ -54,6 +54,7 @@ export class AuthRoutes {
      *   post:
      *     tags: [Auth]
      *     summary: Register a new user
+     *     description: Creates a new user account. The account is active by default (isActive=true).
      *     requestBody:
      *       required: true
      *       content:
@@ -77,8 +78,8 @@ export class AuthRoutes {
      *               phoneNumber:
      *                 type: string
      *                 nullable: true
-     *               schoolName:
-     *                 type: string
+     *               schoolId:
+     *                 type: integer
      *                 nullable: true
      *               academicGradeId:
      *                 type: integer

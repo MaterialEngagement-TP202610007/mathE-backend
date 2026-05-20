@@ -11,9 +11,10 @@ export class UserEntity {
     public createdAt: Date,
     public updatedAt: Date,
     public phoneNumber: string | null,
-    public schoolName: string | null,
+    public isActive: boolean,
     public roleId: number | null,
     public academicGradeId: number | null,
+    public schoolId: number | null,
     public deletedAt: Date | null,
   ) {}
 
@@ -27,9 +28,10 @@ export class UserEntity {
       createdAt,
       updatedAt,
       phoneNumber,
-      schoolName,
+      isActive,
       roleId,
       academicGradeId,
+      schoolId,
       deletedAt,
     } = object;
 
@@ -51,9 +53,10 @@ export class UserEntity {
       createdAt ? new Date(createdAt) : new Date(),
       updatedAt ? new Date(updatedAt) : new Date(),
       phoneNumber ?? null,
-      schoolName ?? null,
+      isActive ?? false,
       roleId ?? null,
       academicGradeId ?? null,
+      schoolId ?? null,
       deletedAt ? new Date(deletedAt) : null,
     );
   }

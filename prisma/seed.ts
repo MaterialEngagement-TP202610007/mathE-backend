@@ -11,6 +11,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client.js";
 import { envs } from "../src/config/envs.js";
 import { ROLES } from "../src/domain/constants/roles.constant.js";
+import { SCHOOLS } from "./data/schools.generated.js";
 
 const adapter = new PrismaPg({ connectionString: envs.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
@@ -65,9 +66,31 @@ async function seedAcademicGrades() {
   console.log(`Seeded ${defaultAcademicGrades.length} academic grades.`);
 }
 
+async function seedSchools() {
+  // createMany + skipDuplicates is the fastest path for bulk reference data.
+  // Chunked to keep parameter counts well under Postgres' 65 535 bound
+  // (6 columns × 1000 rows = 6 000 params per batch).
+  const CHUNK = 1000;
+  let inserted = 0;
+
+  for (let i = 0; i < SCHOOLS.length; i += CHUNK) {
+    const chunk = SCHOOLS.slice(i, i + CHUNK);
+    const res = await prisma.school.createMany({
+      data: chunk,
+      skipDuplicates: true,
+    });
+    inserted += res.count;
+  }
+
+  console.log(
+    `Seeded ${inserted}/${SCHOOLS.length} schools (existing rows skipped).`,
+  );
+}
+
 async function main() {
   await seedRoles();
   await seedAcademicGrades();
+  await seedSchools();
 }
 
 main()
