@@ -1,0 +1,250 @@
+// Entity-Relationship Model - VAK Project
+// Generated from Prisma schema (prisma/schema/*.prisma)
+// Tool: dbdiagram.io
+
+Table Roles {
+  id integer [primary key]
+  description varchar(250) [not null]
+  status boolean [not null, default: false]
+  created_at timestamp [not null]
+}
+
+Table User {
+  id integer [primary key]
+  password varchar(100) [not null]
+  email varchar(100) [unique, not null]
+  name varchar(250) [not null]
+  birth_date date [not null, note: 'Backend calculates exact age in real-time for ML']
+  phone_number varchar(20)
+  is_active boolean [not null, default: false]
+
+  // Relations (FK)
+  role_id integer
+  academic_grade_id integer
+  school_id integer
+
+  // Audit
+  created_at timestamp [not null]
+  updated_at timestamp [not null]
+  deleted_at timestamp [note: 'Soft delete']
+}
+
+Table School {
+  id integer [primary key]
+  cod_mod varchar(20) [unique, not null, note: 'COD_MOD - MINEDU modular code']
+  cen_edu varchar(250) [not null, note: 'CEN_EDU - name']
+  level varchar(50) [not null, note: 'D_NIV_MOD - Primaria/Secundaria/...']
+  address varchar(500) [not null, note: 'DIR_CEN']
+  district varchar(150) [not null, note: 'D_DIST']
+  business_name varchar(250) [not null, note: 'RZSOCIAL']
+
+  // Audit
+  created_at timestamp [not null]
+  updated_at timestamp [not null]
+}
+
+Table AcademicGrade {
+  id integer [primary key]
+  name varchar(100) [not null, note: "'1ro Primaria' ... '5to Secundaria'"]
+  level varchar(50) [not null, note: "'Primaria' | 'Secundaria'"]
+  order integer [not null, note: 'ordering in reports']
+
+  // Audit
+  created_at timestamp [not null]
+  updated_at timestamp [not null]
+  deleted_at timestamp [note: 'Soft delete']
+}
+
+Table Questionnaire {
+  id integer [primary key]
+  student_id integer [not null]
+  status varchar(50) [not null, note: "'in_progress' | 'completed' | 'abandoned'"]
+  total_time_seconds float [note: 'ML Input: Total duration']
+  completion_percentage float [note: 'ML Input: Level of completion']
+  used_fallback boolean [not null, default: false, note: 'true when Gemini API fallback used']
+  start_time timestamp [not null]
+  end_time timestamp
+
+  // Audit
+  created_at timestamp [not null]
+  updated_at timestamp [not null]
+  deleted_at timestamp
+}
+
+Table Question {
+  id integer [primary key]
+  teacher_id integer [note: 'Pedagogical validator']
+  statement text [not null]
+  content_type varchar(50) [not null, note: "'text' | 'image' | 'audio' | 'interactive'"]
+  vak_style varchar(20) [not null, note: "'Visual' | 'Auditory' | 'Kinesthetic'"]
+  media_url varchar(500)
+  origin varchar(50) [not null, note: "'ai_generated' | 'fallback_bank'"]
+  validation_status varchar(50) [not null, note: "'pending' | 'approved' | 'rejected'"]
+  rejection_reason text
+  generation_date timestamp [not null]
+
+  // Audit
+  created_at timestamp [not null]
+  updated_at timestamp [not null]
+  deleted_at timestamp
+}
+
+Table Option {
+  id integer [primary key]
+  question_id integer [not null]
+  text text [not null]
+  vak_value varchar(1) [not null, note: "'V' | 'A' | 'K'"]
+
+  // Audit
+  created_at timestamp [not null]
+  updated_at timestamp [not null]
+  deleted_at timestamp
+}
+
+// Central interaction table (Critical ML Inputs)
+Table Answer {
+  id integer [primary key]
+  questionnaire_id integer [not null]
+  question_id integer [not null]
+  selected_option_id integer [note: 'null if abandoned']
+  navigation_sequence integer [note: 'ML Input: Order of answering']
+  question_time_seconds float [note: 'ML Input: Seconds spent on question']
+  number_of_changes integer [note: 'ML Input: Times option was changed']
+  number_of_clicks integer [note: 'ML Input: User interaction count']
+  times_reviewed integer [note: 'ML Input: Content repetition']
+
+  // Audit
+  created_at timestamp [not null]
+  updated_at timestamp [not null]
+  deleted_at timestamp
+}
+
+Table Result {
+  id integer [primary key]
+  questionnaire_id integer [unique, not null]
+  student_id integer [not null]
+  ml_model_id integer
+
+  // ML output
+  predominant_style varchar(20) [note: "'Visual' | 'Auditory' | 'Kinesthetic' | 'Mixed'"]
+  visual_probability float
+  auditory_probability float
+  kinesthetic_probability float
+  is_mixed_profile boolean [not null, default: false]
+  classifier_type varchar(50) [note: "'xgboost' | 'simple_score'"]
+  model_version varchar(20) [note: 'Traceability (e.g., v1.0)']
+
+  // Generative AI feedback
+  ai_feedback text [note: 'Generative AI Feedback']
+  feedback_source varchar(50) [note: "'gemini' | 'predefined'"]
+
+  // Pilot phase label correction
+  corrected_vak_label varchar(20) [note: 'Manual correction for retraining']
+  correcting_teacher_id integer [note: 'Pilot phase audit']
+
+  result_date timestamp
+
+  // Audit
+  created_at timestamp [not null]
+  updated_at timestamp [not null]
+  deleted_at timestamp
+}
+
+Table MLModel {
+  id integer [primary key]
+  version varchar(20) [not null]
+  file_url varchar(500) [not null, note: 'AWS S3 URL of serialized .pkl']
+  algorithm varchar(50) [not null]
+
+  // Evaluation metrics
+  accuracy float
+  f1_visual float
+  f1_auditory float
+  f1_kinesthetic float
+  training_samples integer
+  test_samples integer
+
+  // Status
+  is_active boolean [not null, default: false, note: 'only one active model at a time']
+  training_date timestamp
+  notes text
+
+  // Audit
+  created_at timestamp [not null]
+  updated_at timestamp [not null]
+}
+
+Table MLDataset {
+  id integer [primary key]
+  questionnaire_id integer [unique, not null]
+  student_id integer [not null]
+
+  // VAK score features
+  visual_score integer
+  auditory_score integer
+  kinesthetic_score integer
+
+  // Behavior features
+  avg_question_time float
+  total_time float
+  total_changes integer
+  total_clicks integer
+  engagement_level float
+  response_consistency float
+  completion_percentage float
+
+  // Ground truth label
+  vak_label varchar(20)
+  label_source varchar(50) [note: "'simple_score' | 'teacher_validated'"]
+  included_in_training boolean [not null, default: false]
+
+  // Audit
+  created_at timestamp [not null]
+  updated_at timestamp [not null]
+}
+
+Table QuestionEmbedding {
+  id integer [primary key]
+  question_id integer [unique, not null]
+  embedding_vector text [not null, note: 'JSON vector from Gemini Embeddings']
+  model_version varchar(50) [not null]
+
+  // Audit
+  created_at timestamp [not null]
+  updated_at timestamp [not null]
+}
+
+Table Notification {
+  id integer [primary key]
+  student_id integer [not null]
+  result_id integer
+  type varchar(50) [not null, note: "'result_available' | 'system'"]
+  message text [not null]
+  is_read boolean [not null, default: false]
+
+  // Audit
+  created_at timestamp [not null]
+  updated_at timestamp [not null]
+}
+
+// Relationships (1:N)
+Ref: User.role_id > Roles.id
+Ref: User.academic_grade_id > AcademicGrade.id
+Ref: User.school_id > School.id
+Ref: Questionnaire.student_id > User.id
+Ref: Question.teacher_id > User.id
+Ref: Option.question_id > Question.id
+Ref: Answer.questionnaire_id > Questionnaire.id
+Ref: Answer.question_id > Question.id
+Ref: Answer.selected_option_id > Option.id
+Ref: Result.student_id > User.id
+Ref: Result.ml_model_id > MLModel.id
+Ref: Result.correcting_teacher_id > User.id
+Ref: Notification.student_id > User.id
+Ref: Notification.result_id > Result.id
+
+// Relationships (1:1)
+Ref: Result.questionnaire_id - Questionnaire.id
+Ref: MLDataset.questionnaire_id - Questionnaire.id
+Ref: MLDataset.student_id > User.id
+Ref: QuestionEmbedding.question_id - Question.id

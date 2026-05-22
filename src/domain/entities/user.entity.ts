@@ -53,7 +53,7 @@ export class UserEntity {
       createdAt ? new Date(createdAt) : new Date(),
       updatedAt ? new Date(updatedAt) : new Date(),
       phoneNumber ?? null,
-      isActive ?? false,
+      isActive ?? true,
       roleId ?? null,
       academicGradeId ?? null,
       schoolId ?? null,
