@@ -83,6 +83,12 @@
         "schemaName": "public",
         "x": 1737.37841796875,
         "y": 745
+      },
+      {
+        "name": "QuestionnaireQuestion",
+        "schemaName": "public",
+        "x": 12,
+        "y": 1891
       }
     ],
     "tableGroupCollapseStates": [],
@@ -350,6 +356,36 @@
         "firstTableName": "QuestionEmbedding",
         "firstSchemaName": "public",
         "firstRelation": "1",
+        "secondFieldNames": [
+          "id"
+        ],
+        "secondTableName": "Question",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "questionnaire_id"
+        ],
+        "firstTableName": "QuestionnaireQuestion",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
+        "secondFieldNames": [
+          "id"
+        ],
+        "secondTableName": "Questionnaire",
+        "secondSchemaName": "public",
+        "secondRelation": "1",
+        "checkPoints": []
+      },
+      {
+        "firstFieldNames": [
+          "question_id"
+        ],
+        "firstTableName": "QuestionnaireQuestion",
+        "firstSchemaName": "public",
+        "firstRelation": "*",
         "secondFieldNames": [
           "id"
         ],

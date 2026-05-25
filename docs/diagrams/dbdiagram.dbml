@@ -71,6 +71,17 @@ Table Questionnaire {
   deleted_at timestamp
 }
 
+// ─── NEW: Intermediate table Questionnaire <-> Question (N:N) ─
+Table QuestionnaireQuestion {
+  id               integer   [primary key]
+  questionnaire_id integer   [not null, note: 'FK to Questionnaire']
+  question_id      integer   [not null, note: 'FK to Question']
+  order            integer   [not null, note: 'Position in questionnaire (1-10)']
+
+  // Audit
+  created_at timestamp [not null]
+}
+
 Table Question {
   id integer [primary key]
   teacher_id integer [note: 'Pedagogical validator']
@@ -227,7 +238,9 @@ Table Notification {
   updated_at timestamp [not null]
 }
 
-// Relationships (1:N)
+// ─── RELATIONSHIPS ────────────────────────────────────────────
+
+// 1:N
 Ref: User.role_id > Roles.id
 Ref: User.academic_grade_id > AcademicGrade.id
 Ref: User.school_id > School.id
@@ -242,9 +255,13 @@ Ref: Result.ml_model_id > MLModel.id
 Ref: Result.correcting_teacher_id > User.id
 Ref: Notification.student_id > User.id
 Ref: Notification.result_id > Result.id
+Ref: MLDataset.student_id > User.id
 
-// Relationships (1:1)
+// N:N — tabla intermedia QuestionnaireQuestion
+Ref: QuestionnaireQuestion.questionnaire_id > Questionnaire.id
+Ref: QuestionnaireQuestion.question_id > Question.id
+
+// 1:1
 Ref: Result.questionnaire_id - Questionnaire.id
 Ref: MLDataset.questionnaire_id - Questionnaire.id
-Ref: MLDataset.student_id > User.id
 Ref: QuestionEmbedding.question_id - Question.id

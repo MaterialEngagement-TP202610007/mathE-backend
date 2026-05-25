@@ -19,7 +19,8 @@ model Question {
   teacher User? @relation("TeacherQuestions", fields: [teacherId], references: [id])
 
   // Inverse relations
-  embedding QuestionEmbedding?
-  options   Option[]
-  answers   Answer[]
+  embedding      QuestionEmbedding?
+  options        Option[]
+  answers        Answer[]
+  questionnaires QuestionnaireQuestion[]
 }

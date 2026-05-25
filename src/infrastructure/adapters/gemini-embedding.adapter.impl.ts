@@ -17,8 +17,6 @@ export class GeminiEmbeddingAdapter implements EmbeddingAdapter {
     const model = envs.GEMINI_EMBEDDING_MODEL;
     const url = `${GEMINI_BASE}/${model}:embedContent?key=${envs.GEMINI_API_KEY}`;
 
-    console.log("url", url);
-
     let response: Response;
     try {
       response = await fetch(url, {
@@ -34,8 +32,6 @@ export class GeminiEmbeddingAdapter implements EmbeddingAdapter {
     } catch {
       throw CustomError.serviceUnavailable("Gemini embedding request failed");
     }
-
-    console.log(response);
 
     if (!response.ok) {
       throw CustomError.badGateway(

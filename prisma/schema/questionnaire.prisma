@@ -17,6 +17,7 @@ model Questionnaire {
   student User @relation("StudentQuestionnaires", fields: [studentId], references: [id])
 
   // Inverse relations
+  questions QuestionnaireQuestion[]
   answers   Answer[]
   result    Result?
   mlDataset MLDataset?

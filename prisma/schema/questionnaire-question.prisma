@@ -1,0 +1,16 @@
+model QuestionnaireQuestion {
+  id              Int @id @default(autoincrement())
+  questionnaireId Int
+  questionId      Int
+  order           Int // Position in questionnaire (1-10)
+
+  // Audit
+  createdAt DateTime @default(now())
+
+  // Relations
+  questionnaire Questionnaire @relation(fields: [questionnaireId], references: [id])
+  question      Question      @relation(fields: [questionId], references: [id])
+
+  @@unique([questionnaireId, questionId])
+  @@unique([questionnaireId, order])
+}

@@ -37,12 +37,12 @@ export class GenerateQuestionUseCase {
       const vector = await this.embeddingAdapter.embed(generated.statement);
 
       // PASO 4 — compare against same-style embeddings.
-      const redundant = existing.some(
-        (e) =>
-          this.cosineSimilarity(vector, e.vector) >=
-          this.config.similarityThreshold,
+      const maxSimilarity = existing.reduce(
+        (max, e) => Math.max(max, this.cosineSimilarity(vector, e.vector)),
+        0,
       );
-      if (redundant) continue;
+      
+      if (maxSimilarity >= this.config.similarityThreshold) continue;
 
       return this.questionRepository.createWithOptionsAndEmbedding({
         statement: generated.statement,
