@@ -1,4 +1,5 @@
 import { regularExps } from "../../../config/helpers/regular-exp.js";
+import { ROLES } from "../../constants/roles.constant.js";
 
 export class RegisterUserDto {
   private constructor(
@@ -10,6 +11,7 @@ export class RegisterUserDto {
     public phoneNumber: string | null,
     public academicGradeId: number | null,
     public schoolId: number | null,
+    public isActive: boolean,
   ) {}
 
   static create(object: { [key: string]: any }): [string?, RegisterUserDto?] {
@@ -44,6 +46,10 @@ export class RegisterUserDto {
       return ["Invalid Phone Number"];
     }
 
+    const parsedRoleId = Number(roleId);
+    // Students start inactive — require admin activation before they can log in.
+    const isActive = parsedRoleId !== ROLES.STUDENT;
+
     return [
       undefined,
       new RegisterUserDto(
@@ -51,12 +57,13 @@ export class RegisterUserDto {
         email,
         name,
         parsedBirthDate,
-        Number(roleId),
+        parsedRoleId,
         phoneNumber ?? null,
         academicGradeId !== undefined && academicGradeId !== null
           ? Number(academicGradeId)
           : null,
         schoolId !== undefined && schoolId !== null ? Number(schoolId) : null,
+        isActive,
       ),
     ];
   }

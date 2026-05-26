@@ -4,6 +4,7 @@ import { authMiddleware } from "../middlewares/auth.middleware.js";
 import { roleGuard, selfOrRoleGuard } from "../middlewares/role.middleware.js";
 import { ROLES } from "../../domain/constants/roles.constant.js";
 import { UserRepositoryImpl } from "../../infrastructure/repositories/user.repository.impl.js";
+import { NotificationRepositoryImpl } from "../../infrastructure/repositories/notification.repository.impl.js";
 import { GetUsersUseCase } from "../../domain/use-cases/user/get-users.use-case.js";
 import { GetStudentsUseCase } from "../../domain/use-cases/user/get-students.use-case.js";
 import { GetTeachersUseCase } from "../../domain/use-cases/user/get-teachers.use-case.js";
@@ -18,6 +19,7 @@ export class UserRoutes {
     const router = Router();
 
     const userRepository = new UserRepositoryImpl();
+    const notificationRepository = new NotificationRepositoryImpl();
 
     const controller = new UserController(
       new GetUsersUseCase(userRepository),
@@ -27,7 +29,7 @@ export class UserRoutes {
       new GetUserByIdUseCase(userRepository),
       new UpdateUserProfileUseCase(userRepository),
       new DeleteUserUseCase(userRepository),
-      new ActivateUserUseCase(userRepository),
+      new ActivateUserUseCase(userRepository, notificationRepository),
     );
 
     // Every endpoint requires authentication; role checks come after.

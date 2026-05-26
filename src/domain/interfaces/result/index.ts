@@ -58,3 +58,16 @@ export interface CompleteQuestionnaireResult {
   aiFeedback: string;
   feedbackSource: string;
 }
+
+export interface ResultListFilters {
+  studentId?: number;
+  gradeId?: number;
+  schoolId?: number;
+  classifierType?: string;
+}
+
+export interface CorrectResultLabelData {
+  resultId: number;
+  teacherId: number;
+  vakLabel: string;
+}
