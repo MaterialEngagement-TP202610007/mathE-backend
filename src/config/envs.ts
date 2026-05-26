@@ -30,4 +30,7 @@ export const envs = {
     .get("QUESTION_MAX_GENERATION_ATTEMPTS")
     .default("3")
     .asIntPositive(),
+
+  // ML / Lambda
+  LAMBDA_URL: envVar.get("LAMBDA_URL").default("").asString(),
 };

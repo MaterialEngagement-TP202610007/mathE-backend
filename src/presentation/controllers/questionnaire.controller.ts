@@ -70,11 +70,12 @@ export class QuestionnaireController {
     if (error) return res.status(400).json({ error });
 
     try {
-      const questionnaire = await this.completeQuestionnaireUseCase.execute(
+      const result = await this.completeQuestionnaireUseCase.execute(
         id,
+        req.user!.id,
         dto!,
       );
-      res.json(questionnaire);
+      res.json(result);
     } catch (err) {
       next(err);
     }

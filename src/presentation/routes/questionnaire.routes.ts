@@ -15,7 +15,11 @@ import { GetAnswerUseCase } from "../../domain/use-cases/answer/get-answer.use-c
 import { QuestionnaireRepositoryImpl } from "../../infrastructure/repositories/questionnaire.repository.impl.js";
 import { AnswerRepositoryImpl } from "../../infrastructure/repositories/answer.repository.impl.js";
 import { QuestionRepositoryImpl } from "../../infrastructure/repositories/question.repository.impl.js";
+import { ResultRepositoryImpl } from "../../infrastructure/repositories/result.repository.impl.js";
+import { MLModelRepositoryImpl } from "../../infrastructure/repositories/ml-model.repository.impl.js";
 import { FallbackQuestionsAdapterImpl } from "../../infrastructure/adapters/fallback-questions.adapter.impl.js";
+import { LambdaClassifierAdapterImpl } from "../../infrastructure/adapters/lambda-classifier.adapter.impl.js";
+import { GeminiVakFeedbackAdapterImpl } from "../../infrastructure/adapters/gemini-vak-feedback.adapter.impl.js";
 
 export class QuestionnaireRoutes {
   static get routes(): Router {
@@ -24,7 +28,11 @@ export class QuestionnaireRoutes {
     const questionnaireRepository = new QuestionnaireRepositoryImpl();
     const questionRepository = new QuestionRepositoryImpl();
     const answerRepository = new AnswerRepositoryImpl();
+    const resultRepository = new ResultRepositoryImpl();
+    const mlModelRepository = new MLModelRepositoryImpl();
     const fallbackAdapter = new FallbackQuestionsAdapterImpl();
+    const lambdaAdapter = new LambdaClassifierAdapterImpl();
+    const feedbackAdapter = new GeminiVakFeedbackAdapterImpl();
 
     const questionnaireController = new QuestionnaireController(
       new CreateQuestionnaireUseCase(
@@ -34,7 +42,14 @@ export class QuestionnaireRoutes {
       ),
       new GetQuestionnaireUseCase(questionnaireRepository),
       new ListQuestionnairesUseCase(questionnaireRepository),
-      new CompleteQuestionnaireUseCase(questionnaireRepository),
+      new CompleteQuestionnaireUseCase(
+        questionnaireRepository,
+        answerRepository,
+        mlModelRepository,
+        resultRepository,
+        lambdaAdapter,
+        feedbackAdapter,
+      ),
       new AbandonQuestionnaireUseCase(questionnaireRepository),
     );
 

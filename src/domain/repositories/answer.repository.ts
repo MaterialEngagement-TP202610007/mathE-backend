@@ -1,5 +1,8 @@
 import { AnswerEntity } from "../entities/answer.entity.js";
-import { CreateAnswerData } from "../interfaces/answer/index.js";
+import {
+  AnswerWithVakOption,
+  CreateAnswerData,
+} from "../interfaces/answer/index.js";
 import { PaginationDto } from "../dtos/shared/pagination.dto.js";
 import { PaginatedResult } from "../interfaces/shared/paginated-result.interface.js";
 
@@ -15,4 +18,8 @@ export abstract class AnswerRepository {
     id: number,
     questionnaireId: number,
   ): Promise<AnswerEntity | null>;
+
+  abstract findAllWithOptions(
+    questionnaireId: number,
+  ): Promise<AnswerWithVakOption[]>;
 }

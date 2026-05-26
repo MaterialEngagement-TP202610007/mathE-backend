@@ -1,7 +1,10 @@
 import { prisma } from "../database/index.js";
 import { AnswerRepository } from "../../domain/repositories/answer.repository.js";
 import { AnswerEntity } from "../../domain/entities/answer.entity.js";
-import { CreateAnswerData } from "../../domain/interfaces/answer/index.js";
+import {
+  AnswerWithVakOption,
+  CreateAnswerData,
+} from "../../domain/interfaces/answer/index.js";
 import { PaginationDto } from "../../domain/dtos/shared/pagination.dto.js";
 import { PaginatedResult } from "../../domain/interfaces/shared/paginated-result.interface.js";
 
@@ -52,5 +55,25 @@ export class AnswerRepositoryImpl implements AnswerRepository {
     });
 
     return answer ? AnswerEntity.fromObject(answer) : null;
+  }
+
+  async findAllWithOptions(
+    questionnaireId: number,
+  ): Promise<AnswerWithVakOption[]> {
+    const rows = await prisma.answer.findMany({
+      where: { questionnaireId, deletedAt: null },
+      include: { selectedOption: true },
+    });
+
+    return rows.map((row) => ({
+      id: row.id,
+      questionnaireId: row.questionnaireId,
+      questionId: row.questionId,
+      selectedOptionId: row.selectedOptionId ?? null,
+      vakValue: row.selectedOption?.vakValue ?? null,
+      questionTimeSeconds: row.questionTimeSeconds ?? null,
+      numberOfChanges: row.numberOfChanges ?? null,
+      numberOfClicks: row.numberOfClicks ?? null,
+    }));
   }
 }
