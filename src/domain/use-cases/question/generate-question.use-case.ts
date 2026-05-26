@@ -23,7 +23,7 @@ export class GenerateQuestionUseCase {
   ) {}
 
   async execute(dto: GenerateQuestionDto): Promise<QuestionEntity> {
-    // Existing embeddings of the same style — fetched once, reused per attempt (PASO 4).
+    
     const existing = await this.questionRepository.findEmbeddingsByVakStyle(
       dto.vakStyle,
     );
@@ -36,7 +36,7 @@ export class GenerateQuestionUseCase {
 
       const vector = await this.embeddingAdapter.embed(generated.statement);
 
-      // PASO 4 — compare against same-style embeddings.
+      // se compara el vector de la pregunta generada con los vectores de las preguntas existentes
       const maxSimilarity = existing.reduce(
         (max, e) => Math.max(max, this.cosineSimilarity(vector, e.vector)),
         0,
@@ -63,7 +63,6 @@ export class GenerateQuestionUseCase {
     );
   }
 
-  /** PASO 2 — statement present, exactly 4 options, and V + A + K all present. */
   private isValid(q: GeneratedQuestion): boolean {
     if (!q.statement || q.statement.trim().length === 0) return false;
     if (!Array.isArray(q.options) || q.options.length !== 4) return false;
