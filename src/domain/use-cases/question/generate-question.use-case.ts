@@ -8,9 +8,7 @@ import { GeneratedQuestion } from "../../interfaces/question/index.js";
 import { VAK_VALUES } from "../../constants/vak.constant.js";
 
 export interface GenerateQuestionConfig {
-  /** Cosine similarity at/above which a statement is deemed redundant (PASO 4). */
   similarityThreshold: number;
-  /** Max regeneration attempts before giving up (PASO 4). */
   maxAttempts: number;
 }
 
