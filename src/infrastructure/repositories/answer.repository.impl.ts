@@ -1,4 +1,4 @@
-import { prisma } from "../database/index.js";
+import { prisma } from "../../config/database/index.js";
 import { AnswerRepository } from "../../domain/repositories/answer.repository.js";
 import { AnswerEntity } from "../../domain/entities/answer.entity.js";
 import {

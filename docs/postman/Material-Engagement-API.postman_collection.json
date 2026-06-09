@@ -1,0 +1,587 @@
+{
+  "info": {
+    "name": "VAK Engagement API",
+    "_postman_id": "vak-engagement-api-collection",
+    "description": "Backend REST API — educational platform with VAK learning-style detection (Gemini AI + XGBoost).\n\n## Auth\nJWT is delivered as an HttpOnly cookie `auth_token`. Postman stores it automatically in the cookie jar after `Auth > Login`, and replays it on every subsequent request — no manual token handling needed.\n\n## Variables\n- `baseUrl` (default `http://localhost:3000`)\nIDs are captured into collection variables by test scripts where useful (e.g. `questionnaireId`, `questionId`, `resultId`).\n\nRoles: Admin=1, Teacher=2, Student=3.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000", "type": "string" },
+    { "key": "userId", "value": "", "type": "string" },
+    { "key": "schoolId", "value": "1", "type": "string" },
+    { "key": "questionId", "value": "", "type": "string" },
+    { "key": "questionnaireId", "value": "", "type": "string" },
+    { "key": "answerId", "value": "", "type": "string" },
+    { "key": "resultId", "value": "", "type": "string" },
+    { "key": "notificationId", "value": "", "type": "string" },
+    { "key": "datasetId", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.code === 200);",
+                  "const u = pm.response.json().user;",
+                  "if (u && u.id) pm.collectionVariables.set('userId', u.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/auth/login", "host": ["{{baseUrl}}"], "path": ["api", "auth", "login"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"Passw0rd\"\n}"
+            },
+            "description": "Authenticate. Sets the auth_token HttpOnly cookie. Body returns { user }, no token."
+          }
+        },
+        {
+          "name": "Me (validate session)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/auth/me", "host": ["{{baseUrl}}"], "path": ["api", "auth", "me"] },
+            "description": "Validate the current session. Returns { user } if the cookie is valid and the account is active; 401 otherwise. Use on app load."
+          }
+        },
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/auth/register", "host": ["{{baseUrl}}"], "path": ["api", "auth", "register"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"student@example.com\",\n  \"password\": \"Passw0rd\",\n  \"name\": \"Jane Doe\",\n  \"birthDate\": \"2010-05-01\",\n  \"roleId\": 3,\n  \"phoneNumber\": \"+593987654321\",\n  \"schoolId\": 1,\n  \"academicGradeId\": 2\n}"
+            },
+            "description": "Register a user. Students (roleId=3) are created inactive and cannot log in until an admin activates them."
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/auth/logout", "host": ["{{baseUrl}}"], "path": ["api", "auth", "logout"] },
+            "description": "Clears the auth_token cookie. Returns { ok: true }."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "List all users (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/users?page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users"],
+              "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "10" }]
+            }
+          }
+        },
+        {
+          "name": "List students (Admin/Teacher)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/students?page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "students"],
+              "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "10" }]
+            }
+          }
+        },
+        {
+          "name": "List teachers (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/teachers?page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "teachers"],
+              "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "10" }]
+            }
+          }
+        },
+        {
+          "name": "List students by school (Admin/Teacher)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/students/by-school/{{schoolId}}?page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "students", "by-school", "{{schoolId}}"],
+              "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "10" }]
+            }
+          }
+        },
+        {
+          "name": "Get user by id (Admin or self)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/users/{{userId}}", "host": ["{{baseUrl}}"], "path": ["api", "users", "{{userId}}"] }
+          }
+        },
+        {
+          "name": "Update profile (Admin or self)",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/users/{{userId}}", "host": ["{{baseUrl}}"], "path": ["api", "users", "{{userId}}"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"New Name\",\n  \"phoneNumber\": \"+593987654321\",\n  \"academicGradeId\": 2,\n  \"schoolId\": 1\n}"
+            },
+            "description": "All fields optional, at least one required. email/password/roleId not editable here."
+          }
+        },
+        {
+          "name": "Delete user (Admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/users/{{userId}}", "host": ["{{baseUrl}}"], "path": ["api", "users", "{{userId}}"] }
+          }
+        },
+        {
+          "name": "Activate user (Admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/users/{{userId}}/activate", "host": ["{{baseUrl}}"], "path": ["api", "users", "{{userId}}", "activate"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Questions",
+      "item": [
+        {
+          "name": "Generate question (Admin/Teacher)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const q = pm.response.json();",
+                  "  if (q && q.id) pm.collectionVariables.set('questionId', q.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/questions/generate", "host": ["{{baseUrl}}"], "path": ["api", "questions", "generate"] },
+            "body": { "mode": "raw", "raw": "{\n  \"vakStyle\": \"Visual\"\n}" },
+            "description": "Slow (AI + embedding). vakStyle: Visual | Auditory | Kinesthetic. 502 Gemini fail, 503 could not produce unique question."
+          }
+        },
+        {
+          "name": "List my questions (Admin/Teacher)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/questions/my?status=pending&page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "questions", "my"],
+              "query": [
+                { "key": "status", "value": "pending", "description": "pending | approved | rejected (omit for all)" },
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "10" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Validated history (Admin/Teacher)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/questions/my/validated-history?page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "questions", "my", "validated-history"],
+              "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "10" }]
+            }
+          }
+        },
+        {
+          "name": "Get question by id (Admin/Teacher)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/questions/{{questionId}}", "host": ["{{baseUrl}}"], "path": ["api", "questions", "{{questionId}}"] }
+          }
+        },
+        {
+          "name": "Approve question (Admin/Teacher)",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/questions/{{questionId}}/approve", "host": ["{{baseUrl}}"], "path": ["api", "questions", "{{questionId}}", "approve"] }
+          }
+        },
+        {
+          "name": "Reject question (Admin/Teacher)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/questions/{{questionId}}/reject", "host": ["{{baseUrl}}"], "path": ["api", "questions", "{{questionId}}", "reject"] },
+            "body": { "mode": "raw", "raw": "{\n  \"rejectionReason\": \"Statement is ambiguous.\"\n}" }
+          }
+        },
+        {
+          "name": "Delete question (Admin/Teacher)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/questions/{{questionId}}", "host": ["{{baseUrl}}"], "path": ["api", "questions", "{{questionId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Questionnaires",
+      "item": [
+        {
+          "name": "Create questionnaire (Student)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const q = pm.response.json();",
+                  "  if (q && q.id) pm.collectionVariables.set('questionnaireId', q.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/questionnaires", "host": ["{{baseUrl}}"], "path": ["api", "questionnaires"] },
+            "description": "No body. Returns 10 questions (no VAK metadata) in randomised order."
+          }
+        },
+        {
+          "name": "List my questionnaires (Student)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/questionnaires?page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "questionnaires"],
+              "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "10" }]
+            }
+          }
+        },
+        {
+          "name": "Get questionnaire by id (S/T/A)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/questionnaires/{{questionnaireId}}", "host": ["{{baseUrl}}"], "path": ["api", "questionnaires", "{{questionnaireId}}"] }
+          }
+        },
+        {
+          "name": "Complete questionnaire (Student)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const r = pm.response.json();",
+                  "  if (r && r.resultId) pm.collectionVariables.set('resultId', r.resultId);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/questionnaires/{{questionnaireId}}/complete", "host": ["{{baseUrl}}"], "path": ["api", "questionnaires", "{{questionnaireId}}", "complete"] },
+            "body": { "mode": "raw", "raw": "{\n  \"totalTimeSeconds\": 184.5,\n  \"completionPercentage\": 100\n}" },
+            "description": "Slow — runs classifier + AI feedback. Returns CompleteQuestionnaireResult."
+          }
+        },
+        {
+          "name": "Abandon questionnaire (Student)",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/questionnaires/{{questionnaireId}}/abandon", "host": ["{{baseUrl}}"], "path": ["api", "questionnaires", "{{questionnaireId}}", "abandon"] }
+          }
+        },
+        {
+          "name": "Submit answer (Student)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const a = pm.response.json();",
+                  "  if (a && a.id) pm.collectionVariables.set('answerId', a.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/questionnaires/{{questionnaireId}}/answers", "host": ["{{baseUrl}}"], "path": ["api", "questionnaires", "{{questionnaireId}}", "answers"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"questionId\": {{questionId}},\n  \"selectedOptionId\": 301,\n  \"navigationSequence\": 1,\n  \"questionTimeSeconds\": 12.4,\n  \"numberOfChanges\": 0,\n  \"numberOfClicks\": 3,\n  \"timesReviewed\": 1\n}"
+            },
+            "description": "Only questionId required. Behavioural metrics feed the ML classifier."
+          }
+        },
+        {
+          "name": "List answers (S/T/A)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/questionnaires/{{questionnaireId}}/answers?page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "questionnaires", "{{questionnaireId}}", "answers"],
+              "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "10" }]
+            }
+          }
+        },
+        {
+          "name": "Get answer by id (S/T/A)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/questionnaires/{{questionnaireId}}/answers/{{answerId}}", "host": ["{{baseUrl}}"], "path": ["api", "questionnaires", "{{questionnaireId}}", "answers", "{{answerId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Results",
+      "item": [
+        {
+          "name": "List all results (Teacher/Admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/results?page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "results"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "10" },
+                { "key": "studentId", "value": "", "disabled": true },
+                { "key": "gradeId", "value": "", "disabled": true },
+                { "key": "schoolId", "value": "", "disabled": true },
+                { "key": "classifierType", "value": "", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "List my results (Student)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/results/my?page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "results", "my"],
+              "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "10" }]
+            }
+          }
+        },
+        {
+          "name": "Get result by questionnaire (S/T/A)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/results/questionnaire/{{questionnaireId}}", "host": ["{{baseUrl}}"], "path": ["api", "results", "questionnaire", "{{questionnaireId}}"] }
+          }
+        },
+        {
+          "name": "Get result by id (S/T/A)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/results/{{resultId}}", "host": ["{{baseUrl}}"], "path": ["api", "results", "{{resultId}}"] }
+          }
+        },
+        {
+          "name": "Correct result label (Teacher/Admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/results/{{resultId}}/correct-label", "host": ["{{baseUrl}}"], "path": ["api", "results", "{{resultId}}", "correct-label"] },
+            "body": { "mode": "raw", "raw": "{\n  \"vakLabel\": \"Auditory\"\n}" },
+            "description": "Pilot ground-truth. vakLabel: Visual | Auditory | Kinesthetic."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Notifications",
+      "item": [
+        {
+          "name": "List notifications (Student)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/notifications?page=1&limit=20&unread=true",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "notifications"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" },
+                { "key": "unread", "value": "true", "description": "true = only unread" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Unread count (Student)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/notifications/unread-count", "host": ["{{baseUrl}}"], "path": ["api", "notifications", "unread-count"] }
+          }
+        },
+        {
+          "name": "Mark all read (Student)",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/notifications/read-all", "host": ["{{baseUrl}}"], "path": ["api", "notifications", "read-all"] }
+          }
+        },
+        {
+          "name": "Mark one read (Student)",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/notifications/{{notificationId}}/read", "host": ["{{baseUrl}}"], "path": ["api", "notifications", "{{notificationId}}", "read"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "ML Dataset",
+      "item": [
+        {
+          "name": "List dataset (Teacher/Admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/ml-dataset?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "ml-dataset"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" },
+                { "key": "studentId", "value": "", "disabled": true },
+                { "key": "gradeId", "value": "", "disabled": true },
+                { "key": "schoolId", "value": "", "disabled": true },
+                { "key": "labelSource", "value": "teacher_validated", "description": "simple_score | teacher_validated", "disabled": true },
+                { "key": "includedInTraining", "value": "true", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get dataset entry (Teacher/Admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/ml-dataset/{{datasetId}}", "host": ["{{baseUrl}}"], "path": ["api", "ml-dataset", "{{datasetId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Schools",
+      "item": [
+        {
+          "name": "List / search schools (Public)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const items = pm.response.json().items;",
+                  "  if (items && items.length) pm.collectionVariables.set('schoolId', items[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/schools?page=1&limit=10&search=",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "schools"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "10" },
+                { "key": "search", "value": "", "description": "Partial, case-insensitive name match (searchbox)." }
+              ]
+            },
+            "description": "Public — no auth. Use `search` for the registration searchbox."
+          }
+        },
+        {
+          "name": "Get school by id (Public)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/schools/{{schoolId}}", "host": ["{{baseUrl}}"], "path": ["api", "schools", "{{schoolId}}"] }
+          }
+        }
+      ]
+    }
+  ]
+}

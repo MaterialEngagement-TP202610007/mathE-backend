@@ -8,15 +8,11 @@ export const authMiddleware = async (
   res: Response,
   next: NextFunction,
 ) => {
-  const authorization = req.header("Authorization");
-  if (!authorization) {
+  const token = req.cookies?.auth_token;
+  if (!token) {
     return res.status(401).json({ error: "No token provided" });
   }
-  if (!authorization.startsWith("Bearer ")) {
-    return res.status(401).json({ error: "Invalid token format" });
-  }
 
-  const token = authorization.split(" ")[1];
   const payload = await tokenAdapter.verify(token);
   if (!payload) {
     return res.status(401).json({ error: "Invalid token" });

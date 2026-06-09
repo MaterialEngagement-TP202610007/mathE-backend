@@ -1,4 +1,4 @@
-import { prisma } from "../database/index.js";
+import { prisma } from "../../config/database/index.js";
 import {
   UserRepository,
 } from "../../domain/repositories/user.repository.js";
@@ -11,13 +11,19 @@ import { PaginatedResult } from "../../domain/interfaces/shared/paginated-result
 
 export class UserRepositoryImpl implements UserRepository {
   async findById(id: number): Promise<UserEntity | null> {
-    const user = await prisma.user.findUnique({ where: { id } });
+    const user = await prisma.user.findUnique({
+      where: { id },
+      include: { school: { select: { cenEdu: true } } },
+    });
     if (!user) return null;
     return UserEntity.fromObject(user);
   }
 
   async findByEmail(email: string): Promise<UserEntity | null> {
-    const user = await prisma.user.findUnique({ where: { email } });
+    const user = await prisma.user.findUnique({
+      where: { email },
+      include: { school: { select: { cenEdu: true } } },
+    });
     if (!user) return null;
     return UserEntity.fromObject(user);
   }

@@ -67,9 +67,6 @@ async function seedAcademicGrades() {
 }
 
 async function seedSchools() {
-  // createMany + skipDuplicates is the fastest path for bulk reference data.
-  // Chunked to keep parameter counts well under Postgres' 65 535 bound
-  // (6 columns × 1000 rows = 6 000 params per batch).
   const CHUNK = 1000;
   let inserted = 0;
 

@@ -1,4 +1,4 @@
-import { prisma } from "../database/index.js";
+import { prisma } from "../../config/database/index.js";
 import { MLModelRepository } from "../../domain/repositories/ml-model.repository.js";
 import { MLModelEntity } from "../../domain/entities/ml-model.entity.js";
 

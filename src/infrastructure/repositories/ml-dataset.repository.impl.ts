@@ -1,4 +1,4 @@
-import { prisma } from "../database/index.js";
+import { prisma } from "../../config/database/index.js";
 import { MLDatasetRepository } from "../../domain/repositories/ml-dataset.repository.js";
 import { MLDatasetEntity } from "../../domain/entities/ml-dataset.entity.js";
 import { MLDatasetListFilters } from "../../domain/interfaces/ml-dataset/index.js";

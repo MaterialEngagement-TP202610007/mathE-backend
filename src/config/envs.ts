@@ -6,6 +6,11 @@ export const envs = {
   DATABASE_URL: envVar.get("DATABASE_URL").required().asString(),
   JWT_SEED: envVar.get("JWT_SEED").required().asString(),
 
+  CORS_ORIGIN: envVar
+    .get("CORS_ORIGIN")
+    .default("http://localhost:5173")
+    .asString(),
+
   // Gemini AI
   GEMINI_API_KEY: envVar.get("GEMINI_API_KEY").required().asString(),
   GEMINI_CHAT_MODEL: envVar

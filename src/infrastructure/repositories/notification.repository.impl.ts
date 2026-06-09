@@ -1,4 +1,4 @@
-import { prisma } from "../database/index.js";
+import { prisma } from "../../config/database/index.js";
 import { NotificationRepository } from "../../domain/repositories/notification.repository.js";
 import { NotificationEntity } from "../../domain/entities/notification.entity.js";
 import {

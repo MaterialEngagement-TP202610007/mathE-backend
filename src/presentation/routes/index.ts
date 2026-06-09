@@ -6,6 +6,7 @@ import { QuestionnaireRoutes } from "./questionnaire.routes.js";
 import { NotificationRoutes } from "./notification.routes.js";
 import { ResultRoutes } from "./result.routes.js";
 import { MLDatasetRoutes } from "./ml-dataset.routes.js";
+import { SchoolRoutes } from "./school.routes.js";
 
 export class AppRoutes {
   static get routes(): Router {
@@ -18,6 +19,7 @@ export class AppRoutes {
     router.use("/api/notifications", NotificationRoutes.routes);
     router.use("/api/results", ResultRoutes.routes);
     router.use("/api/ml-dataset", MLDatasetRoutes.routes);
+    router.use("/api/schools", SchoolRoutes.routes);
 
     return router;
   }
