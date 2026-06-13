@@ -6,7 +6,6 @@ export class CreateAnswerDto {
     public navigationSequence: number | null,
     public questionTimeSeconds: number | null,
     public numberOfChanges: number | null,
-    public numberOfClicks: number | null,
     public timesReviewed: number | null,
   ) {}
 
@@ -18,7 +17,6 @@ export class CreateAnswerDto {
       navigationSequence,
       questionTimeSeconds,
       numberOfChanges,
-      numberOfClicks,
       timesReviewed,
     } = object;
 
@@ -39,7 +37,6 @@ export class CreateAnswerDto {
         toNumOrNull(navigationSequence),
         toNumOrNull(questionTimeSeconds),
         toNumOrNull(numberOfChanges),
-        toNumOrNull(numberOfClicks),
         toNumOrNull(timesReviewed),
       ),
     ];

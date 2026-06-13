@@ -1,11 +1,38 @@
 export interface CompleteQuestionnaireData {
-  totalTimeSeconds: number | null;
   completionPercentage: number | null;
+}
+
+export interface AnswerInputData {
+  questionId: number;
+  selectedOptionId: number | null;
+  navigationSequence: number;
+  questionTimeSeconds: number;
+  numberOfChanges: number;
+  timesReviewed: number;
+}
+
+export interface CompleteWithAnswersAndDatasetParams {
+  questionnaireId: number;
+  studentId: number;
+  completionPercentage: number;
+  answers: AnswerInputData[];
+}
+
+export interface CompleteWithAnswersAndDatasetResult {
+  visualScore: number;
+  auditoryScore: number;
+  kinestheticScore: number;
+  responseConsistency: number;
+  avgQuestionTime: number;
+  totalChanges: number;
+  totalReviews: number;
+  vakLabel: string;
 }
 
 export interface PublicOptionView {
   id: number;
   text: string;
+  vakValue: string; // V | A | K — the option's VAK label
 }
 
 export interface PublicQuestionView {

@@ -44,7 +44,6 @@ export class QuestionnaireRoutes {
       new ListQuestionnairesUseCase(questionnaireRepository),
       new CompleteQuestionnaireUseCase(
         questionnaireRepository,
-        answerRepository,
         mlModelRepository,
         resultRepository,
         lambdaAdapter,
@@ -72,8 +71,8 @@ export class QuestionnaireRoutes {
      *       distributed across VAK styles (Visual=4, Auditory=3, Kinesthetic=3).
      *       Questions are selected randomly from approved DB questions; if there
      *       are not enough for a style, the local fallback bank is used (usedFallback=true).
-     *       The response includes the 10 questions in randomised order without any
-     *       VAK metadata (no vakStyle, no vakValue on options) to avoid biasing the student.
+     *       The response includes the 10 questions in randomised order. The question's
+     *       own vakStyle is hidden, but each option exposes its vakValue (V|A|K) label.
      *     security: [{ bearerAuth: [] }]
      *     responses:
      *       201:
@@ -107,6 +106,7 @@ export class QuestionnaireRoutes {
      *                           properties:
      *                             id: { type: integer }
      *                             text: { type: string }
+     *                             vakValue: { type: string, enum: [V, A, K] }
      *       401: { description: Not authenticated }
      *       403: { description: Student role required }
      */
@@ -168,19 +168,30 @@ export class QuestionnaireRoutes {
      *         required: true
      *         schema: { type: integer }
      *     requestBody:
-     *       required: false
+     *       required: true
      *       content:
      *         application/json:
      *           schema:
      *             type: object
+     *             required: [completionPercentage, answers]
      *             properties:
-     *               totalTimeSeconds:
-     *                 type: number
-     *                 description: Total elapsed time in seconds.
      *               completionPercentage:
      *                 type: number
      *                 minimum: 0
      *                 maximum: 100
+     *               answers:
+     *                 type: array
+     *                 minItems: 10
+     *                 maxItems: 10
+     *                 items:
+     *                   type: object
+     *                   required: [questionId, selectedOptionId, questionTimeSeconds, numberOfChanges, timesReviewed]
+     *                   properties:
+     *                     questionId: { type: integer }
+     *                     selectedOptionId: { type: integer, nullable: true }
+     *                     questionTimeSeconds: { type: number }
+     *                     numberOfChanges: { type: integer }
+     *                     timesReviewed: { type: integer }
      *     responses:
      *       200: { description: Questionnaire completed }
      *       400: { description: Invalid id, body, or questionnaire not in_progress }

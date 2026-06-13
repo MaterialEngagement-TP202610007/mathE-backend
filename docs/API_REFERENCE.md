@@ -279,14 +279,15 @@ interface Questionnaire {
   deletedAt: string | null;
 }
 
-// Question as delivered to a student — NO VAK metadata (no vakStyle / vakValue)
+// Question as delivered to a student. The question's own vakStyle is hidden,
+// but each option carries its vakValue (V|A|K) label.
 interface PublicQuestionView {
   order: number;
   questionId: number;
   statement: string;
   contentType: string;
   mediaUrl: string | null;
-  options: { id: number; text: string }[];
+  options: { id: number; text: string; vakValue: "V" | "A" | "K" }[];
 }
 interface CreateQuestionnaireResponse {
   id: number;
@@ -320,10 +321,10 @@ Response `201`: `CreateQuestionnaireResponse`.
       "contentType": "text",
       "mediaUrl": null,
       "options": [
-        { "id": 301, "text": "Ver un diagrama" },
-        { "id": 302, "text": "Escuchar una explicación" },
-        { "id": 303, "text": "Hacerlo con las manos" },
-        { "id": 304, "text": "Leer un instructivo" }
+        { "id": 301, "text": "Ver un diagrama", "vakValue": "V" },
+        { "id": 302, "text": "Escuchar una explicación", "vakValue": "A" },
+        { "id": 303, "text": "Hacerlo con las manos", "vakValue": "K" },
+        { "id": 304, "text": "Leer un instructivo", "vakValue": "V" }
       ]
     }
   ]

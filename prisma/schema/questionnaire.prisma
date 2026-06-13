@@ -2,7 +2,6 @@ model Questionnaire {
   id                   Int       @id @default(autoincrement())
   studentId            Int
   status               String    @db.VarChar(50) // 'in_progress' | 'completed' | 'abandoned'
-  totalTimeSeconds     Float?
   completionPercentage Float?
   usedFallback         Boolean   @default(false) // true when Gemini API fallback used
   startTime            DateTime

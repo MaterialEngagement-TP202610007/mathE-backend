@@ -6,7 +6,6 @@ model Answer {
   navigationSequence  Int?
   questionTimeSeconds Float?
   numberOfChanges     Int?
-  numberOfClicks      Int?
   timesReviewed       Int?
 
   // Audit

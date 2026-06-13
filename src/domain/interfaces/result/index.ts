@@ -2,11 +2,10 @@ export interface VakFeatures {
   visualScore: number;
   auditoryScore: number;
   kinestheticScore: number;
+  responseConsistency: number;
   avgQuestionTime: number;
   totalChanges: number;
-  totalClicks: number;
-  engagementLevel: number;
-  responseConsistency: number;
+  totalReviews: number;
 }
 
 export interface LambdaClassifierInput {
@@ -14,11 +13,15 @@ export interface LambdaClassifierInput {
 }
 
 export interface LambdaClassifierOutput {
-  predominantStyle: string;
-  visualProbability: number;
-  auditoryProbability: number;
-  kinestheticProbability: number;
-  modelVersion: string;
+  predominantStyle: string;        // 'Visual' | 'Auditory' | 'Kinesthetic'
+  secondaryStyle: string;          // second highest
+  visualProbability: number;       // 0-100
+  auditoryProbability: number;     // 0-100
+  kinestheticProbability: number;  // 0-100
+  predominantConfidence: number;   // 0-100
+  profileType: string;             // 'clear' | 'tendency' | 'mixed'
+  isMixedProfile: boolean;
+  classifierType: string;          // 'xgboost'
 }
 
 export interface SaveResultData {
@@ -26,33 +29,28 @@ export interface SaveResultData {
   studentId: number;
   mlModelId: number | null;
   predominantStyle: string;
+  secondaryStyle: string | null;
   visualProbability: number;
   auditoryProbability: number;
   kinestheticProbability: number;
+  predominantConfidence: number;
+  profileType: string | null;
   isMixedProfile: boolean;
   classifierType: string;
   modelVersion: string | null;
   aiFeedback: string;
   feedbackSource: string;
-  visualScore: number;
-  auditoryScore: number;
-  kinestheticScore: number;
-  avgQuestionTime: number;
-  totalTime: number | null;
-  totalChanges: number;
-  totalClicks: number;
-  engagementLevel: number;
-  responseConsistency: number;
-  completionPercentage: number | null;
-  vakLabel: string;
 }
 
 export interface CompleteQuestionnaireResult {
   resultId: number;
   predominantStyle: string;
+  secondaryStyle: string | null;
   visualProbability: number;
   auditoryProbability: number;
   kinestheticProbability: number;
+  predominantConfidence: number;
+  profileType: string | null;
   isMixedProfile: boolean;
   classifierType: string;
   aiFeedback: string;

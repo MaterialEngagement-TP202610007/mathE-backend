@@ -18,12 +18,25 @@ export class AnswerRepositoryImpl implements AnswerRepository {
         navigationSequence: data.navigationSequence ?? undefined,
         questionTimeSeconds: data.questionTimeSeconds ?? undefined,
         numberOfChanges: data.numberOfChanges ?? undefined,
-        numberOfClicks: data.numberOfClicks ?? undefined,
         timesReviewed: data.timesReviewed ?? undefined,
       },
     });
 
     return AnswerEntity.fromObject(answer);
+  }
+
+  async createMany(data: CreateAnswerData[]): Promise<void> {
+    await prisma.answer.createMany({
+      data: data.map((d) => ({
+        questionnaireId: d.questionnaireId,
+        questionId: d.questionId,
+        selectedOptionId: d.selectedOptionId ?? undefined,
+        navigationSequence: d.navigationSequence ?? undefined,
+        questionTimeSeconds: d.questionTimeSeconds ?? undefined,
+        numberOfChanges: d.numberOfChanges ?? undefined,
+        timesReviewed: d.timesReviewed ?? undefined,
+      })),
+    });
   }
 
   async findByQuestionnaire(
@@ -73,7 +86,7 @@ export class AnswerRepositoryImpl implements AnswerRepository {
       vakValue: row.selectedOption?.vakValue ?? null,
       questionTimeSeconds: row.questionTimeSeconds ?? null,
       numberOfChanges: row.numberOfChanges ?? null,
-      numberOfClicks: row.numberOfClicks ?? null,
+      timesReviewed: row.timesReviewed ?? null,
     }));
   }
 }

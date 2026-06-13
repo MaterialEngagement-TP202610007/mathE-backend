@@ -2,7 +2,8 @@ import { prisma } from "../../config/database/index.js";
 import { QuestionnaireRepository } from "../../domain/repositories/questionnaire.repository.js";
 import { QuestionnaireEntity } from "../../domain/entities/questionnaire.entity.js";
 import {
-  CompleteQuestionnaireData,
+  CompleteWithAnswersAndDatasetParams,
+  CompleteWithAnswersAndDatasetResult,
   CreateQuestionnaireResult,
   PublicQuestionView,
   QuestionnaireCreationParams,
@@ -50,7 +51,11 @@ export class QuestionnaireRepositoryImpl implements QuestionnaireRepository {
           statement: existing.statement,
           contentType: existing.contentType,
           mediaUrl: existing.mediaUrl,
-          options: existing.options.map((o) => ({ id: o.id, text: o.text })),
+          options: existing.options.map((o) => ({
+            id: o.id,
+            text: o.text,
+            vakValue: o.vakValue,
+          })),
         });
       }
 
@@ -67,7 +72,11 @@ export class QuestionnaireRepositoryImpl implements QuestionnaireRepository {
             statement: q.statement,
             contentType: q.contentType,
             mediaUrl: q.mediaUrl,
-            options: q.options.map((o) => ({ id: o.id, text: o.text })),
+            options: q.options.map((o) => ({
+              id: o.id,
+              text: o.text,
+              vakValue: o.vakValue,
+            })),
           };
         }),
       );
@@ -113,9 +122,7 @@ export class QuestionnaireRepositoryImpl implements QuestionnaireRepository {
       where: { id, deletedAt: null },
     });
 
-    return questionnaire
-      ? QuestionnaireEntity.fromObject(questionnaire)
-      : null;
+    return questionnaire ? QuestionnaireEntity.fromObject(questionnaire) : null;
   }
 
   async findByStudent(
@@ -143,21 +150,107 @@ export class QuestionnaireRepositoryImpl implements QuestionnaireRepository {
     };
   }
 
-  async complete(
-    id: number,
-    data: CompleteQuestionnaireData,
-  ): Promise<QuestionnaireEntity> {
-    const questionnaire = await prisma.questionnaire.update({
-      where: { id },
-      data: {
-        status: "completed",
-        endTime: new Date(),
-        totalTimeSeconds: data.totalTimeSeconds ?? undefined,
-        completionPercentage: data.completionPercentage ?? undefined,
-      },
-    });
+  async completeWithAnswersAndDataset(
+    params: CompleteWithAnswersAndDatasetParams,
+  ): Promise<CompleteWithAnswersAndDatasetResult> {
+    return prisma.$transaction(async (tx) => {
+      // 1. Save all 10 answers
+      await tx.answer.createMany({
+        data: params.answers.map((a) => ({
+          questionnaireId: params.questionnaireId,
+          questionId: a.questionId,
+          selectedOptionId: a.selectedOptionId ?? undefined,
+          navigationSequence: a.navigationSequence,
+          questionTimeSeconds: a.questionTimeSeconds,
+          numberOfChanges: a.numberOfChanges,
+          timesReviewed: a.timesReviewed,
+        })),
+      });
 
-    return QuestionnaireEntity.fromObject(questionnaire);
+      // 2. Look up VAK values for selected options
+      const selectedOptionIds = params.answers
+        .map((a) => a.selectedOptionId)
+        .filter((id): id is number => id !== null);
+
+      const options = await tx.option.findMany({
+        where: { id: { in: selectedOptionIds } },
+        select: { id: true, vakValue: true },
+      });
+
+      const vakValueMap = new Map(options.map((o) => [o.id, o.vakValue]));
+
+      // 3. Calculate ML features
+      let visualScore = 0;
+      let auditoryScore = 0;
+      let kinestheticScore = 0;
+      let totalQuestionTime = 0;
+      let totalChanges = 0;
+      let totalReviews = 0;
+
+      for (const a of params.answers) {
+        const vak = a.selectedOptionId
+          ? vakValueMap.get(a.selectedOptionId)
+          : null;
+        if (vak === "V") visualScore++;
+        else if (vak === "A") auditoryScore++;
+        else if (vak === "K") kinestheticScore++;
+        totalQuestionTime += a.questionTimeSeconds;
+        totalChanges += a.numberOfChanges;
+        totalReviews += a.timesReviewed;
+      }
+
+      const count = params.answers.length;
+      const avgQuestionTime = count > 0 ? totalQuestionTime / count : 0;
+      const maxScore = Math.max(visualScore, auditoryScore, kinestheticScore);
+      const observed = maxScore / count;
+      const responseConsistency = Math.max(0, (observed - 1 / 3) / (1 - 1 / 3));
+
+      let vakLabel: string;
+      if (visualScore >= auditoryScore && visualScore >= kinestheticScore)
+        vakLabel = "Visual";
+      else if (auditoryScore >= kinestheticScore) vakLabel = "Auditory";
+      else vakLabel = "Kinesthetic";
+
+      // 4. Create MLDataset row
+      await tx.mLDataset.create({
+        data: {
+          questionnaireId: params.questionnaireId,
+          studentId: params.studentId,
+          visualScore,
+          auditoryScore,
+          kinestheticScore,
+          responseConsistency,
+          avgQuestionTime,
+          totalChanges,
+          totalReviews,
+          completionPercentage: params.completionPercentage,
+          vakLabel,
+          labelSource: "simple_score",
+          includedInTraining: false,
+        },
+      });
+
+      // 5. Mark questionnaire as completed
+      await tx.questionnaire.update({
+        where: { id: params.questionnaireId },
+        data: {
+          status: "completed",
+          endTime: new Date(),
+          completionPercentage: params.completionPercentage,
+        },
+      });
+
+      return {
+        visualScore,
+        auditoryScore,
+        kinestheticScore,
+        responseConsistency,
+        avgQuestionTime,
+        totalChanges,
+        totalReviews,
+        vakLabel,
+      };
+    });
   }
 
   async abandon(id: number): Promise<QuestionnaireEntity> {

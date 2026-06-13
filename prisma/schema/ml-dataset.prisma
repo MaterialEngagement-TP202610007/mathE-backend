@@ -9,12 +9,10 @@ model MLDataset {
   kinestheticScore Int?
 
   // Behavior features
-  avgQuestionTime      Float?
-  totalTime            Float?
-  totalChanges         Int?
-  totalClicks          Int?
-  engagementLevel      Float?
   responseConsistency  Float?
+  avgQuestionTime      Float?
+  totalChanges         Int?
+  totalReviews         Int?
   completionPercentage Float?
 
   // Ground truth label

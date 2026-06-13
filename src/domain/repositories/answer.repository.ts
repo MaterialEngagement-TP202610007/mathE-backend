@@ -9,6 +9,8 @@ import { PaginatedResult } from "../interfaces/shared/paginated-result.interface
 export abstract class AnswerRepository {
   abstract create(data: CreateAnswerData): Promise<AnswerEntity>;
 
+  abstract createMany(data: CreateAnswerData[]): Promise<void>;
+
   abstract findByQuestionnaire(
     questionnaireId: number,
     pagination: PaginationDto,

@@ -288,7 +288,7 @@
             "method": "POST",
             "header": [],
             "url": { "raw": "{{baseUrl}}/api/questionnaires", "host": ["{{baseUrl}}"], "path": ["api", "questionnaires"] },
-            "description": "No body. Returns 10 questions (no VAK metadata) in randomised order."
+            "description": "No body. Returns 10 questions in randomised order; question vakStyle hidden, each option includes its vakValue (V|A|K)."
           }
         },
         {

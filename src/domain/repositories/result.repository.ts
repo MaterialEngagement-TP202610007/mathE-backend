@@ -8,9 +8,7 @@ import { PaginationDto } from "../dtos/shared/pagination.dto.js";
 import { PaginatedResult } from "../interfaces/shared/paginated-result.interface.js";
 
 export abstract class ResultRepository {
-  abstract saveWithDatasetAndNotification(
-    data: SaveResultData,
-  ): Promise<ResultEntity>;
+  abstract saveWithNotification(data: SaveResultData): Promise<ResultEntity>;
 
   abstract findById(id: number): Promise<ResultEntity | null>;
 

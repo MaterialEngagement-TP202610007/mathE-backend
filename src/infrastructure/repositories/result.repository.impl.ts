@@ -11,9 +11,7 @@ import { PaginatedResult } from "../../domain/interfaces/shared/paginated-result
 import { CustomError } from "../../domain/error/custom-error.js";
 
 export class ResultRepositoryImpl implements ResultRepository {
-  async saveWithDatasetAndNotification(
-    data: SaveResultData,
-  ): Promise<ResultEntity> {
+  async saveWithNotification(data: SaveResultData): Promise<ResultEntity> {
     return prisma.$transaction(async (tx) => {
       const result = await tx.result.create({
         data: {
@@ -21,35 +19,18 @@ export class ResultRepositoryImpl implements ResultRepository {
           studentId: data.studentId,
           mlModelId: data.mlModelId ?? undefined,
           predominantStyle: data.predominantStyle,
+          secondaryStyle: data.secondaryStyle ?? undefined,
           visualProbability: data.visualProbability,
           auditoryProbability: data.auditoryProbability,
           kinestheticProbability: data.kinestheticProbability,
+          predominantConfidence: data.predominantConfidence,
+          profileType: data.profileType ?? undefined,
           isMixedProfile: data.isMixedProfile,
           classifierType: data.classifierType,
           modelVersion: data.modelVersion ?? undefined,
           aiFeedback: data.aiFeedback,
           feedbackSource: data.feedbackSource,
           resultDate: new Date(),
-        },
-      });
-
-      await tx.mLDataset.create({
-        data: {
-          questionnaireId: data.questionnaireId,
-          studentId: data.studentId,
-          visualScore: data.visualScore,
-          auditoryScore: data.auditoryScore,
-          kinestheticScore: data.kinestheticScore,
-          avgQuestionTime: data.avgQuestionTime,
-          totalTime: data.totalTime ?? undefined,
-          totalChanges: data.totalChanges,
-          totalClicks: data.totalClicks,
-          engagementLevel: data.engagementLevel,
-          responseConsistency: data.responseConsistency,
-          completionPercentage: data.completionPercentage ?? undefined,
-          vakLabel: data.vakLabel,
-          labelSource: "simple_score",
-          includedInTraining: false,
         },
       });
 

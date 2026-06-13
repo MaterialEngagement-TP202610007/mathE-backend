@@ -11,7 +11,6 @@ export class AnswerEntity {
     public navigationSequence: number | null,
     public questionTimeSeconds: number | null,
     public numberOfChanges: number | null,
-    public numberOfClicks: number | null,
     public timesReviewed: number | null,
     public deletedAt: Date | null,
   ) {}
@@ -27,7 +26,6 @@ export class AnswerEntity {
       navigationSequence,
       questionTimeSeconds,
       numberOfChanges,
-      numberOfClicks,
       timesReviewed,
       deletedAt,
     } = object;
@@ -46,7 +44,6 @@ export class AnswerEntity {
       navigationSequence ?? null,
       questionTimeSeconds ?? null,
       numberOfChanges ?? null,
-      numberOfClicks ?? null,
       timesReviewed ?? null,
       deletedAt ? new Date(deletedAt) : null,
     );

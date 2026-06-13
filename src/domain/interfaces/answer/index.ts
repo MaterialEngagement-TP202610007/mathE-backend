@@ -5,7 +5,6 @@ export interface CreateAnswerData {
   navigationSequence: number | null;
   questionTimeSeconds: number | null;
   numberOfChanges: number | null;
-  numberOfClicks: number | null;
   timesReviewed: number | null;
 }
 
@@ -17,5 +16,5 @@ export interface AnswerWithVakOption {
   vakValue: string | null;
   questionTimeSeconds: number | null;
   numberOfChanges: number | null;
-  numberOfClicks: number | null;
+  timesReviewed: number | null;
 }

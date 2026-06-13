@@ -1,5 +1,4 @@
 import { QuestionnaireRepository } from "../../repositories/questionnaire.repository.js";
-import { AnswerRepository } from "../../repositories/answer.repository.js";
 import { MLModelRepository } from "../../repositories/ml-model.repository.js";
 import { ResultRepository } from "../../repositories/result.repository.js";
 import { LambdaClassifierAdapter } from "../../adapters/lambda-classifier.adapter.js";
@@ -7,18 +6,14 @@ import { VakFeedbackAdapter } from "../../adapters/vak-feedback.adapter.js";
 import { CompleteQuestionnaireDto } from "../../dtos/questionnaire/complete-questionnaire.dto.js";
 import { CustomError } from "../../error/custom-error.js";
 import {
-  AnswerWithVakOption,
-} from "../../interfaces/answer/index.js";
-import {
   CompleteQuestionnaireResult,
   LambdaClassifierOutput,
-  VakFeatures,
 } from "../../interfaces/result/index.js";
+import { CompleteWithAnswersAndDatasetResult } from "../../interfaces/questionnaire/index.js";
 
 export class CompleteQuestionnaireUseCase {
   constructor(
     private readonly questionnaireRepository: QuestionnaireRepository,
-    private readonly answerRepository: AnswerRepository,
     private readonly mlModelRepository: MLModelRepository,
     private readonly resultRepository: ResultRepository,
     private readonly lambdaClassifierAdapter: LambdaClassifierAdapter,
@@ -30,6 +25,7 @@ export class CompleteQuestionnaireUseCase {
     studentId: number,
     dto: CompleteQuestionnaireDto,
   ): Promise<CompleteQuestionnaireResult> {
+    // Validate questionnaire
     const questionnaire = await this.questionnaireRepository.findById(id);
     if (!questionnaire)
       throw CustomError.notFound(`Questionnaire ${id} not found`);
@@ -40,51 +36,61 @@ export class CompleteQuestionnaireUseCase {
         `Questionnaire is already ${questionnaire.status}`,
       );
 
-    const answers = await this.answerRepository.findAllWithOptions(id);
-    if (answers.length !== 10)
-      throw CustomError.badRequest(
-        `Expected 10 answers, found ${answers.length}`,
-      );
-
-    await this.questionnaireRepository.complete(id, {
-      totalTimeSeconds: dto.totalTimeSeconds,
+    // Atomic transaction: save answers, compute features, create MLDataset, complete questionnaire
+    const txResult = await this.questionnaireRepository.completeWithAnswersAndDataset({
+      questionnaireId: id,
+      studentId,
       completionPercentage: dto.completionPercentage,
+      answers: dto.answers.map((a, idx) => ({
+        questionId: a.questionId,
+        selectedOptionId: a.selectedOptionId,
+        navigationSequence: idx + 1,
+        questionTimeSeconds: a.questionTimeSeconds,
+        numberOfChanges: a.numberOfChanges,
+        timesReviewed: a.timesReviewed,
+      })),
     });
 
-    const features = this.calculateFeatures(answers, dto.totalTimeSeconds);
-    const simpleStyle = this.getSimpleStyle(features);
-    const simpleProbs = {
-      visualProbability: features.visualScore / 10,
-      auditoryProbability: features.auditoryScore / 10,
-      kinestheticProbability: features.kinestheticScore / 10,
-    };
-
+    // Try Lambda classification, fall back to simple_score
     const activeModel = await this.mlModelRepository.findActive();
     let lambdaResult: LambdaClassifierOutput | null = null;
-    let classifierType = "simple_score";
 
     if (activeModel) {
       try {
-        lambdaResult = await this.lambdaClassifierAdapter.classify({ features });
-        classifierType = "xgboost";
+        lambdaResult = await this.lambdaClassifierAdapter.classify({
+          features: {
+            visualScore: txResult.visualScore,
+            auditoryScore: txResult.auditoryScore,
+            kinestheticScore: txResult.kinestheticScore,
+            responseConsistency: txResult.responseConsistency,
+            avgQuestionTime: txResult.avgQuestionTime,
+            totalChanges: txResult.totalChanges,
+            totalReviews: txResult.totalReviews,
+          },
+        });
       } catch {
-        // Lambda failed — fall back to simple_score
+        // Lambda unavailable — fall back to simple_score
       }
     }
 
-    const predominantStyle = lambdaResult?.predominantStyle ?? simpleStyle;
-    const visualProbability =
-      lambdaResult?.visualProbability ?? simpleProbs.visualProbability;
-    const auditoryProbability =
-      lambdaResult?.auditoryProbability ?? simpleProbs.auditoryProbability;
-    const kinestheticProbability =
-      lambdaResult?.kinestheticProbability ?? simpleProbs.kinestheticProbability;
-    const modelVersion = lambdaResult?.modelVersion ?? null;
-    const isMixedProfile =
-      visualProbability < 0.45 &&
-      auditoryProbability < 0.45 &&
-      kinestheticProbability < 0.45;
+    const {
+      predominantStyle,
+      secondaryStyle,
+      visualProbability,
+      auditoryProbability,
+      kinestheticProbability,
+      predominantConfidence,
+      profileType,
+      isMixedProfile,
+      classifierType,
+    } = lambdaResult
+      ? lambdaResult
+      : this.buildSimpleScoreResult(txResult);
 
+    const mlModelId = classifierType === "xgboost" ? activeModel!.id : null;
+    const modelVersion = classifierType === "xgboost" ? activeModel!.version : null;
+
+    // Generate AI feedback (Gemini), fall back to predefined on failure
     let aiFeedback: string;
     let feedbackSource: string;
     try {
@@ -100,38 +106,34 @@ export class CompleteQuestionnaireUseCase {
       feedbackSource = "predefined";
     }
 
-    const result = await this.resultRepository.saveWithDatasetAndNotification({
+    // Save Result + Notification
+    const result = await this.resultRepository.saveWithNotification({
       questionnaireId: id,
       studentId,
-      mlModelId: classifierType === "xgboost" ? activeModel!.id : null,
+      mlModelId,
       predominantStyle,
+      secondaryStyle,
       visualProbability,
       auditoryProbability,
       kinestheticProbability,
+      predominantConfidence,
+      profileType,
       isMixedProfile,
       classifierType,
       modelVersion,
       aiFeedback,
       feedbackSource,
-      visualScore: features.visualScore,
-      auditoryScore: features.auditoryScore,
-      kinestheticScore: features.kinestheticScore,
-      avgQuestionTime: features.avgQuestionTime,
-      totalTime: dto.totalTimeSeconds,
-      totalChanges: features.totalChanges,
-      totalClicks: features.totalClicks,
-      engagementLevel: features.engagementLevel,
-      responseConsistency: features.responseConsistency,
-      completionPercentage: dto.completionPercentage,
-      vakLabel: simpleStyle,
     });
 
     return {
       resultId: result.id,
       predominantStyle,
+      secondaryStyle,
       visualProbability,
       auditoryProbability,
       kinestheticProbability,
+      predominantConfidence,
+      profileType,
       isMixedProfile,
       classifierType,
       aiFeedback,
@@ -139,53 +141,37 @@ export class CompleteQuestionnaireUseCase {
     };
   }
 
-  private calculateFeatures(
-    answers: AnswerWithVakOption[],
-    totalTimeSeconds: number | null,
-  ): VakFeatures {
-    let visualScore = 0;
-    let auditoryScore = 0;
-    let kinestheticScore = 0;
-    let totalQuestionTime = 0;
-    let totalChanges = 0;
-    let totalClicks = 0;
+  private buildSimpleScoreResult(
+    tx: CompleteWithAnswersAndDatasetResult,
+  ): LambdaClassifierOutput {
+    const scores = [
+      { style: "Visual", value: tx.visualScore },
+      { style: "Auditory", value: tx.auditoryScore },
+      { style: "Kinesthetic", value: tx.kinestheticScore },
+    ].sort((a, b) => b.value - a.value);
 
-    for (const a of answers) {
-      if (a.vakValue === "V") visualScore++;
-      else if (a.vakValue === "A") auditoryScore++;
-      else if (a.vakValue === "K") kinestheticScore++;
+    const total = tx.visualScore + tx.auditoryScore + tx.kinestheticScore || 1;
+    const visualProbability = (tx.visualScore / total) * 100;
+    const auditoryProbability = (tx.auditoryScore / total) * 100;
+    const kinestheticProbability = (tx.kinestheticScore / total) * 100;
+    const predominantConfidence = scores[0].value / 10 * 100;
 
-      totalQuestionTime += a.questionTimeSeconds ?? 0;
-      totalChanges += a.numberOfChanges ?? 0;
-      totalClicks += a.numberOfClicks ?? 0;
-    }
-
-    const avgQuestionTime = totalQuestionTime / 10;
-    const engagementLevel =
-      totalTimeSeconds && totalTimeSeconds > 0
-        ? totalQuestionTime / totalTimeSeconds
-        : 0;
-    const maxScore = Math.max(visualScore, auditoryScore, kinestheticScore);
-    const responseConsistency = maxScore / 10;
+    let profileType: string;
+    if (predominantConfidence >= 70) profileType = "clear";
+    else if (predominantConfidence >= 50) profileType = "tendency";
+    else profileType = "mixed";
 
     return {
-      visualScore,
-      auditoryScore,
-      kinestheticScore,
-      avgQuestionTime,
-      totalChanges,
-      totalClicks,
-      engagementLevel,
-      responseConsistency,
+      predominantStyle: scores[0].style,
+      secondaryStyle: scores[1].style,
+      visualProbability,
+      auditoryProbability,
+      kinestheticProbability,
+      predominantConfidence,
+      profileType,
+      isMixedProfile: profileType === "mixed",
+      classifierType: "simple_score",
     };
-  }
-
-  private getSimpleStyle(features: VakFeatures): string {
-    const { visualScore, auditoryScore, kinestheticScore } = features;
-    if (visualScore >= auditoryScore && visualScore >= kinestheticScore)
-      return "Visual";
-    if (auditoryScore >= kinestheticScore) return "Auditory";
-    return "Kinesthetic";
   }
 
   private getPredefinedFeedback(style: string): string {

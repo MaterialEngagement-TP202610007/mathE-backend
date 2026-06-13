@@ -4,11 +4,14 @@ model Result {
   studentId       Int
   mlModelId       Int?
 
-  // ML output
-  predominantStyle       String?  @db.VarChar(20) // 'Visual' | 'Auditory' | 'Kinesthetic' | 'Mixed'
-  visualProbability      Float?
-  auditoryProbability    Float?
-  kinestheticProbability Float?
+  // ML output — mirrors Lambda response object exactly
+  predominantStyle       String?  @db.VarChar(20) // 'Visual' | 'Auditory' | 'Kinesthetic'
+  secondaryStyle         String?  @db.VarChar(20) // Second highest style — mixed profile feedback
+  visualProbability      Float?                   // Confidence 0-100
+  auditoryProbability    Float?                   // Confidence 0-100
+  kinestheticProbability Float?                   // Confidence 0-100
+  predominantConfidence  Float?                   // Max probability — redundant but useful for frontend
+  profileType            String?  @db.VarChar(20) // 'clear' | 'tendency' | 'mixed'
   isMixedProfile         Boolean  @default(false)
   classifierType         String?  @db.VarChar(50) // 'xgboost' | 'simple_score'
   modelVersion           String?  @db.VarChar(20)

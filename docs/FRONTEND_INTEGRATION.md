@@ -160,15 +160,15 @@ interface Questionnaire {
   deletedAt: string | null;
 }
 
-// Questions as delivered to a student taking a questionnaire — NO vak metadata
-// (no vakStyle, no vakValue) so the student isn't biased.
+// Questions as delivered to a student taking a questionnaire. The question's
+// own vakStyle is hidden, but each option exposes its vakValue (V|A|K) label.
 interface PublicQuestionView {
   order: number;
   questionId: number;
   statement: string;
   contentType: string;          // e.g. "text"
   mediaUrl: string | null;
-  options: { id: number; text: string }[];
+  options: { id: number; text: string; vakValue: "V" | "A" | "K" }[];
 }
 
 interface CreateQuestionnaireResponse {
@@ -433,7 +433,7 @@ interface School {
 ```
 Notes:
 - The `complete` call is where classification + AI feedback happen (Lambda/XGBoost with `simple_score` fallback, Gemini feedback with predefined fallback). It may take a few seconds — show a loading state.
-- The questionnaire-taking question payload **omits all VAK metadata** by design. Don't expect `vakStyle`/`vakValue` there.
+- The questionnaire-taking question payload hides the question's `vakStyle`, but each **option includes its `vakValue`** (`V`/`A`/`K`) label.
 
 ### B. Teacher authors & validates questions
 ```

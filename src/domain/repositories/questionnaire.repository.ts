@@ -1,6 +1,7 @@
 import { QuestionnaireEntity } from "../entities/questionnaire.entity.js";
 import {
-  CompleteQuestionnaireData,
+  CompleteWithAnswersAndDatasetParams,
+  CompleteWithAnswersAndDatasetResult,
   CreateQuestionnaireResult,
   QuestionnaireCreationParams,
 } from "../interfaces/questionnaire/index.js";
@@ -24,10 +25,14 @@ export abstract class QuestionnaireRepository {
     pagination: PaginationDto,
   ): Promise<PaginatedResult<QuestionnaireEntity>>;
 
-  abstract complete(
-    id: number,
-    data: CompleteQuestionnaireData,
-  ): Promise<QuestionnaireEntity>;
+  /**
+   * Atomic transaction: saves 10 answers, computes VAK features by joining
+   * with Option table, creates the MLDataset row, and marks the questionnaire
+   * as completed. Returns computed features and the simple-score vak label.
+   */
+  abstract completeWithAnswersAndDataset(
+    params: CompleteWithAnswersAndDatasetParams,
+  ): Promise<CompleteWithAnswersAndDatasetResult>;
 
   abstract abandon(id: number): Promise<QuestionnaireEntity>;
 }

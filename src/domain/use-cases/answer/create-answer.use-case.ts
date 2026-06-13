@@ -30,7 +30,6 @@ export class CreateAnswerUseCase {
       navigationSequence: dto.navigationSequence,
       questionTimeSeconds: dto.questionTimeSeconds,
       numberOfChanges: dto.numberOfChanges,
-      numberOfClicks: dto.numberOfClicks,
       timesReviewed: dto.timesReviewed,
     });
   }
