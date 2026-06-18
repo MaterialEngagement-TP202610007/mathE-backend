@@ -3,6 +3,7 @@ import {
   CorrectResultLabelData,
   ResultListFilters,
   SaveResultData,
+  StudentResultFilters,
 } from "../interfaces/result/index.js";
 import { PaginationDto } from "../dtos/shared/pagination.dto.js";
 import { PaginatedResult } from "../interfaces/shared/paginated-result.interface.js";
@@ -19,6 +20,7 @@ export abstract class ResultRepository {
   abstract findByStudent(
     studentId: number,
     pagination: PaginationDto,
+    filters?: StudentResultFilters,
   ): Promise<PaginatedResult<ResultEntity>>;
 
   abstract findAll(

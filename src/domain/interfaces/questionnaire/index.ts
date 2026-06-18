@@ -60,6 +60,7 @@ export interface FallbackQuestionTemplate {
   statement: string;
   contentType: string;
   vakStyle: string;
+  
   options: Array<{ text: string; vakValue: string }>;
 }
 

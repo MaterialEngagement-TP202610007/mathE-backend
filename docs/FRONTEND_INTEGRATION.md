@@ -363,10 +363,31 @@ Only `questionId` is required; the behavioural metrics are nullable but **feed t
 | Method | Path | Roles | Notes |
 |--------|------|-------|-------|
 | GET | `/` | Teacher, Admin | paginated; filters `studentId, gradeId, schoolId, classifierType` |
-| GET | `/my` | Student | own results (paginated) |
+| GET | `/my` | Student | own results (paginated + filtered — see below) |
 | GET | `/questionnaire/:questionnaireId` | Student(own), Teacher, Admin | result for a questionnaire |
 | GET | `/:id` | Student(own), Teacher, Admin | single result |
 | PATCH | `/:id/correct-label` | Teacher, Admin | `{ vakLabel }` — pilot ground-truth |
+
+#### `GET /api/results/my` — query params
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `page` | integer | `1` | Page number |
+| `limit` | integer | `10` | Items per page |
+| `startDate` | string (ISO 8601 date) | — | Include results created on or after this date, e.g. `2025-01-01` |
+| `endDate` | string (ISO 8601 date) | — | Include results created on or before this date, e.g. `2025-12-31` |
+| `predominantStyle` | string | — | Filter by VAK style: `Visual` \| `Auditory` \| `Kinesthetic` |
+
+Returns `Paginated<Result>`. Invalid date strings return `400 { "error": "Invalid startDate" }`.
+
+#### `GET /api/results` — query params (Teacher/Admin)
+| Param | Type | Description |
+|-------|------|-------------|
+| `page` | integer | Page number (default `1`) |
+| `limit` | integer | Items per page (default `10`) |
+| `studentId` | integer | Filter by student |
+| `gradeId` | integer | Filter by academic grade |
+| `schoolId` | integer | Filter by school |
+| `classifierType` | string | Filter by classifier, e.g. `xgboost` |
 
 `correct-label` body: `{ "vakLabel": "Visual" | "Auditory" | "Kinesthetic" }`. Sets `correctedVakLabel` on the result and marks the matching ML dataset row `labelSource=teacher_validated`.
 

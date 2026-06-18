@@ -20,6 +20,14 @@ export abstract class QuestionnaireRepository {
 
   abstract findById(id: number): Promise<QuestionnaireEntity | null>;
 
+  abstract findInProgressByStudent(
+    studentId: number,
+  ): Promise<QuestionnaireEntity | null>;
+
+  abstract findActiveWithQuestions(
+    studentId: number,
+  ): Promise<CreateQuestionnaireResult | null>;
+
   abstract findByStudent(
     studentId: number,
     pagination: PaginationDto,

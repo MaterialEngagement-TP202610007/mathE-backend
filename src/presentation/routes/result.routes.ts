@@ -68,8 +68,28 @@ export class ResultRoutes {
      *     tags: [Results]
      *     summary: List the authenticated student's results (paginated). Student only.
      *     security: [{ bearerAuth: [] }]
+     *     parameters:
+     *       - in: query
+     *         name: page
+     *         schema: { type: integer, default: 1 }
+     *       - in: query
+     *         name: limit
+     *         schema: { type: integer, default: 10 }
+     *       - in: query
+     *         name: startDate
+     *         schema: { type: string, format: date }
+     *         description: Filter results from this date (ISO 8601, e.g. 2025-01-01)
+     *       - in: query
+     *         name: endDate
+     *         schema: { type: string, format: date }
+     *         description: Filter results up to this date (ISO 8601, e.g. 2025-12-31)
+     *       - in: query
+     *         name: predominantStyle
+     *         schema: { type: string, enum: [Visual, Auditory, Kinesthetic] }
+     *         description: Filter by predominant VAK style
      *     responses:
      *       200: { description: Paginated results }
+     *       400: { description: Invalid query params }
      */
     router.get("/my", roleGuard(ROLES.STUDENT), controller.listMine);
 

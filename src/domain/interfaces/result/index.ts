@@ -1,11 +1,11 @@
 export interface VakFeatures {
-  visualScore: number;
-  auditoryScore: number;
-  kinestheticScore: number;
-  responseConsistency: number;
-  avgQuestionTime: number;
-  totalChanges: number;
-  totalReviews: number;
+  visual_score: number;
+  auditory_score: number;
+  kinesthetic_score: number;
+  response_consistency: number;
+  avg_response_time: number;
+  total_changes: number;
+  total_backtracks: number;
 }
 
 export interface LambdaClassifierInput {
@@ -62,6 +62,14 @@ export interface ResultListFilters {
   gradeId?: number;
   schoolId?: number;
   classifierType?: string;
+  startDate?: Date;
+  endDate?: Date;
+}
+
+export interface StudentResultFilters {
+  predominantStyle?: string;
+  startDate?: Date;
+  endDate?: Date;
 }
 
 export interface CorrectResultLabelData {

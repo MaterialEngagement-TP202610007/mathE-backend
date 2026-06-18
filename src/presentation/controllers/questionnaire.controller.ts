@@ -6,6 +6,7 @@ import { GetQuestionnaireUseCase } from "../../domain/use-cases/questionnaire/ge
 import { ListQuestionnairesUseCase } from "../../domain/use-cases/questionnaire/list-questionnaires.use-case.js";
 import { CompleteQuestionnaireUseCase } from "../../domain/use-cases/questionnaire/complete-questionnaire.use-case.js";
 import { AbandonQuestionnaireUseCase } from "../../domain/use-cases/questionnaire/abandon-questionnaire.use-case.js";
+import { GetActiveQuestionnaireUseCase } from "../../domain/use-cases/questionnaire/get-active-questionnaire.use-case.js";
 
 export class QuestionnaireController {
   constructor(
@@ -14,6 +15,7 @@ export class QuestionnaireController {
     private readonly listQuestionnairesUseCase: ListQuestionnairesUseCase,
     private readonly completeQuestionnaireUseCase: CompleteQuestionnaireUseCase,
     private readonly abandonQuestionnaireUseCase: AbandonQuestionnaireUseCase,
+    private readonly getActiveQuestionnaireUseCase: GetActiveQuestionnaireUseCase,
   ) {}
 
   private parsePagination(req: Request): [string?, PaginationDto?] {
@@ -76,6 +78,17 @@ export class QuestionnaireController {
         dto!,
       );
       res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  getActive = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const questionnaire = await this.getActiveQuestionnaireUseCase.execute(
+        req.user!.id,
+      );
+      res.json(questionnaire);
     } catch (err) {
       next(err);
     }

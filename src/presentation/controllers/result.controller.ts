@@ -63,10 +63,25 @@ export class ResultController {
     const [error, pagination] = this.parsePagination(req);
     if (error) return res.status(400).json({ error });
 
+    const startDate = req.query.startDate
+      ? new Date(req.query.startDate as string)
+      : undefined;
+    const endDate = req.query.endDate
+      ? new Date(req.query.endDate as string)
+      : undefined;
+
+    if (startDate && isNaN(startDate.getTime()))
+      return res.status(400).json({ error: "Invalid startDate" });
+    if (endDate && isNaN(endDate.getTime()))
+      return res.status(400).json({ error: "Invalid endDate" });
+
+    const predominantStyle = req.query.predominantStyle as string | undefined;
+
     try {
       const result = await this.getStudentResultsUseCase.execute(
         req.user!.id,
         pagination!,
+        { startDate, endDate, predominantStyle },
       );
       res.json(result);
     } catch (err) {

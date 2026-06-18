@@ -6,15 +6,51 @@
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    { "key": "baseUrl", "value": "http://localhost:3000", "type": "string" },
-    { "key": "userId", "value": "", "type": "string" },
-    { "key": "schoolId", "value": "1", "type": "string" },
-    { "key": "questionId", "value": "", "type": "string" },
-    { "key": "questionnaireId", "value": "", "type": "string" },
-    { "key": "answerId", "value": "", "type": "string" },
-    { "key": "resultId", "value": "", "type": "string" },
-    { "key": "notificationId", "value": "", "type": "string" },
-    { "key": "datasetId", "value": "", "type": "string" }
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "userId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "schoolId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "questionId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "questionnaireId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "answerId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "resultId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "notificationId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "datasetId",
+      "value": "",
+      "type": "string"
+    }
   ],
   "item": [
     {
@@ -37,8 +73,23 @@
           ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "url": { "raw": "{{baseUrl}}/api/auth/login", "host": ["{{baseUrl}}"], "path": ["api", "auth", "login"] },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
             "body": {
               "mode": "raw",
               "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"Passw0rd\"\n}"
@@ -51,7 +102,17 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{baseUrl}}/api/auth/me", "host": ["{{baseUrl}}"], "path": ["api", "auth", "me"] },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "me"
+              ]
+            },
             "description": "Validate the current session. Returns { user } if the cookie is valid and the account is active; 401 otherwise. Use on app load."
           }
         },
@@ -59,8 +120,23 @@
           "name": "Register",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "url": { "raw": "{{baseUrl}}/api/auth/register", "host": ["{{baseUrl}}"], "path": ["api", "auth", "register"] },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "register"
+              ]
+            },
             "body": {
               "mode": "raw",
               "raw": "{\n  \"email\": \"student@example.com\",\n  \"password\": \"Passw0rd\",\n  \"name\": \"Jane Doe\",\n  \"birthDate\": \"2010-05-01\",\n  \"roleId\": 3,\n  \"phoneNumber\": \"+593987654321\",\n  \"schoolId\": 1,\n  \"academicGradeId\": 2\n}"
@@ -73,7 +149,17 @@
           "request": {
             "method": "POST",
             "header": [],
-            "url": { "raw": "{{baseUrl}}/api/auth/logout", "host": ["{{baseUrl}}"], "path": ["api", "auth", "logout"] },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "logout"
+              ]
+            },
             "description": "Clears the auth_token cookie. Returns { ok: true }."
           }
         }
@@ -89,9 +175,23 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/users?page=1&limit=10",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "users"],
-              "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "10" }]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
             }
           }
         },
@@ -102,9 +202,24 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/users/students?page=1&limit=10",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "users", "students"],
-              "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "10" }]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "students"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
             }
           }
         },
@@ -115,9 +230,24 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/users/teachers?page=1&limit=10",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "users", "teachers"],
-              "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "10" }]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "teachers"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
             }
           }
         },
@@ -128,9 +258,26 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/users/students/by-school/{{schoolId}}?page=1&limit=10",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "users", "students", "by-school", "{{schoolId}}"],
-              "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "10" }]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "students",
+                "by-school",
+                "{{schoolId}}"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
             }
           }
         },
@@ -139,15 +286,40 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{baseUrl}}/api/users/{{userId}}", "host": ["{{baseUrl}}"], "path": ["api", "users", "{{userId}}"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/users/{{userId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "{{userId}}"
+              ]
+            }
           }
         },
         {
           "name": "Update profile (Admin or self)",
           "request": {
             "method": "PUT",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "url": { "raw": "{{baseUrl}}/api/users/{{userId}}", "host": ["{{baseUrl}}"], "path": ["api", "users", "{{userId}}"] },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/{{userId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "{{userId}}"
+              ]
+            },
             "body": {
               "mode": "raw",
               "raw": "{\n  \"name\": \"New Name\",\n  \"phoneNumber\": \"+593987654321\",\n  \"academicGradeId\": 2,\n  \"schoolId\": 1\n}"
@@ -160,7 +332,17 @@
           "request": {
             "method": "DELETE",
             "header": [],
-            "url": { "raw": "{{baseUrl}}/api/users/{{userId}}", "host": ["{{baseUrl}}"], "path": ["api", "users", "{{userId}}"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/users/{{userId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "{{userId}}"
+              ]
+            }
           }
         },
         {
@@ -168,7 +350,18 @@
           "request": {
             "method": "PATCH",
             "header": [],
-            "url": { "raw": "{{baseUrl}}/api/users/{{userId}}/activate", "host": ["{{baseUrl}}"], "path": ["api", "users", "{{userId}}", "activate"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/users/{{userId}}/activate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "{{userId}}",
+                "activate"
+              ]
+            }
           }
         }
       ]
@@ -194,9 +387,27 @@
           ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "url": { "raw": "{{baseUrl}}/api/questions/generate", "host": ["{{baseUrl}}"], "path": ["api", "questions", "generate"] },
-            "body": { "mode": "raw", "raw": "{\n  \"vakStyle\": \"Visual\"\n}" },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/questions/generate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "questions",
+                "generate"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"vakStyle\": \"Visual\"\n}"
+            },
             "description": "Slow (AI + embedding). vakStyle: Visual | Auditory | Kinesthetic. 502 Gemini fail, 503 could not produce unique question."
           }
         },
@@ -207,12 +418,28 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/questions/my?status=pending&page=1&limit=10",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "questions", "my"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "questions",
+                "my"
+              ],
               "query": [
-                { "key": "status", "value": "pending", "description": "pending | approved | rejected (omit for all)" },
-                { "key": "page", "value": "1" },
-                { "key": "limit", "value": "10" }
+                {
+                  "key": "status",
+                  "value": "pending",
+                  "description": "pending | approved | rejected (omit for all)"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
               ]
             }
           }
@@ -224,9 +451,25 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/questions/my/validated-history?page=1&limit=10",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "questions", "my", "validated-history"],
-              "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "10" }]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "questions",
+                "my",
+                "validated-history"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
             }
           }
         },
@@ -235,7 +478,17 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{baseUrl}}/api/questions/{{questionId}}", "host": ["{{baseUrl}}"], "path": ["api", "questions", "{{questionId}}"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/questions/{{questionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "questions",
+                "{{questionId}}"
+              ]
+            }
           }
         },
         {
@@ -243,16 +496,46 @@
           "request": {
             "method": "PATCH",
             "header": [],
-            "url": { "raw": "{{baseUrl}}/api/questions/{{questionId}}/approve", "host": ["{{baseUrl}}"], "path": ["api", "questions", "{{questionId}}", "approve"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/questions/{{questionId}}/approve",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "questions",
+                "{{questionId}}",
+                "approve"
+              ]
+            }
           }
         },
         {
           "name": "Reject question (Admin/Teacher)",
           "request": {
             "method": "PATCH",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "url": { "raw": "{{baseUrl}}/api/questions/{{questionId}}/reject", "host": ["{{baseUrl}}"], "path": ["api", "questions", "{{questionId}}", "reject"] },
-            "body": { "mode": "raw", "raw": "{\n  \"rejectionReason\": \"Statement is ambiguous.\"\n}" }
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/questions/{{questionId}}/reject",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "questions",
+                "{{questionId}}",
+                "reject"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rejectionReason\": \"Statement is ambiguous.\"\n}"
+            }
           }
         },
         {
@@ -260,7 +543,17 @@
           "request": {
             "method": "DELETE",
             "header": [],
-            "url": { "raw": "{{baseUrl}}/api/questions/{{questionId}}", "host": ["{{baseUrl}}"], "path": ["api", "questions", "{{questionId}}"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/questions/{{questionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "questions",
+                "{{questionId}}"
+              ]
+            }
           }
         }
       ]
@@ -287,8 +580,36 @@
           "request": {
             "method": "POST",
             "header": [],
-            "url": { "raw": "{{baseUrl}}/api/questionnaires", "host": ["{{baseUrl}}"], "path": ["api", "questionnaires"] },
-            "description": "No body. Returns 10 questions in randomised order; question vakStyle hidden, each option includes its vakValue (V|A|K)."
+            "url": {
+              "raw": "{{baseUrl}}/api/questionnaires",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "questionnaires"
+              ]
+            },
+            "description": "No body. Returns 10 questions sorted by order; question vakStyle hidden, each option includes its vakValue (V|A|K). Returns 409 if the student already has a questionnaire in_progress."
+          }
+        },
+        {
+          "name": "Get active questionnaire (Student)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/questionnaires/active",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "questionnaires",
+                "active"
+              ]
+            },
+            "description": "Returns the student's current in_progress questionnaire with all 10 questions and options. Use to recover state after an abrupt browser close when localStorage was cleared. 404 if no active questionnaire."
           }
         },
         {
@@ -298,9 +619,23 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/questionnaires?page=1&limit=10",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "questionnaires"],
-              "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "10" }]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "questionnaires"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
             }
           }
         },
@@ -309,7 +644,17 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{baseUrl}}/api/questionnaires/{{questionnaireId}}", "host": ["{{baseUrl}}"], "path": ["api", "questionnaires", "{{questionnaireId}}"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/questionnaires/{{questionnaireId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "questionnaires",
+                "{{questionnaireId}}"
+              ]
+            }
           }
         },
         {
@@ -330,10 +675,29 @@
           ],
           "request": {
             "method": "PATCH",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "url": { "raw": "{{baseUrl}}/api/questionnaires/{{questionnaireId}}/complete", "host": ["{{baseUrl}}"], "path": ["api", "questionnaires", "{{questionnaireId}}", "complete"] },
-            "body": { "mode": "raw", "raw": "{\n  \"totalTimeSeconds\": 184.5,\n  \"completionPercentage\": 100\n}" },
-            "description": "Slow — runs classifier + AI feedback. Returns CompleteQuestionnaireResult."
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/questionnaires/{{questionnaireId}}/complete",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "questionnaires",
+                "{{questionnaireId}}",
+                "complete"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"completionPercentage\": 100,\n  \"answers\": [\n    { \"questionId\": 88, \"selectedOptionId\": 301, \"questionTimeSeconds\": 12.4, \"numberOfChanges\": 0, \"timesReviewed\": 1 },\n    { \"questionId\": 89, \"selectedOptionId\": 305, \"questionTimeSeconds\": 8.2, \"numberOfChanges\": 1, \"timesReviewed\": 0 },\n    { \"questionId\": 90, \"selectedOptionId\": 309, \"questionTimeSeconds\": 15.0, \"numberOfChanges\": 0, \"timesReviewed\": 2 },\n    { \"questionId\": 91, \"selectedOptionId\": 313, \"questionTimeSeconds\": 10.5, \"numberOfChanges\": 0, \"timesReviewed\": 0 },\n    { \"questionId\": 92, \"selectedOptionId\": 317, \"questionTimeSeconds\": 9.3, \"numberOfChanges\": 2, \"timesReviewed\": 1 },\n    { \"questionId\": 93, \"selectedOptionId\": 321, \"questionTimeSeconds\": 11.1, \"numberOfChanges\": 0, \"timesReviewed\": 0 },\n    { \"questionId\": 94, \"selectedOptionId\": 325, \"questionTimeSeconds\": 7.8, \"numberOfChanges\": 1, \"timesReviewed\": 0 },\n    { \"questionId\": 95, \"selectedOptionId\": null,  \"questionTimeSeconds\": 20.0, \"numberOfChanges\": 0, \"timesReviewed\": 3 },\n    { \"questionId\": 96, \"selectedOptionId\": 333, \"questionTimeSeconds\": 14.2, \"numberOfChanges\": 0, \"timesReviewed\": 1 },\n    { \"questionId\": 97, \"selectedOptionId\": 337, \"questionTimeSeconds\": 6.5, \"numberOfChanges\": 0, \"timesReviewed\": 0 }\n  ]\n}"
+            },
+            "description": "Slow — runs Lambda XGBoost classifier (falls back to simple_score) + Gemini AI feedback. completionPercentage and answers (exactly 10) are required. selectedOptionId is null if the question was skipped."
           }
         },
         {
@@ -341,7 +705,18 @@
           "request": {
             "method": "PATCH",
             "header": [],
-            "url": { "raw": "{{baseUrl}}/api/questionnaires/{{questionnaireId}}/abandon", "host": ["{{baseUrl}}"], "path": ["api", "questionnaires", "{{questionnaireId}}", "abandon"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/questionnaires/{{questionnaireId}}/abandon",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "questionnaires",
+                "{{questionnaireId}}",
+                "abandon"
+              ]
+            }
           }
         },
         {
@@ -362,8 +737,24 @@
           ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "url": { "raw": "{{baseUrl}}/api/questionnaires/{{questionnaireId}}/answers", "host": ["{{baseUrl}}"], "path": ["api", "questionnaires", "{{questionnaireId}}", "answers"] },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/questionnaires/{{questionnaireId}}/answers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "questionnaires",
+                "{{questionnaireId}}",
+                "answers"
+              ]
+            },
             "body": {
               "mode": "raw",
               "raw": "{\n  \"questionId\": {{questionId}},\n  \"selectedOptionId\": 301,\n  \"navigationSequence\": 1,\n  \"questionTimeSeconds\": 12.4,\n  \"numberOfChanges\": 0,\n  \"numberOfClicks\": 3,\n  \"timesReviewed\": 1\n}"
@@ -378,9 +769,25 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/questionnaires/{{questionnaireId}}/answers?page=1&limit=10",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "questionnaires", "{{questionnaireId}}", "answers"],
-              "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "10" }]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "questionnaires",
+                "{{questionnaireId}}",
+                "answers"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
             }
           }
         },
@@ -389,7 +796,19 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{baseUrl}}/api/questionnaires/{{questionnaireId}}/answers/{{answerId}}", "host": ["{{baseUrl}}"], "path": ["api", "questionnaires", "{{questionnaireId}}", "answers", "{{answerId}}"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/questionnaires/{{questionnaireId}}/answers/{{answerId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "questionnaires",
+                "{{questionnaireId}}",
+                "answers",
+                "{{answerId}}"
+              ]
+            }
           }
         }
       ]
@@ -404,15 +823,42 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/results?page=1&limit=10",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "results"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "results"
+              ],
               "query": [
-                { "key": "page", "value": "1" },
-                { "key": "limit", "value": "10" },
-                { "key": "studentId", "value": "", "disabled": true },
-                { "key": "gradeId", "value": "", "disabled": true },
-                { "key": "schoolId", "value": "", "disabled": true },
-                { "key": "classifierType", "value": "", "disabled": true }
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "studentId",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "gradeId",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "schoolId",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "classifierType",
+                  "value": "",
+                  "disabled": true
+                }
               ]
             }
           }
@@ -423,10 +869,40 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/api/results/my?page=1&limit=10",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "results", "my"],
-              "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "10" }]
+              "raw": "{{baseUrl}}/api/results/my?page=1&limit=10&startDate=&endDate=&predominantStyle=",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "results",
+                "my"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "startDate",
+                  "value": "",
+                  "description": "ISO 8601 date, e.g. 2025-01-01 (optional)"
+                },
+                {
+                  "key": "endDate",
+                  "value": "",
+                  "description": "ISO 8601 date, e.g. 2025-12-31 (optional)"
+                },
+                {
+                  "key": "predominantStyle",
+                  "value": "",
+                  "description": "Visual | Auditory | Kinesthetic (optional)"
+                }
+              ]
             }
           }
         },
@@ -435,7 +911,18 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{baseUrl}}/api/results/questionnaire/{{questionnaireId}}", "host": ["{{baseUrl}}"], "path": ["api", "results", "questionnaire", "{{questionnaireId}}"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/results/questionnaire/{{questionnaireId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "results",
+                "questionnaire",
+                "{{questionnaireId}}"
+              ]
+            }
           }
         },
         {
@@ -443,16 +930,45 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{baseUrl}}/api/results/{{resultId}}", "host": ["{{baseUrl}}"], "path": ["api", "results", "{{resultId}}"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/results/{{resultId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "results",
+                "{{resultId}}"
+              ]
+            }
           }
         },
         {
           "name": "Correct result label (Teacher/Admin)",
           "request": {
             "method": "PATCH",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "url": { "raw": "{{baseUrl}}/api/results/{{resultId}}/correct-label", "host": ["{{baseUrl}}"], "path": ["api", "results", "{{resultId}}", "correct-label"] },
-            "body": { "mode": "raw", "raw": "{\n  \"vakLabel\": \"Auditory\"\n}" },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/results/{{resultId}}/correct-label",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "results",
+                "{{resultId}}",
+                "correct-label"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"vakLabel\": \"Auditory\"\n}"
+            },
             "description": "Pilot ground-truth. vakLabel: Visual | Auditory | Kinesthetic."
           }
         }
@@ -468,12 +984,27 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/notifications?page=1&limit=20&unread=true",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "notifications"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "notifications"
+              ],
               "query": [
-                { "key": "page", "value": "1" },
-                { "key": "limit", "value": "20" },
-                { "key": "unread", "value": "true", "description": "true = only unread" }
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "unread",
+                  "value": "true",
+                  "description": "true = only unread"
+                }
               ]
             }
           }
@@ -483,7 +1014,17 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{baseUrl}}/api/notifications/unread-count", "host": ["{{baseUrl}}"], "path": ["api", "notifications", "unread-count"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/notifications/unread-count",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "notifications",
+                "unread-count"
+              ]
+            }
           }
         },
         {
@@ -491,7 +1032,17 @@
           "request": {
             "method": "PATCH",
             "header": [],
-            "url": { "raw": "{{baseUrl}}/api/notifications/read-all", "host": ["{{baseUrl}}"], "path": ["api", "notifications", "read-all"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/notifications/read-all",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "notifications",
+                "read-all"
+              ]
+            }
           }
         },
         {
@@ -499,7 +1050,18 @@
           "request": {
             "method": "PATCH",
             "header": [],
-            "url": { "raw": "{{baseUrl}}/api/notifications/{{notificationId}}/read", "host": ["{{baseUrl}}"], "path": ["api", "notifications", "{{notificationId}}", "read"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/notifications/{{notificationId}}/read",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "notifications",
+                "{{notificationId}}",
+                "read"
+              ]
+            }
           }
         }
       ]
@@ -514,16 +1076,48 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/ml-dataset?page=1&limit=20",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "ml-dataset"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ml-dataset"
+              ],
               "query": [
-                { "key": "page", "value": "1" },
-                { "key": "limit", "value": "20" },
-                { "key": "studentId", "value": "", "disabled": true },
-                { "key": "gradeId", "value": "", "disabled": true },
-                { "key": "schoolId", "value": "", "disabled": true },
-                { "key": "labelSource", "value": "teacher_validated", "description": "simple_score | teacher_validated", "disabled": true },
-                { "key": "includedInTraining", "value": "true", "disabled": true }
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "studentId",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "gradeId",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "schoolId",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "labelSource",
+                  "value": "teacher_validated",
+                  "description": "simple_score | teacher_validated",
+                  "disabled": true
+                },
+                {
+                  "key": "includedInTraining",
+                  "value": "true",
+                  "disabled": true
+                }
               ]
             }
           }
@@ -533,7 +1127,17 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{baseUrl}}/api/ml-dataset/{{datasetId}}", "host": ["{{baseUrl}}"], "path": ["api", "ml-dataset", "{{datasetId}}"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/ml-dataset/{{datasetId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ml-dataset",
+                "{{datasetId}}"
+              ]
+            }
           }
         }
       ]
@@ -562,12 +1166,27 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/schools?page=1&limit=10&search=",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "schools"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "schools"
+              ],
               "query": [
-                { "key": "page", "value": "1" },
-                { "key": "limit", "value": "10" },
-                { "key": "search", "value": "", "description": "Partial, case-insensitive name match (searchbox)." }
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "search",
+                  "value": "",
+                  "description": "Partial, case-insensitive name match (searchbox)."
+                }
               ]
             },
             "description": "Public — no auth. Use `search` for the registration searchbox."
@@ -578,7 +1197,17 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{baseUrl}}/api/schools/{{schoolId}}", "host": ["{{baseUrl}}"], "path": ["api", "schools", "{{schoolId}}"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/schools/{{schoolId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "schools",
+                "{{schoolId}}"
+              ]
+            }
           }
         }
       ]

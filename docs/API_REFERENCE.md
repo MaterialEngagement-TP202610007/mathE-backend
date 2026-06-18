@@ -272,7 +272,6 @@ interface Questionnaire {
   startTime: string;
   createdAt: string;
   updatedAt: string;
-  totalTimeSeconds: number | null;
   completionPercentage: number | null;
   usedFallback: boolean;
   endTime: string | null;
@@ -289,15 +288,17 @@ interface PublicQuestionView {
   mediaUrl: string | null;
   options: { id: number; text: string; vakValue: "V" | "A" | "K" }[];
 }
+
+// Returned by POST /api/questionnaires and GET /api/questionnaires/active
 interface CreateQuestionnaireResponse {
   id: number;
   studentId: number;
-  status: string;                 // "in_progress"
+  status: string;                  // "in_progress"
   startTime: string;
   usedFallback: boolean;
   createdAt: string;
   updatedAt: string;
-  questions: PublicQuestionView[]; // 10 questions, randomised order
+  questions: PublicQuestionView[]; // 10 questions, sorted by order
 }
 ```
 
@@ -330,30 +331,55 @@ Response `201`: `CreateQuestionnaireResponse`.
   ]
 }
 ```
+Errors: `409` student already has a questionnaire `in_progress`.
 
 ### `GET /api/questionnaires` 🔑 S
 Query: `page`, `limit`. Own questionnaires. Response `200`: `Paginated<Questionnaire>`.
+
+### `GET /api/questionnaires/active` 🔑 S
+Returns the student's current `in_progress` questionnaire with all 10 questions and options. Use this to **recover state** after an abrupt browser close when localStorage was cleared.
+Response `200`: `CreateQuestionnaireResponse` (same shape as `POST /api/questionnaires`).
+Errors: `404` no active questionnaire.
+
+```ts
+// No request body or query params.
+// Response shape is identical to CreateQuestionnaireResponse above.
+```
 
 ### `GET /api/questionnaires/:id` 🔑 S,T,A
 Path: `id` int. Response `200`: `Questionnaire`. Errors: `404` not found.
 
 ### `PATCH /api/questionnaires/:id/complete` 🔑 S
-Path: `id` int. Triggers classification (Lambda/XGBoost → `simple_score` fallback) + AI feedback. **Slow** — show loader.
-Request (both optional):
+Path: `id` int. Triggers classification (Lambda XGBoost → `simple_score` fallback) + Gemini AI feedback. **Slow** — show a loader.
+Request (`completionPercentage` and `answers` both **required**; behavioural metric fields default to `0` if omitted):
 ```json
-{ "totalTimeSeconds": 184.5, "completionPercentage": 100 }
+{
+  "completionPercentage": 100,
+  "answers": [
+    {
+      "questionId": 88,
+      "selectedOptionId": 301,
+      "questionTimeSeconds": 12.4,
+      "numberOfChanges": 0,
+      "timesReviewed": 1
+    }
+  ]
+}
 ```
 Response `200`: `CompleteQuestionnaireResult`:
 ```json
 {
   "resultId": 9,
-  "predominantStyle": "Visual",
-  "visualProbability": 0.6,
-  "auditoryProbability": 0.2,
-  "kinestheticProbability": 0.2,
+  "predominantStyle": "Auditory",
+  "secondaryStyle": "Visual",
+  "visualProbability": 0.16,
+  "auditoryProbability": 99.78,
+  "kinestheticProbability": 0.07,
+  "predominantConfidence": 99.78,
+  "profileType": "clear",
   "isMixedProfile": false,
-  "classifierType": "lambda_xgboost",
-  "aiFeedback": "Tu estilo de aprendizaje predominante es Visual...",
+  "classifierType": "xgboost",
+  "aiFeedback": "Tu estilo de aprendizaje predominante es Auditivo...",
   "feedbackSource": "gemini"
 }
 ```
@@ -361,19 +387,29 @@ Errors: `400` invalid body / not `in_progress` · `404` not found.
 
 ```ts
 interface CompleteQuestionnaireRequest {
-  totalTimeSeconds?: number;          // ≥ 0
-  completionPercentage?: number;      // 0..100
+  completionPercentage: number;    // required, 0..100
+  answers: AnswerInput[];          // required, exactly 10 items
+}
+interface AnswerInput {
+  questionId: number;              // required
+  selectedOptionId: number | null; // null if question was skipped
+  questionTimeSeconds?: number;    // defaults to 0
+  numberOfChanges?: number;        // defaults to 0
+  timesReviewed?: number;          // defaults to 0
 }
 interface CompleteQuestionnaireResult {
   resultId: number;
-  predominantStyle: string;
-  visualProbability: number;          // 0..1
-  auditoryProbability: number;
-  kinestheticProbability: number;
+  predominantStyle: string;        // "Visual" | "Auditory" | "Kinesthetic"
+  secondaryStyle: string | null;
+  visualProbability: number;       // 0..100
+  auditoryProbability: number;     // 0..100
+  kinestheticProbability: number;  // 0..100
+  predominantConfidence: number;   // 0..100
+  profileType: string | null;      // "clear" | "tendency" | "mixed"
   isMixedProfile: boolean;
-  classifierType: string;             // "lambda_xgboost" | "simple_score"
-  aiFeedback: string;                 // Spanish narrative
-  feedbackSource: string;             // "gemini" | "predefined"
+  classifierType: string;          // "xgboost" | "simple_score"
+  aiFeedback: string;              // Spanish narrative
+  feedbackSource: string;          // "gemini" | "predefined"
 }
 ```
 
@@ -448,11 +484,14 @@ interface Result {
   studentId: number;
   mlModelId: number | null;
   predominantStyle: "Visual" | "Auditory" | "Kinesthetic" | null;
-  visualProbability: number | null;        // 0..1
-  auditoryProbability: number | null;
-  kinestheticProbability: number | null;
+  secondaryStyle: string | null;
+  visualProbability: number | null;        // 0..100
+  auditoryProbability: number | null;      // 0..100
+  kinestheticProbability: number | null;   // 0..100
+  predominantConfidence: number | null;    // 0..100
+  profileType: string | null;             // "clear" | "tendency" | "mixed"
   isMixedProfile: boolean;
-  classifierType: string | null;           // "lambda_xgboost" | "simple_score"
+  classifierType: string | null;           // "xgboost" | "simple_score"
   modelVersion: string | null;
   aiFeedback: string | null;
   feedbackSource: string | null;
@@ -465,7 +504,17 @@ interface Result {
 Query: `page`, `limit`, `studentId?`, `gradeId?`, `schoolId?`, `classifierType?`. Response `200`: `Paginated<Result>`.
 
 ### `GET /api/results/my` 🔑 S
-Query: `page`, `limit`. Own results. Response `200`: `Paginated<Result>`.
+Own results, paginated and filterable.
+
+| Query param | Type | Default | Description |
+|-------------|------|---------|-------------|
+| `page` | integer | `1` | Page number |
+| `limit` | integer | `10` | Items per page |
+| `startDate` | string (ISO 8601 date) | — | Results created on or after this date, e.g. `2025-01-01` |
+| `endDate` | string (ISO 8601 date) | — | Results created on or before this date, e.g. `2025-12-31` |
+| `predominantStyle` | string | — | `Visual` \| `Auditory` \| `Kinesthetic` |
+
+Response `200`: `Paginated<Result>`. Errors: `400` invalid date string.
 
 ### `GET /api/results/questionnaire/:questionnaireId` 🔑 S(own),T,A
 Path: `questionnaireId` int. Response `200`: `Result`. Errors: `403` not yours (student) · `404` no result.
@@ -598,6 +647,7 @@ Path: `id` int. Response `200`: `School`. Errors: `400` invalid id · `404` not 
 | 401 | Not authenticated (missing/invalid cookie) |
 | 403 | Authenticated but forbidden (wrong role / not your resource) |
 | 404 | Not found |
+| 409 | Conflict (e.g. questionnaire already in progress) |
 | 500 | Internal error |
 | 502 | Gemini AI failure (question generation) |
 | 503 | Could not generate a unique question after max attempts |

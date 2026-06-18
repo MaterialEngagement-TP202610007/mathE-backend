@@ -9,6 +9,7 @@ import { GetQuestionnaireUseCase } from "../../domain/use-cases/questionnaire/ge
 import { ListQuestionnairesUseCase } from "../../domain/use-cases/questionnaire/list-questionnaires.use-case.js";
 import { CompleteQuestionnaireUseCase } from "../../domain/use-cases/questionnaire/complete-questionnaire.use-case.js";
 import { AbandonQuestionnaireUseCase } from "../../domain/use-cases/questionnaire/abandon-questionnaire.use-case.js";
+import { GetActiveQuestionnaireUseCase } from "../../domain/use-cases/questionnaire/get-active-questionnaire.use-case.js";
 import { CreateAnswerUseCase } from "../../domain/use-cases/answer/create-answer.use-case.js";
 import { ListAnswersUseCase } from "../../domain/use-cases/answer/list-answers.use-case.js";
 import { GetAnswerUseCase } from "../../domain/use-cases/answer/get-answer.use-case.js";
@@ -50,6 +51,7 @@ export class QuestionnaireRoutes {
         feedbackAdapter,
       ),
       new AbandonQuestionnaireUseCase(questionnaireRepository),
+      new GetActiveQuestionnaireUseCase(questionnaireRepository),
     );
 
     const answerController = new AnswerController(
@@ -131,6 +133,60 @@ export class QuestionnaireRoutes {
      *       400: { description: Invalid pagination params }
      */
     router.get("/", roleGuard(ROLES.STUDENT), questionnaireController.listMine);
+
+    /**
+     * @openapi
+     * /api/questionnaires/active:
+     *   get:
+     *     tags: [Questionnaires]
+     *     summary: Get the student's current in-progress questionnaire with all questions. Student only.
+     *     description: >
+     *       Returns the active (status=in_progress) questionnaire for the authenticated student,
+     *       including all 10 questions and options. Intended for recovery after an abrupt browser
+     *       close when local storage has been lost.
+     *     security: [{ bearerAuth: [] }]
+     *     responses:
+     *       200:
+     *         description: Active questionnaire with questions
+     *         content:
+     *           application/json:
+     *             schema:
+     *               type: object
+     *               properties:
+     *                 id: { type: integer }
+     *                 studentId: { type: integer }
+     *                 status: { type: string, example: in_progress }
+     *                 startTime: { type: string, format: date-time }
+     *                 usedFallback: { type: boolean }
+     *                 createdAt: { type: string, format: date-time }
+     *                 updatedAt: { type: string, format: date-time }
+     *                 questions:
+     *                   type: array
+     *                   items:
+     *                     type: object
+     *                     properties:
+     *                       order: { type: integer }
+     *                       questionId: { type: integer }
+     *                       statement: { type: string }
+     *                       contentType: { type: string }
+     *                       mediaUrl: { type: string, nullable: true }
+     *                       options:
+     *                         type: array
+     *                         items:
+     *                           type: object
+     *                           properties:
+     *                             id: { type: integer }
+     *                             text: { type: string }
+     *                             vakValue: { type: string, enum: [V, A, K] }
+     *       401: { description: Not authenticated }
+     *       403: { description: Student role required }
+     *       404: { description: No active questionnaire found }
+     */
+    router.get(
+      "/active",
+      roleGuard(ROLES.STUDENT),
+      questionnaireController.getActive,
+    );
 
     /**
      * @openapi

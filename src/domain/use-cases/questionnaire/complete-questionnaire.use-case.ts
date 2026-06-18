@@ -55,23 +55,23 @@ export class CompleteQuestionnaireUseCase {
     const activeModel = await this.mlModelRepository.findActive();
     let lambdaResult: LambdaClassifierOutput | null = null;
 
-    if (activeModel) {
-      try {
-        lambdaResult = await this.lambdaClassifierAdapter.classify({
-          features: {
-            visualScore: txResult.visualScore,
-            auditoryScore: txResult.auditoryScore,
-            kinestheticScore: txResult.kinestheticScore,
-            responseConsistency: txResult.responseConsistency,
-            avgQuestionTime: txResult.avgQuestionTime,
-            totalChanges: txResult.totalChanges,
-            totalReviews: txResult.totalReviews,
-          },
-        });
-      } catch {
-        // Lambda unavailable — fall back to simple_score
-      }
+    try {
+      lambdaResult = await this.lambdaClassifierAdapter.classify({
+        features: {
+          visual_score: txResult.visualScore,
+          auditory_score: txResult.auditoryScore,
+          kinesthetic_score: txResult.kinestheticScore,
+          response_consistency: txResult.responseConsistency,
+          avg_response_time: txResult.avgQuestionTime,
+          total_changes: txResult.totalChanges,
+          total_backtracks: txResult.totalReviews,
+        },
+      });
+    } catch {
+      console.error("Error classifying with Lambda: ");
     }
+
+    console.log(lambdaResult);
 
     const {
       predominantStyle,
@@ -87,8 +87,8 @@ export class CompleteQuestionnaireUseCase {
       ? lambdaResult
       : this.buildSimpleScoreResult(txResult);
 
-    const mlModelId = classifierType === "xgboost" ? activeModel!.id : null;
-    const modelVersion = classifierType === "xgboost" ? activeModel!.version : null;
+    const mlModelId = classifierType === "xgboost" && activeModel ? activeModel.id : null;
+    const modelVersion = classifierType === "xgboost" && activeModel ? activeModel.version : null;
 
     // Generate AI feedback (Gemini), fall back to predefined on failure
     let aiFeedback: string;

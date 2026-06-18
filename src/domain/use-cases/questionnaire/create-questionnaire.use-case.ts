@@ -7,6 +7,7 @@ import {
   QuestionnaireCreationParams,
 } from "../../interfaces/questionnaire/index.js";
 import { VAK_STYLES, VakStyle } from "../../constants/vak.constant.js";
+import { CustomError } from "../../error/custom-error.js";
 
 const STYLE_DISTRIBUTION: Record<VakStyle, number> = {
   Visual: 4,
@@ -28,6 +29,13 @@ export class CreateQuestionnaireUseCase {
   ) {}
 
   async execute(studentId: number): Promise<CreateQuestionnaireResult> {
+    const existing =
+      await this.questionnaireRepository.findInProgressByStudent(studentId);
+    if (existing)
+      throw CustomError.conflict(
+        "You already have an active questionnaire in progress",
+      );
+
     const slots: QuestionSlot[] = [];
     let usedFallback = false;
 

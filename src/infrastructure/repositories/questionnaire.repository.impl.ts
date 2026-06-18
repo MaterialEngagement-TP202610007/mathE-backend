@@ -125,6 +125,58 @@ export class QuestionnaireRepositoryImpl implements QuestionnaireRepository {
     return questionnaire ? QuestionnaireEntity.fromObject(questionnaire) : null;
   }
 
+  async findInProgressByStudent(
+    studentId: number,
+  ): Promise<QuestionnaireEntity | null> {
+    const questionnaire = await prisma.questionnaire.findFirst({
+      where: { studentId, status: "in_progress", deletedAt: null },
+    });
+
+    return questionnaire ? QuestionnaireEntity.fromObject(questionnaire) : null;
+  }
+
+  async findActiveWithQuestions(
+    studentId: number,
+  ): Promise<CreateQuestionnaireResult | null> {
+    const questionnaire = await prisma.questionnaire.findFirst({
+      where: { studentId, status: "in_progress", deletedAt: null },
+      include: {
+        questions: {
+          orderBy: { order: "asc" },
+          include: {
+            question: {
+              include: { options: { where: { deletedAt: null } } },
+            },
+          },
+        },
+      },
+    });
+
+    if (!questionnaire) return null;
+
+    return {
+      id: questionnaire.id,
+      studentId: questionnaire.studentId,
+      status: questionnaire.status,
+      startTime: questionnaire.startTime,
+      usedFallback: questionnaire.usedFallback,
+      createdAt: questionnaire.createdAt,
+      updatedAt: questionnaire.updatedAt,
+      questions: questionnaire.questions.map((qq) => ({
+        order: qq.order,
+        questionId: qq.question.id,
+        statement: qq.question.statement,
+        contentType: qq.question.contentType,
+        mediaUrl: qq.question.mediaUrl,
+        options: qq.question.options.map((o) => ({
+          id: o.id,
+          text: o.text,
+          vakValue: o.vakValue,
+        })),
+      })),
+    };
+  }
+
   async findByStudent(
     studentId: number,
     pagination: PaginationDto,

@@ -5,6 +5,7 @@ import {
   CorrectResultLabelData,
   ResultListFilters,
   SaveResultData,
+  StudentResultFilters,
 } from "../../domain/interfaces/result/index.js";
 import { PaginationDto } from "../../domain/dtos/shared/pagination.dto.js";
 import { PaginatedResult } from "../../domain/interfaces/shared/paginated-result.interface.js";
@@ -67,8 +68,21 @@ export class ResultRepositoryImpl implements ResultRepository {
   async findByStudent(
     studentId: number,
     pagination: PaginationDto,
+    filters: StudentResultFilters = {},
   ): Promise<PaginatedResult<ResultEntity>> {
-    const where = { studentId, deletedAt: null };
+    const where = {
+      studentId,
+      deletedAt: null,
+      ...(filters.predominantStyle !== undefined && {
+        predominantStyle: filters.predominantStyle,
+      }),
+      ...((filters.startDate !== undefined || filters.endDate !== undefined) && {
+        createdAt: {
+          ...(filters.startDate !== undefined && { gte: filters.startDate }),
+          ...(filters.endDate !== undefined && { lte: filters.endDate }),
+        },
+      }),
+    };
 
     const { page, limit } = pagination;
     const [rows, total] = await Promise.all([
