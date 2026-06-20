@@ -1,5 +1,6 @@
 import { CustomError } from "../../error/custom-error.js";
 import { ROLES } from "../../constants/roles.constant.js";
+import { ListUsersDto } from "../../dtos/user/list-users.dto.js";
 import { PaginationDto } from "../../dtos/shared/pagination.dto.js";
 import { PaginatedResult } from "../../interfaces/shared/paginated-result.interface.js";
 import { UserRepository } from "../../repositories/user.repository.js";
@@ -11,12 +12,14 @@ export class GetStudentsBySchoolUseCase {
   execute(
     schoolId: number,
     pagination: PaginationDto,
+    extraFilters?: ListUsersDto,
   ): Promise<PaginatedResult<UserEntity>> {
     if (!Number.isInteger(schoolId) || schoolId <= 0) {
       throw CustomError.badRequest("Invalid School Id");
     }
 
     return this.userRepository.findAll(pagination, {
+      ...extraFilters,
       roleId: ROLES.STUDENT,
       schoolId,
     });

@@ -4,6 +4,7 @@ import { authMiddleware } from "../middlewares/auth.middleware.js";
 import { roleGuard } from "../middlewares/role.middleware.js";
 import { ROLES } from "../../domain/constants/roles.constant.js";
 import { GenerateQuestionUseCase } from "../../domain/use-cases/question/generate-question.use-case.js";
+import { BulkGenerateQuestionsUseCase } from "../../domain/use-cases/question/bulk-generate-questions.use-case.js";
 import { ListQuestionsUseCase } from "../../domain/use-cases/question/list-questions.use-case.js";
 import { ValidatedHistoryUseCase } from "../../domain/use-cases/question/validated-history.use-case.js";
 import { GetQuestionUseCase } from "../../domain/use-cases/question/get-question.use-case.js";
@@ -11,6 +12,7 @@ import { ApproveQuestionUseCase } from "../../domain/use-cases/question/approve-
 import { RejectQuestionUseCase } from "../../domain/use-cases/question/reject-question.use-case.js";
 import { DeleteQuestionUseCase } from "../../domain/use-cases/question/delete-question.use-case.js";
 import { QuestionRepositoryImpl } from "../../infrastructure/repositories/question.repository.impl.js";
+import { NotificationRepositoryImpl } from "../../infrastructure/repositories/notification.repository.impl.js";
 import { GeminiQuestionGeneratorAdapter } from "../../infrastructure/adapters/gemini-question-generator.adapter.impl.js";
 import { GeminiEmbeddingAdapter } from "../../infrastructure/adapters/gemini-embedding.adapter.impl.js";
 import { envs } from "../../config/envs.js";
@@ -20,18 +22,22 @@ export class QuestionRoutes {
     const router = Router();
 
     const questionRepository = new QuestionRepositoryImpl();
+    const notificationRepository = new NotificationRepositoryImpl();
     const aiGenerator = new GeminiQuestionGeneratorAdapter();
     const embeddingAdapter = new GeminiEmbeddingAdapter();
 
     const controller = new QuestionController(
-      new GenerateQuestionUseCase(
-        questionRepository,
-        aiGenerator,
-        embeddingAdapter,
-        {
-          similarityThreshold: envs.QUESTION_SIMILARITY_THRESHOLD,
-          maxAttempts: envs.QUESTION_MAX_GENERATION_ATTEMPTS,
-        },
+      new BulkGenerateQuestionsUseCase(
+        new GenerateQuestionUseCase(
+          questionRepository,
+          aiGenerator,
+          embeddingAdapter,
+          {
+            similarityThreshold: envs.QUESTION_SIMILARITY_THRESHOLD,
+            maxAttempts: envs.QUESTION_MAX_GENERATION_ATTEMPTS,
+          },
+        ),
+        notificationRepository,
       ),
       new ListQuestionsUseCase(questionRepository),
       new ValidatedHistoryUseCase(questionRepository),
@@ -48,13 +54,24 @@ export class QuestionRoutes {
      * /api/questions/generate:
      *   post:
      *     tags: [Questions]
-     *     summary: Generate a VAK question via Gemini. Admin or Teacher.
+     *     summary: Generate N VAK questions in parallel via Gemini. Admin or Teacher.
      *     description: >
-     *       Runs the full generation pipeline: Gemini produces a statement + 4 options,
-     *       the statement is embedded and checked for redundancy against existing same-style
-     *       questions, then Question + Options + Embedding are persisted atomically.
-     *       The question starts with validationStatus=pending.
+     *       Runs the full generation pipeline N times in parallel (Promise.all):
+     *       Gemini produces a statement + 4 options per question, each is embedded
+     *       and checked for redundancy against existing same-style questions, then
+     *       persisted atomically. All questions start with validationStatus=pending.
+     *       After all are created, a notification is sent with type "questions_generated".
+     *       Slow — allow ~10–30s × count.
      *     security: [{ bearerAuth: [] }]
+     *     parameters:
+     *       - in: query
+     *         name: count
+     *         schema:
+     *           type: integer
+     *           minimum: 1
+     *           maximum: 10
+     *           default: 1
+     *         description: Number of questions to generate in parallel (1–10).
      *     requestBody:
      *       required: true
      *       content:
@@ -73,9 +90,9 @@ export class QuestionRoutes {
      *                 description: Defaults to the authenticated user's id.
      *     responses:
      *       201:
-     *         description: Question created (validationStatus=pending)
+     *         description: Array of generated questions (validationStatus=pending)
      *       400:
-     *         description: Validation error (missing or invalid vakStyle)
+     *         description: Validation error (missing/invalid vakStyle or count out of range)
      *       502:
      *         description: Gemini returned an invalid or failed response
      *       503:
@@ -92,7 +109,7 @@ export class QuestionRoutes {
      * /api/questions/my:
      *   get:
      *     tags: [Questions]
-     *     summary: List teacher's own questions (paginated). Admin or Teacher.
+     *     summary: List teacher's own questions (paginated, filterable). Admin or Teacher.
      *     security: [{ bearerAuth: [] }]
      *     parameters:
      *       - in: query
@@ -101,6 +118,24 @@ export class QuestionRoutes {
      *           type: string
      *           enum: [pending, approved, rejected]
      *         description: Filter by validation status. Omit to return all.
+     *       - in: query
+     *         name: vakStyle
+     *         schema:
+     *           type: string
+     *           enum: [Visual, Auditory, Kinesthetic]
+     *         description: Filter by VAK learning style.
+     *       - in: query
+     *         name: fromDate
+     *         schema:
+     *           type: string
+     *           format: date
+     *         description: "Filter questions generated on or after this date (ISO 8601, e.g. 2026-01-01)."
+     *       - in: query
+     *         name: toDate
+     *         schema:
+     *           type: string
+     *           format: date
+     *         description: "Filter questions generated on or before this date (ISO 8601, e.g. 2026-12-31)."
      *       - in: query
      *         name: page
      *         schema: { type: integer, default: 1 }
@@ -111,7 +146,7 @@ export class QuestionRoutes {
      *       200:
      *         description: Paginated list of questions
      *       400:
-     *         description: Validation error (invalid status or pagination params)
+     *         description: Validation error (invalid status, vakStyle, date, or pagination params)
      */
     router.get(
       "/my",
@@ -124,9 +159,27 @@ export class QuestionRoutes {
      * /api/questions/my/validated-history:
      *   get:
      *     tags: [Questions]
-     *     summary: Teacher's validated question history (approved + rejected). Admin or Teacher.
+     *     summary: Teacher's validated question history (approved + rejected, filterable). Admin or Teacher.
      *     security: [{ bearerAuth: [] }]
      *     parameters:
+     *       - in: query
+     *         name: vakStyle
+     *         schema:
+     *           type: string
+     *           enum: [Visual, Auditory, Kinesthetic]
+     *         description: Filter by VAK learning style.
+     *       - in: query
+     *         name: fromDate
+     *         schema:
+     *           type: string
+     *           format: date
+     *         description: "Filter questions generated on or after this date (ISO 8601, e.g. 2026-01-01)."
+     *       - in: query
+     *         name: toDate
+     *         schema:
+     *           type: string
+     *           format: date
+     *         description: "Filter questions generated on or before this date (ISO 8601, e.g. 2026-12-31)."
      *       - in: query
      *         name: page
      *         schema: { type: integer, default: 1 }
@@ -137,7 +190,7 @@ export class QuestionRoutes {
      *       200:
      *         description: Paginated list of approved and rejected questions
      *       400:
-     *         description: Validation error (invalid pagination params)
+     *         description: Validation error (invalid vakStyle, date, or pagination params)
      */
     router.get(
       "/my/validated-history",

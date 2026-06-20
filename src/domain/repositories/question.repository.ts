@@ -15,6 +15,12 @@ export interface ApprovedQuestionSlim {
   options: Array<{ id: number; text: string }>;
 }
 
+export interface QuestionFilters {
+  vakStyle?: string;
+  fromDate?: Date;
+  toDate?: Date;
+}
+
 export abstract class QuestionRepository {
   abstract findEmbeddingsByVakStyle(
     vakStyle: string,
@@ -37,11 +43,13 @@ export abstract class QuestionRepository {
     teacherId: number,
     pagination: PaginationDto,
     validationStatus?: string,
+    filters?: QuestionFilters,
   ): Promise<PaginatedResult<QuestionEntity>>;
 
   abstract findValidatedHistory(
     teacherId: number,
     pagination: PaginationDto,
+    filters?: QuestionFilters,
   ): Promise<PaginatedResult<QuestionEntity>>;
 
   abstract findById(id: number): Promise<QuestionEntity | null>;

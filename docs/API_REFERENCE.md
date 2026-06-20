@@ -135,17 +135,56 @@ interface RegisterRequest {
 // PublicUser is the response shape for every user endpoint below.
 ```
 
+### Shared filter query params (all listing endpoints)
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `page` | integer | Page number (default `1`) |
+| `limit` | integer | Items per page (default `10`) |
+| `isActive` | `"true"` \| `"false"` | Filter by active status |
+| `academicGradeId` | integer | ID from `AcademicGrade` table — 1–6 = Primaria, 7–11 = Secundaria |
+| `birthDateFrom` | `YYYY-MM-DD` | Birthdate ≥ this date |
+| `birthDateTo` | `YYYY-MM-DD` | Birthdate ≤ this date |
+| `createdAtFrom` | ISO 8601 | Account created ≥ this datetime |
+| `createdAtTo` | ISO 8601 | Account created ≤ this datetime |
+
+> `birthDateFrom` must be ≤ `birthDateTo`; same rule applies to `createdAt` range. All range bounds are optional — you may send only one side.
+
+```ts
+interface UserListFilters {
+  page?: number;
+  limit?: number;
+  isActive?: boolean;           // sent as string "true"|"false" in query
+  academicGradeId?: number;
+  birthDateFrom?: string;       // YYYY-MM-DD
+  birthDateTo?: string;         // YYYY-MM-DD
+  createdAtFrom?: string;       // ISO 8601
+  createdAtTo?: string;         // ISO 8601
+}
+```
+
+Errors: `400` if a date string is unparseable, `isActive` is not `"true"`/`"false"`, or a range is inverted.
+
+---
+
 ### `GET /api/users` 🔑 A
-Query: `page`, `limit`. Response `200`: `Paginated<PublicUser>`.
+All users across all roles. Accepts all shared filter params above.
+Response `200`: `Paginated<PublicUser>`.
 
 ### `GET /api/users/students` 🔑 A,T
-Query: `page`, `limit`. Response `200`: `Paginated<PublicUser>`.
+All students. Accepts all shared filter params above.
+Response `200`: `Paginated<PublicUser>`.
 
 ### `GET /api/users/teachers` 🔑 A
-Query: `page`, `limit`. Response `200`: `Paginated<PublicUser>`.
+All teachers. Accepts all shared filter params above.
+Response `200`: `Paginated<PublicUser>`.
 
 ### `GET /api/users/students/by-school/:schoolId` 🔑 A,T
-Path: `schoolId` int. Query: `page`, `limit`. Response `200`: `Paginated<PublicUser>`.
+Path: `schoolId` int. Students filtered to that school. Accepts all shared filter params above.
+Response `200`: `Paginated<PublicUser>`.
+Errors: `400` invalid `schoolId`.
+
+---
 
 ### `GET /api/users/:id` 🔑 A or self
 Path: `id` int. Response `200`: `PublicUser`. Errors: `403` not self/admin · `404` not found.
@@ -173,18 +212,23 @@ interface UpdateUserRequest {
 }
 ```
 
-### `DELETE /api/users/:id` 🔑 A
-Path: `id` int. Soft-delete. Response `200`:
+### `DELETE /api/users/:id` 🔑 A,T
+Path: `id` int. Soft-delete (sets `deletedAt`, `isActive=false`).
+**Teachers may only deactivate students** — targeting a non-student returns `403`.
+Response `200`:
 ```json
 { "message": "User deleted", "user": { /* PublicUser */ } }
 ```
+Errors: `400` already deleted · `403` teacher targeting non-student · `404` not found.
 
-### `PATCH /api/users/:id/activate` 🔑 A
-Path: `id` int. Activates (sets `isActive=true`); also creates a notification for the user. Response `200`:
+### `PATCH /api/users/:id/activate` 🔑 A,T
+Path: `id` int. Sets `isActive=true`; also creates an `account_activated` notification for the user.
+**Teachers may only activate students** — targeting a non-student returns `403`.
+Response `200`:
 ```json
 { "message": "User activated", "user": { /* PublicUser */ } }
 ```
-Errors: `400` already active or deleted.
+Errors: `400` already active or deleted · `403` teacher targeting non-student · `404` not found.
 
 ---
 
@@ -219,26 +263,84 @@ interface Question {
 ```
 
 ### `POST /api/questions/generate` 🔑 A,T
-AI generates statement + 4 options, dedupes against existing, persists as `pending`. **Slow** (AI + embedding; allow ~10–30s).
-Request (`teacherId` optional, defaults to authenticated user):
+AI generates N questions in parallel (one Gemini call per question), dedupes each against existing embeddings, persists all as `pending`. **Slow** (AI + embedding per question; allow ~10–30s × count).
+
+Query param: `count` (integer, 1–10, default `1`) — number of questions to generate in parallel.
+
+Request body (`teacherId` optional, defaults to authenticated user):
 ```json
 { "vakStyle": "Visual", "teacherId": 2 }
 ```
-Response `201`: `Question` (`validationStatus: "pending"`).
-Errors: `400` missing/invalid vakStyle · `502` Gemini failed · `503` could not produce a unique question.
+Response `201`: `Question[]` — array of generated questions (`validationStatus: "pending"`).
+
+After all questions are created, a notification is sent to the requester with type `"questions_generated"`.
+
+Errors: `400` missing/invalid vakStyle or invalid `count` · `502` Gemini failed · `503` could not produce a unique question after max attempts (may be partial — `Promise.all` fails fast on first error).
 
 ```ts
+// Query
+interface GenerateQuestionsQuery {
+  count?: number;   // 1–10, default 1
+}
+
+// Body
 interface GenerateQuestionRequest {
   vakStyle: "Visual" | "Auditory" | "Kinesthetic";
   teacherId?: number | null;
 }
+
+// Response: Question[]
 ```
 
 ### `GET /api/questions/my` 🔑 A,T
-Query: `status?` (`pending|approved|rejected`, omit for all), `page`, `limit`. Response `200`: `Paginated<Question>`.
+Returns the authenticated teacher's own questions (paginated + filterable).
+
+| Query param | Type | Default | Description |
+|-------------|------|---------|-------------|
+| `page` | integer | `1` | Page number |
+| `limit` | integer | `10` | Items per page |
+| `status` | string | — | `pending` \| `approved` \| `rejected` — filter by validation status |
+| `vakStyle` | string | — | `Visual` \| `Auditory` \| `Kinesthetic` — filter by VAK style |
+| `fromDate` | string (ISO 8601 date) | — | Questions generated on or after this date, e.g. `2026-01-01` |
+| `toDate` | string (ISO 8601 date) | — | Questions generated on or before this date, e.g. `2026-12-31` |
+
+Response `200`: `Paginated<Question>`. Ordered by `generationDate` desc.
+Errors: `400` invalid `status`, `vakStyle`, or date string.
+
+```ts
+interface ListMyQuestionsQuery {
+  page?: number;
+  limit?: number;
+  status?: "pending" | "approved" | "rejected";
+  vakStyle?: "Visual" | "Auditory" | "Kinesthetic";
+  fromDate?: string;   // ISO 8601 date
+  toDate?: string;     // ISO 8601 date
+}
+```
 
 ### `GET /api/questions/my/validated-history` 🔑 A,T
-Query: `page`, `limit`. Approved + rejected only. Response `200`: `Paginated<Question>`.
+Approved + rejected questions only (paginated + filterable).
+
+| Query param | Type | Default | Description |
+|-------------|------|---------|-------------|
+| `page` | integer | `1` | Page number |
+| `limit` | integer | `10` | Items per page |
+| `vakStyle` | string | — | `Visual` \| `Auditory` \| `Kinesthetic` — filter by VAK style |
+| `fromDate` | string (ISO 8601 date) | — | Questions generated on or after this date, e.g. `2026-01-01` |
+| `toDate` | string (ISO 8601 date) | — | Questions generated on or before this date, e.g. `2026-12-31` |
+
+Response `200`: `Paginated<Question>`. Ordered by `generationDate` desc.
+Errors: `400` invalid `vakStyle` or date string.
+
+```ts
+interface ValidatedHistoryQuery {
+  page?: number;
+  limit?: number;
+  vakStyle?: "Visual" | "Auditory" | "Kinesthetic";
+  fromDate?: string;   // ISO 8601 date
+  toDate?: string;     // ISO 8601 date
+}
+```
 
 ### `GET /api/questions/:id` 🔑 A,T
 Path: `id` int. Response `200`: `Question` (with options). Errors: `404` not found.

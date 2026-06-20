@@ -3,7 +3,8 @@ import { PaginationDto } from "../../domain/dtos/shared/pagination.dto.js";
 import { GenerateQuestionDto } from "../../domain/dtos/question/generate-question.dto.js";
 import { ListQuestionsDto } from "../../domain/dtos/question/list-questions.dto.js";
 import { RejectQuestionDto } from "../../domain/dtos/question/reject-question.dto.js";
-import { GenerateQuestionUseCase } from "../../domain/use-cases/question/generate-question.use-case.js";
+import { ValidatedHistoryDto } from "../../domain/dtos/question/validated-history.dto.js";
+import { BulkGenerateQuestionsUseCase } from "../../domain/use-cases/question/bulk-generate-questions.use-case.js";
 import { ListQuestionsUseCase } from "../../domain/use-cases/question/list-questions.use-case.js";
 import { ValidatedHistoryUseCase } from "../../domain/use-cases/question/validated-history.use-case.js";
 import { GetQuestionUseCase } from "../../domain/use-cases/question/get-question.use-case.js";
@@ -13,7 +14,7 @@ import { DeleteQuestionUseCase } from "../../domain/use-cases/question/delete-qu
 
 export class QuestionController {
   constructor(
-    private readonly generateQuestionUseCase: GenerateQuestionUseCase,
+    private readonly bulkGenerateQuestionsUseCase: BulkGenerateQuestionsUseCase,
     private readonly listQuestionsUseCase: ListQuestionsUseCase,
     private readonly validatedHistoryUseCase: ValidatedHistoryUseCase,
     private readonly getQuestionUseCase: GetQuestionUseCase,
@@ -29,6 +30,11 @@ export class QuestionController {
   }
 
   generate = async (req: Request, res: Response, next: NextFunction) => {
+    const rawCount = req.query.count !== undefined ? Number(req.query.count) : 1;
+    if (!Number.isInteger(rawCount) || rawCount < 1 || rawCount > 10) {
+      return res.status(400).json({ error: "count must be an integer between 1 and 10" });
+    }
+
     const [error, dto] = GenerateQuestionDto.create({
       ...req.body,
       teacherId: req.body.teacherId ?? req.user?.id,
@@ -36,8 +42,12 @@ export class QuestionController {
     if (error) return res.status(400).json({ error });
 
     try {
-      const question = await this.generateQuestionUseCase.execute(dto!);
-      res.status(201).json(question);
+      const questions = await this.bulkGenerateQuestionsUseCase.execute(
+        dto!,
+        rawCount,
+        req.user!.id,
+      );
+      res.status(201).json(questions);
     } catch (err) {
       next(err);
     }
@@ -66,6 +76,9 @@ export class QuestionController {
     res: Response,
     next: NextFunction,
   ) => {
+    const [filterError, filterDto] = ValidatedHistoryDto.create(req.query);
+    if (filterError) return res.status(400).json({ error: filterError });
+
     const [pageError, pagination] = this.parsePagination(req);
     if (pageError) return res.status(400).json({ error: pageError });
 
@@ -73,6 +86,7 @@ export class QuestionController {
       const result = await this.validatedHistoryUseCase.execute(
         req.user!.id,
         pagination!,
+        filterDto,
       );
       res.json(result);
     } catch (err) {

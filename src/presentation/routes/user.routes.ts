@@ -49,6 +49,24 @@ export class UserRoutes {
      *       - in: query
      *         name: limit
      *         schema: { type: integer, default: 10 }
+     *       - in: query
+     *         name: isActive
+     *         schema: { type: boolean }
+     *       - in: query
+     *         name: academicGradeId
+     *         schema: { type: integer }
+     *       - in: query
+     *         name: birthDateFrom
+     *         schema: { type: string, format: date }
+     *       - in: query
+     *         name: birthDateTo
+     *         schema: { type: string, format: date }
+     *       - in: query
+     *         name: createdAtFrom
+     *         schema: { type: string, format: date-time }
+     *       - in: query
+     *         name: createdAtTo
+     *         schema: { type: string, format: date-time }
      *     responses:
      *       200: { description: Paginated user list }
      *       401: { description: Not authenticated }
@@ -63,6 +81,32 @@ export class UserRoutes {
      *     tags: [Users]
      *     summary: List all students. Admin or Teacher.
      *     security: [{ bearerAuth: [] }]
+     *     parameters:
+     *       - in: query
+     *         name: page
+     *         schema: { type: integer, default: 1 }
+     *       - in: query
+     *         name: limit
+     *         schema: { type: integer, default: 10 }
+     *       - in: query
+     *         name: isActive
+     *         schema: { type: boolean }
+     *       - in: query
+     *         name: academicGradeId
+     *         schema: { type: integer }
+     *         description: ID of the AcademicGrade (1-6 Primaria, 1-5 Secundaria)
+     *       - in: query
+     *         name: birthDateFrom
+     *         schema: { type: string, format: date }
+     *       - in: query
+     *         name: birthDateTo
+     *         schema: { type: string, format: date }
+     *       - in: query
+     *         name: createdAtFrom
+     *         schema: { type: string, format: date-time }
+     *       - in: query
+     *         name: createdAtTo
+     *         schema: { type: string, format: date-time }
      *     responses:
      *       200: { description: Paginated student list }
      */
@@ -96,6 +140,31 @@ export class UserRoutes {
      *         name: schoolId
      *         required: true
      *         schema: { type: integer }
+     *       - in: query
+     *         name: page
+     *         schema: { type: integer, default: 1 }
+     *       - in: query
+     *         name: limit
+     *         schema: { type: integer, default: 10 }
+     *       - in: query
+     *         name: isActive
+     *         schema: { type: boolean }
+     *       - in: query
+     *         name: academicGradeId
+     *         schema: { type: integer }
+     *         description: ID of the AcademicGrade (1-6 Primaria, 1-5 Secundaria)
+     *       - in: query
+     *         name: birthDateFrom
+     *         schema: { type: string, format: date }
+     *       - in: query
+     *         name: birthDateTo
+     *         schema: { type: string, format: date }
+     *       - in: query
+     *         name: createdAtFrom
+     *         schema: { type: string, format: date-time }
+     *       - in: query
+     *         name: createdAtTo
+     *         schema: { type: string, format: date-time }
      *     responses:
      *       200: { description: Paginated student list }
      */
@@ -159,7 +228,7 @@ export class UserRoutes {
      * /api/users/{id}:
      *   delete:
      *     tags: [Users]
-     *     summary: Soft-delete a user. Admin only.
+     *     summary: Soft-delete a user. Admin or Teacher (teachers can only deactivate students).
      *     security: [{ bearerAuth: [] }]
      *     parameters:
      *       - in: path
@@ -168,15 +237,16 @@ export class UserRoutes {
      *         schema: { type: integer }
      *     responses:
      *       200: { description: User deleted }
+     *       403: { description: Teachers can only deactivate students }
      */
-    router.delete("/:id", roleGuard(ROLES.ADMIN), controller.delete);
+    router.delete("/:id", roleGuard(ROLES.ADMIN, ROLES.TEACHER), controller.delete);
 
     /**
      * @openapi
      * /api/users/{id}/activate:
      *   patch:
      *     tags: [Users]
-     *     summary: Activate a user (sets is_active=true). Admin only.
+     *     summary: Activate a user (sets is_active=true). Admin or Teacher (teachers can only activate students).
      *     security: [{ bearerAuth: [] }]
      *     parameters:
      *       - in: path
@@ -186,10 +256,11 @@ export class UserRoutes {
      *     responses:
      *       200: { description: User activated }
      *       400: { description: Already active or deleted }
+     *       403: { description: Teachers can only activate students }
      */
     router.patch(
       "/:id/activate",
-      roleGuard(ROLES.ADMIN),
+      roleGuard(ROLES.ADMIN, ROLES.TEACHER),
       controller.activate,
     );
 

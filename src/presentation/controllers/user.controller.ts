@@ -1,5 +1,6 @@
 import { NextFunction, Request, Response } from "express";
 import { PaginationDto } from "../../domain/dtos/shared/pagination.dto.js";
+import { ListUsersDto } from "../../domain/dtos/user/list-users.dto.js";
 import { UpdateUserDto } from "../../domain/dtos/user/update-user.dto.js";
 import { GetUsersUseCase } from "../../domain/use-cases/user/get-users.use-case.js";
 import { GetStudentsUseCase } from "../../domain/use-cases/user/get-students.use-case.js";
@@ -28,12 +29,19 @@ export class UserController {
     return PaginationDto.create(page, limit);
   }
 
+  private parseFilters(req: Request): [string?, ListUsersDto?] {
+    return ListUsersDto.create(req.query as Record<string, any>);
+  }
+
   getAll = async (req: Request, res: Response, next: NextFunction) => {
     const [error, pagination] = this.parsePagination(req);
     if (error) return res.status(400).json({ error });
 
+    const [filterError, filters] = this.parseFilters(req);
+    if (filterError) return res.status(400).json({ error: filterError });
+
     try {
-      const result = await this.getUsersUseCase.execute(pagination!);
+      const result = await this.getUsersUseCase.execute(pagination!, filters);
       res.json({ ...result, items: result.items });
     } catch (err) {
       next(err);
@@ -44,9 +52,12 @@ export class UserController {
     const [error, pagination] = this.parsePagination(req);
     if (error) return res.status(400).json({ error });
 
+    const [filterError, filters] = this.parseFilters(req);
+    if (filterError) return res.status(400).json({ error: filterError });
+
     try {
-      const result = await this.getStudentsUseCase.execute(pagination!);
-      res.json({ ...result, items: result.items }); 
+      const result = await this.getStudentsUseCase.execute(pagination!, filters);
+      res.json({ ...result, items: result.items });
     } catch (err) {
       next(err);
     }
@@ -56,8 +67,11 @@ export class UserController {
     const [error, pagination] = this.parsePagination(req);
     if (error) return res.status(400).json({ error });
 
+    const [filterError, filters] = this.parseFilters(req);
+    if (filterError) return res.status(400).json({ error: filterError });
+
     try {
-      const result = await this.getTeachersUseCase.execute(pagination!);
+      const result = await this.getTeachersUseCase.execute(pagination!, filters);
       res.json({ ...result, items: result.items });
     } catch (err) {
       next(err);
@@ -77,10 +91,14 @@ export class UserController {
     const [error, pagination] = this.parsePagination(req);
     if (error) return res.status(400).json({ error });
 
+    const [filterError, filters] = this.parseFilters(req);
+    if (filterError) return res.status(400).json({ error: filterError });
+
     try {
       const result = await this.getStudentsBySchoolUseCase.execute(
         schoolId,
         pagination!,
+        filters,
       );
       res.json({ ...result, items: result.items });
     } catch (err) {
@@ -120,7 +138,10 @@ export class UserController {
     if (isNaN(id)) return res.status(400).json({ error: "Invalid User Id" });
 
     try {
-      const user = await this.deleteUserUseCase.execute(id);
+      const user = await this.deleteUserUseCase.execute(
+        id,
+        req.user?.roleId ?? undefined,
+      );
       res.json({ message: "User deleted", user });
     } catch (err) {
       next(err);
@@ -132,7 +153,10 @@ export class UserController {
     if (isNaN(id)) return res.status(400).json({ error: "Invalid User Id" });
 
     try {
-      const user = await this.activateUserUseCase.execute(id);
+      const user = await this.activateUserUseCase.execute(
+        id,
+        req.user?.roleId ?? undefined,
+      );
       res.json({ message: "User activated", user });
     } catch (err) {
       next(err);

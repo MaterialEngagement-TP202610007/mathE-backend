@@ -42,6 +42,31 @@ export class UserRepositoryImpl implements UserRepository {
       ...(filters.roleId !== undefined && { roleId: filters.roleId }),
       ...(filters.schoolId !== undefined && { schoolId: filters.schoolId }),
       ...(filters.isActive !== undefined && { isActive: filters.isActive }),
+      ...(filters.academicGradeId !== undefined && {
+        academicGradeId: filters.academicGradeId,
+      }),
+      ...((filters.birthDateFrom !== undefined ||
+        filters.birthDateTo !== undefined) && {
+        birthDate: {
+          ...(filters.birthDateFrom !== undefined && {
+            gte: filters.birthDateFrom,
+          }),
+          ...(filters.birthDateTo !== undefined && {
+            lte: filters.birthDateTo,
+          }),
+        },
+      }),
+      ...((filters.createdAtFrom !== undefined ||
+        filters.createdAtTo !== undefined) && {
+        createdAt: {
+          ...(filters.createdAtFrom !== undefined && {
+            gte: filters.createdAtFrom,
+          }),
+          ...(filters.createdAtTo !== undefined && {
+            lte: filters.createdAtTo,
+          }),
+        },
+      }),
     };
 
     const { page, limit } = pagination;

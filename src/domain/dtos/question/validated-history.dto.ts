@@ -1,25 +1,15 @@
-const ALLOWED_STATUSES = ["pending", "approved", "rejected"] as const;
 const ALLOWED_VAK = ["Visual", "Auditory", "Kinesthetic"] as const;
-type ValidationStatus = (typeof ALLOWED_STATUSES)[number];
 type VakStyle = (typeof ALLOWED_VAK)[number];
 
-export class ListQuestionsDto {
+export class ValidatedHistoryDto {
   private constructor(
-    public teacherId: number,
-    public validationStatus: ValidationStatus | null,
     public vakStyle: VakStyle | null,
     public fromDate: Date | null,
     public toDate: Date | null,
   ) {}
 
-  static create(object: { [key: string]: any }): [string?, ListQuestionsDto?] {
-    const { teacherId, status, vakStyle, fromDate, toDate } = object;
-
-    if (!teacherId || isNaN(Number(teacherId)))
-      return ["Missing or invalid teacherId"];
-
-    if (status !== undefined && !ALLOWED_STATUSES.includes(status))
-      return [`Invalid status. Allowed: ${ALLOWED_STATUSES.join(", ")}`];
+  static create(object: { [key: string]: any }): [string?, ValidatedHistoryDto?] {
+    const { vakStyle, fromDate, toDate } = object;
 
     if (vakStyle !== undefined && !ALLOWED_VAK.includes(vakStyle))
       return [`Invalid vakStyle. Allowed: ${ALLOWED_VAK.join(", ")}`];
@@ -39,9 +29,7 @@ export class ListQuestionsDto {
 
     return [
       undefined,
-      new ListQuestionsDto(
-        Number(teacherId),
-        (status as ValidationStatus) ?? null,
+      new ValidatedHistoryDto(
         (vakStyle as VakStyle) ?? null,
         parsedFrom,
         parsedTo,

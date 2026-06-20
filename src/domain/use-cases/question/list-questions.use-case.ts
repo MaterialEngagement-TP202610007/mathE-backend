@@ -15,6 +15,11 @@ export class ListQuestionsUseCase {
       dto.teacherId,
       pagination,
       dto.validationStatus ?? undefined,
+      {
+        vakStyle: dto.vakStyle ?? undefined,
+        fromDate: dto.fromDate ?? undefined,
+        toDate: dto.toDate ?? undefined,
+      },
     );
   }
 }

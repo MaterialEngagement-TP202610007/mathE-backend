@@ -2,6 +2,7 @@ import { prisma } from "../../config/database/index.js";
 import {
   QuestionRepository,
   ApprovedQuestionSlim,
+  QuestionFilters,
 } from "../../domain/repositories/question.repository.js";
 import { QuestionEntity } from "../../domain/entities/question.entity.js";
 import {
@@ -90,11 +91,21 @@ export class QuestionRepositoryImpl implements QuestionRepository {
     teacherId: number,
     pagination: PaginationDto,
     validationStatus?: string,
+    filters?: QuestionFilters,
   ): Promise<PaginatedResult<QuestionEntity>> {
     const where = {
       teacherId,
       deletedAt: null,
       ...(validationStatus ? { validationStatus } : {}),
+      ...(filters?.vakStyle ? { vakStyle: filters.vakStyle } : {}),
+      ...(filters?.fromDate || filters?.toDate
+        ? {
+            generationDate: {
+              ...(filters.fromDate ? { gte: filters.fromDate } : {}),
+              ...(filters.toDate ? { lte: filters.toDate } : {}),
+            },
+          }
+        : {}),
     };
 
     const { page, limit } = pagination;
@@ -104,7 +115,7 @@ export class QuestionRepositoryImpl implements QuestionRepository {
         skip: (page - 1) * limit,
         take: limit,
         include: { options: true },
-        orderBy: { createdAt: "desc" },
+        orderBy: { generationDate: "desc" },
       }),
       prisma.question.count({ where }),
     ]);
@@ -115,11 +126,21 @@ export class QuestionRepositoryImpl implements QuestionRepository {
   async findValidatedHistory(
     teacherId: number,
     pagination: PaginationDto,
+    filters?: QuestionFilters,
   ): Promise<PaginatedResult<QuestionEntity>> {
     const where = {
       teacherId,
       deletedAt: null,
       validationStatus: { in: ["approved", "rejected"] },
+      ...(filters?.vakStyle ? { vakStyle: filters.vakStyle } : {}),
+      ...(filters?.fromDate || filters?.toDate
+        ? {
+            generationDate: {
+              ...(filters.fromDate ? { gte: filters.fromDate } : {}),
+              ...(filters.toDate ? { lte: filters.toDate } : {}),
+            },
+          }
+        : {}),
     };
 
     const { page, limit } = pagination;
@@ -129,7 +150,7 @@ export class QuestionRepositoryImpl implements QuestionRepository {
         skip: (page - 1) * limit,
         take: limit,
         include: { options: true },
-        orderBy: { updatedAt: "desc" },
+        orderBy: { generationDate: "desc" },
       }),
       prisma.question.count({ where }),
     ]);
