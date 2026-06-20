@@ -1,8 +1,10 @@
 import { ResultEntity } from "../entities/result.entity.js";
 import {
   CorrectResultLabelData,
+  GradeVakStats,
   ResultListFilters,
   SaveResultData,
+  SchoolResultStats,
   StudentResultFilters,
 } from "../interfaces/result/index.js";
 import { PaginationDto } from "../dtos/shared/pagination.dto.js";
@@ -29,4 +31,11 @@ export abstract class ResultRepository {
   ): Promise<PaginatedResult<ResultEntity>>;
 
   abstract correctLabel(data: CorrectResultLabelData): Promise<ResultEntity>;
+
+  abstract getSchoolStats(schoolId: number): Promise<SchoolResultStats>;
+
+  abstract getStatsByGrade(
+    schoolId: number,
+    level?: string,
+  ): Promise<GradeVakStats[]>;
 }

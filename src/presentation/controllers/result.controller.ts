@@ -6,6 +6,8 @@ import { GetResultByQuestionnaireUseCase } from "../../domain/use-cases/result/g
 import { GetStudentResultsUseCase } from "../../domain/use-cases/result/get-student-results.use-case.js";
 import { GetAllResultsUseCase } from "../../domain/use-cases/result/get-all-results.use-case.js";
 import { CorrectResultLabelUseCase } from "../../domain/use-cases/result/correct-result-label.use-case.js";
+import { GetSchoolStatsUseCase } from "../../domain/use-cases/result/get-school-stats.use-case.js";
+import { GetStatsByGradeUseCase } from "../../domain/use-cases/result/get-stats-by-grade.use-case.js";
 
 export class ResultController {
   constructor(
@@ -14,6 +16,8 @@ export class ResultController {
     private readonly getStudentResultsUseCase: GetStudentResultsUseCase,
     private readonly getAllResultsUseCase: GetAllResultsUseCase,
     private readonly correctResultLabelUseCase: CorrectResultLabelUseCase,
+    private readonly getSchoolStatsUseCase: GetSchoolStatsUseCase,
+    private readonly getStatsByGradeUseCase: GetStatsByGradeUseCase,
   ) {}
 
   private parsePagination(req: Request): [string?, PaginationDto?] {
@@ -110,6 +114,33 @@ export class ResultController {
         classifierType,
       });
       res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  getSchoolStats = async (req: Request, res: Response, next: NextFunction) => {
+    const schoolId = Number(req.params.schoolId);
+    if (isNaN(schoolId)) {
+      return res.status(400).json({ error: "Invalid schoolId" });
+    }
+    try {
+      const stats = await this.getSchoolStatsUseCase.execute(schoolId);
+      res.json(stats);
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  getStatsByGrade = async (req: Request, res: Response, next: NextFunction) => {
+    const schoolId = Number(req.params.schoolId);
+    if (isNaN(schoolId)) {
+      return res.status(400).json({ error: "Invalid schoolId" });
+    }
+    const level = req.query.level as string | undefined;
+    try {
+      const stats = await this.getStatsByGradeUseCase.execute(schoolId, level);
+      res.json(stats);
     } catch (err) {
       next(err);
     }

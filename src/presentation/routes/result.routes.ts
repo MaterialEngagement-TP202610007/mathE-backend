@@ -9,6 +9,8 @@ import { GetResultByQuestionnaireUseCase } from "../../domain/use-cases/result/g
 import { GetStudentResultsUseCase } from "../../domain/use-cases/result/get-student-results.use-case.js";
 import { GetAllResultsUseCase } from "../../domain/use-cases/result/get-all-results.use-case.js";
 import { CorrectResultLabelUseCase } from "../../domain/use-cases/result/correct-result-label.use-case.js";
+import { GetSchoolStatsUseCase } from "../../domain/use-cases/result/get-school-stats.use-case.js";
+import { GetStatsByGradeUseCase } from "../../domain/use-cases/result/get-stats-by-grade.use-case.js";
 
 export class ResultRoutes {
   static get routes(): Router {
@@ -22,6 +24,8 @@ export class ResultRoutes {
       new GetStudentResultsUseCase(resultRepository),
       new GetAllResultsUseCase(resultRepository),
       new CorrectResultLabelUseCase(resultRepository),
+      new GetSchoolStatsUseCase(resultRepository),
+      new GetStatsByGradeUseCase(resultRepository),
     );
 
     router.use(authMiddleware);
@@ -113,6 +117,54 @@ export class ResultRoutes {
       "/questionnaire/:questionnaireId",
       roleGuard(ROLES.STUDENT, ROLES.TEACHER, ROLES.ADMIN),
       controller.getByQuestionnaire,
+    );
+
+    /**
+     * @openapi
+     * /api/results/stats/school/{schoolId}:
+     *   get:
+     *     tags: [Results]
+     *     summary: School-level result summary. Teacher/Admin only.
+     *     security: [{ bearerAuth: [] }]
+     *     parameters:
+     *       - in: path
+     *         name: schoolId
+     *         required: true
+     *         schema: { type: integer }
+     *     responses:
+     *       200: { description: School stats }
+     *       400: { description: Invalid schoolId }
+     */
+    router.get(
+      "/stats/school/:schoolId",
+      roleGuard(ROLES.TEACHER, ROLES.ADMIN),
+      controller.getSchoolStats,
+    );
+
+    /**
+     * @openapi
+     * /api/results/stats/school/{schoolId}/by-grade:
+     *   get:
+     *     tags: [Results]
+     *     summary: Average VAK probabilities per academic grade for a school. Teacher/Admin only.
+     *     security: [{ bearerAuth: [] }]
+     *     parameters:
+     *       - in: path
+     *         name: schoolId
+     *         required: true
+     *         schema: { type: integer }
+     *       - in: query
+     *         name: level
+     *         schema: { type: string, enum: [Primaria, Secundaria] }
+     *         description: Filter grades by education level
+     *     responses:
+     *       200: { description: Array of per-grade VAK stats }
+     *       400: { description: Invalid schoolId or level }
+     */
+    router.get(
+      "/stats/school/:schoolId/by-grade",
+      roleGuard(ROLES.TEACHER, ROLES.ADMIN),
+      controller.getStatsByGrade,
     );
 
     /**

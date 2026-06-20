@@ -77,3 +77,20 @@ export interface CorrectResultLabelData {
   teacherId: number;
   vakLabel: string;
 }
+
+export interface SchoolResultStats {
+  schoolId: number;
+  evaluatedStudents: number;
+  mostCommonStyle: string | null;
+  avgPredominantConfidence: number | null;
+}
+
+export interface GradeVakStats {
+  gradeId: number;
+  gradeName: string;
+  level: string;
+  evaluatedStudents: number;
+  avgVisualProbability: number | null;
+  avgAuditoryProbability: number | null;
+  avgKinestheticProbability: number | null;
+}
