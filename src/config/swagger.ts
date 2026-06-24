@@ -10,7 +10,11 @@ const options: swaggerJsdoc.Options = {
       description:
         "REST API — educational platform with VAK learning style detection. Roles: Student and Teacher (RBAC).",
     },
-    servers: [{ url: `http://localhost:${envs.PORT}` }],
+    servers: [
+      {
+        url: process.env.RENDER_EXTERNAL_URL ?? `http://localhost:${envs.PORT}`,
+      },
+    ],
     components: {
       securitySchemes: {
         bearerAuth: {
