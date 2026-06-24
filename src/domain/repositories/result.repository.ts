@@ -1,11 +1,14 @@
 import { ResultEntity } from "../entities/result.entity.js";
 import {
   CorrectResultLabelData,
+  EvolutionDataPoint,
   GradeVakStats,
+  Granularity,
   ResultListFilters,
   SaveResultData,
   SchoolResultStats,
   StudentResultFilters,
+  UserResultStats,
 } from "../interfaces/result/index.js";
 import { PaginationDto } from "../dtos/shared/pagination.dto.js";
 import { PaginatedResult } from "../interfaces/shared/paginated-result.interface.js";
@@ -38,4 +41,15 @@ export abstract class ResultRepository {
     schoolId: number,
     level?: string,
   ): Promise<GradeVakStats[]>;
+
+  abstract getUserStats(userId: number): Promise<UserResultStats>;
+
+  abstract findFirstResultDateByStudent(studentId: number): Promise<Date | null>;
+
+  abstract getUserEvolution(
+    studentId: number,
+    from: Date,
+    to: Date,
+    granularity: Granularity,
+  ): Promise<{ dataPoints: EvolutionDataPoint[]; totalEvaluations: number }>;
 }

@@ -8,6 +8,8 @@ import { GetAllResultsUseCase } from "../../domain/use-cases/result/get-all-resu
 import { CorrectResultLabelUseCase } from "../../domain/use-cases/result/correct-result-label.use-case.js";
 import { GetSchoolStatsUseCase } from "../../domain/use-cases/result/get-school-stats.use-case.js";
 import { GetStatsByGradeUseCase } from "../../domain/use-cases/result/get-stats-by-grade.use-case.js";
+import { GetUserStatsUseCase } from "../../domain/use-cases/result/get-user-stats.use-case.js";
+import { GetUserEvolutionUseCase } from "../../domain/use-cases/result/get-user-evolution.use-case.js";
 
 export class ResultController {
   constructor(
@@ -18,6 +20,8 @@ export class ResultController {
     private readonly correctResultLabelUseCase: CorrectResultLabelUseCase,
     private readonly getSchoolStatsUseCase: GetSchoolStatsUseCase,
     private readonly getStatsByGradeUseCase: GetStatsByGradeUseCase,
+    private readonly getUserStatsUseCase: GetUserStatsUseCase,
+    private readonly getUserEvolutionUseCase: GetUserEvolutionUseCase,
   ) {}
 
   private parsePagination(req: Request): [string?, PaginationDto?] {
@@ -141,6 +145,97 @@ export class ResultController {
     try {
       const stats = await this.getStatsByGradeUseCase.execute(schoolId, level);
       res.json(stats);
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  getUserStats = async (req: Request, res: Response, next: NextFunction) => {
+    const userId = Number(req.params.userId);
+    if (isNaN(userId)) return res.status(400).json({ error: "Invalid userId" });
+
+    try {
+      const stats = await this.getUserStatsUseCase.execute(
+        userId,
+        req.user!.id,
+        req.user!.roleId!,
+      );
+      res.json(stats);
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  getByStudent = async (req: Request, res: Response, next: NextFunction) => {
+    const studentId = Number(req.params.studentId);
+    if (isNaN(studentId))
+      return res.status(400).json({ error: "Invalid studentId" });
+
+    const [error, pagination] = this.parsePagination(req);
+    if (error) return res.status(400).json({ error });
+
+    const startDate = req.query.startDate
+      ? new Date(req.query.startDate as string)
+      : undefined;
+    const endDate = req.query.endDate
+      ? new Date(req.query.endDate as string)
+      : undefined;
+
+    if (startDate && isNaN(startDate.getTime()))
+      return res.status(400).json({ error: "Invalid startDate" });
+    if (endDate && isNaN(endDate.getTime()))
+      return res.status(400).json({ error: "Invalid endDate" });
+
+    const predominantStyle = req.query.predominantStyle as string | undefined;
+
+    try {
+      const result = await this.getStudentResultsUseCase.execute(
+        studentId,
+        pagination!,
+        { startDate, endDate, predominantStyle },
+      );
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  getUserEvolution = async (req: Request, res: Response, next: NextFunction) => {
+    const studentId = Number(req.params.studentId);
+    if (isNaN(studentId))
+      return res.status(400).json({ error: "Invalid studentId" });
+
+    const granularityRaw = req.query.granularity as string | undefined;
+    if (granularityRaw && !["day", "month", "year"].includes(granularityRaw)) {
+      return res
+        .status(400)
+        .json({ error: "granularity must be day, month, or year" });
+    }
+
+    const fromRaw = req.query.from as string | undefined;
+    const toRaw = req.query.to as string | undefined;
+    const from = fromRaw ? new Date(fromRaw) : undefined;
+    const to = toRaw ? new Date(toRaw) : undefined;
+
+    if (from && isNaN(from.getTime()))
+      return res.status(400).json({ error: "Invalid from date" });
+    if (to && isNaN(to.getTime()))
+      return res.status(400).json({ error: "Invalid to date" });
+    if (from && to && from > to)
+      return res.status(400).json({ error: "from must be ≤ to" });
+
+    try {
+      const result = await this.getUserEvolutionUseCase.execute(
+        studentId,
+        req.user!.id,
+        req.user!.roleId!,
+        {
+          from,
+          to,
+          granularity: granularityRaw as "day" | "month" | "year" | undefined,
+        },
+      );
+      res.json(result);
     } catch (err) {
       next(err);
     }

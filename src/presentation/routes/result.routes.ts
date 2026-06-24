@@ -11,6 +11,8 @@ import { GetAllResultsUseCase } from "../../domain/use-cases/result/get-all-resu
 import { CorrectResultLabelUseCase } from "../../domain/use-cases/result/correct-result-label.use-case.js";
 import { GetSchoolStatsUseCase } from "../../domain/use-cases/result/get-school-stats.use-case.js";
 import { GetStatsByGradeUseCase } from "../../domain/use-cases/result/get-stats-by-grade.use-case.js";
+import { GetUserStatsUseCase } from "../../domain/use-cases/result/get-user-stats.use-case.js";
+import { GetUserEvolutionUseCase } from "../../domain/use-cases/result/get-user-evolution.use-case.js";
 
 export class ResultRoutes {
   static get routes(): Router {
@@ -26,6 +28,8 @@ export class ResultRoutes {
       new CorrectResultLabelUseCase(resultRepository),
       new GetSchoolStatsUseCase(resultRepository),
       new GetStatsByGradeUseCase(resultRepository),
+      new GetUserStatsUseCase(resultRepository),
+      new GetUserEvolutionUseCase(resultRepository),
     );
 
     router.use(authMiddleware);
@@ -165,6 +169,102 @@ export class ResultRoutes {
       "/stats/school/:schoolId/by-grade",
       roleGuard(ROLES.TEACHER, ROLES.ADMIN),
       controller.getStatsByGrade,
+    );
+
+    /**
+     * @openapi
+     * /api/results/stats/user/{userId}:
+     *   get:
+     *     tags: [Results]
+     *     summary: VAK summary stats for a user. Students can only access their own; Teacher/Admin can access any.
+     *     security: [{ bearerAuth: [] }]
+     *     parameters:
+     *       - in: path
+     *         name: userId
+     *         required: true
+     *         schema: { type: integer }
+     *     responses:
+     *       200: { description: User stats summary }
+     *       400: { description: Invalid userId }
+     *       403: { description: Student accessing another user's stats }
+     *       404: { description: User not found }
+     */
+    router.get(
+      "/stats/user/:userId",
+      roleGuard(ROLES.STUDENT, ROLES.TEACHER, ROLES.ADMIN),
+      controller.getUserStats,
+    );
+
+    /**
+     * @openapi
+     * /api/results/evolution/{studentId}:
+     *   get:
+     *     tags: [Results]
+     *     summary: VAK probability evolution over time for a student. Student (own only), Teacher, Admin.
+     *     security: [{ bearerAuth: [] }]
+     *     parameters:
+     *       - in: path
+     *         name: studentId
+     *         required: true
+     *         schema: { type: integer }
+     *       - in: query
+     *         name: granularity
+     *         schema: { type: string, enum: [day, month, year] }
+     *         description: Time bucket size. Auto-inferred if omitted (≤90d→day, ≤730d→month, >730d→year).
+     *       - in: query
+     *         name: from
+     *         schema: { type: string, format: date }
+     *         description: Start date (YYYY-MM-DD). Defaults to date of student's first evaluation.
+     *       - in: query
+     *         name: to
+     *         schema: { type: string, format: date }
+     *         description: End date (YYYY-MM-DD). Defaults to today.
+     *     responses:
+     *       200: { description: Evolution data points }
+     *       400: { description: Invalid params }
+     *       403: { description: Student accessing another student's evolution }
+     */
+    router.get(
+      "/evolution/:studentId",
+      roleGuard(ROLES.STUDENT, ROLES.TEACHER, ROLES.ADMIN),
+      controller.getUserEvolution,
+    );
+
+    /**
+     * @openapi
+     * /api/results/student/{studentId}:
+     *   get:
+     *     tags: [Results]
+     *     summary: Paginated results for a specific student. Teacher/Admin only.
+     *     security: [{ bearerAuth: [] }]
+     *     parameters:
+     *       - in: path
+     *         name: studentId
+     *         required: true
+     *         schema: { type: integer }
+     *       - in: query
+     *         name: page
+     *         schema: { type: integer, default: 1 }
+     *       - in: query
+     *         name: limit
+     *         schema: { type: integer, default: 10 }
+     *       - in: query
+     *         name: startDate
+     *         schema: { type: string, format: date }
+     *       - in: query
+     *         name: endDate
+     *         schema: { type: string, format: date }
+     *       - in: query
+     *         name: predominantStyle
+     *         schema: { type: string, enum: [Visual, Auditory, Kinesthetic] }
+     *     responses:
+     *       200: { description: Paginated results for student }
+     *       400: { description: Invalid params }
+     */
+    router.get(
+      "/student/:studentId",
+      roleGuard(ROLES.TEACHER, ROLES.ADMIN),
+      controller.getByStudent,
     );
 
     /**

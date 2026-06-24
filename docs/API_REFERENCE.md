@@ -602,31 +602,253 @@ interface Result {
 }
 ```
 
-### `GET /api/results` 🔑 T,A
-Query: `page`, `limit`, `studentId?`, `gradeId?`, `schoolId?`, `classifierType?`. Response `200`: `Paginated<Result>`.
+> **Route order note:** named paths (`/my`, `/evolution`, `/stats/…`, `/questionnaire/…`) are registered **before** `/:id` in Express to avoid param collisions. Match this order when building mocks.
 
-### `GET /api/results/my` 🔑 S
-Own results, paginated and filterable.
+---
+
+### `GET /api/results` 🔑 T,A
+
+All results across all students. Supports optional filters.
 
 | Query param | Type | Default | Description |
 |-------------|------|---------|-------------|
 | `page` | integer | `1` | Page number |
 | `limit` | integer | `10` | Items per page |
-| `startDate` | string (ISO 8601 date) | — | Results created on or after this date, e.g. `2025-01-01` |
-| `endDate` | string (ISO 8601 date) | — | Results created on or before this date, e.g. `2025-12-31` |
+| `studentId` | integer | — | Filter by student |
+| `gradeId` | integer | — | Filter by academic grade |
+| `schoolId` | integer | — | Filter by school |
+| `classifierType` | string | — | `xgboost` \| `simple_score` |
+
+Response `200`: `Paginated<Result>`.
+
+---
+
+### `GET /api/results/my` 🔑 S
+
+Authenticated student's own results, paginated and filterable.
+
+| Query param | Type | Default | Description |
+|-------------|------|---------|-------------|
+| `page` | integer | `1` | Page number |
+| `limit` | integer | `10` | Items per page |
+| `startDate` | `YYYY-MM-DD` | — | Results on or after this date |
+| `endDate` | `YYYY-MM-DD` | — | Results on or before this date |
 | `predominantStyle` | string | — | `Visual` \| `Auditory` \| `Kinesthetic` |
 
 Response `200`: `Paginated<Result>`. Errors: `400` invalid date string.
 
+---
+
 ### `GET /api/results/questionnaire/:questionnaireId` 🔑 S(own),T,A
-Path: `questionnaireId` int. Response `200`: `Result`. Errors: `403` not yours (student) · `404` no result.
+
+Path: `questionnaireId` int. Returns the single result tied to that questionnaire.
+Response `200`: `Result`. Errors: `403` not yours (student) · `404` no result.
+
+---
+
+### `GET /api/results/student/:studentId` 🔑 T,A
+
+Paginated result history for a specific student. Same filters as `/api/results/my`.
+
+| Query param | Type | Default | Description |
+|-------------|------|---------|-------------|
+| `page` | integer | `1` | Page number |
+| `limit` | integer | `10` | Items per page |
+| `startDate` | `YYYY-MM-DD` | — | Results on or after this date |
+| `endDate` | `YYYY-MM-DD` | — | Results on or before this date |
+| `predominantStyle` | string | — | `Visual` \| `Auditory` \| `Kinesthetic` |
+
+Response `200`: `Paginated<Result>`. Errors: `400` invalid params.
+
+---
+
+### `GET /api/results/evolution/:studentId` 🔑 S(own),T,A
+
+VAK probability evolution over time, grouped into time buckets. Powers the line chart on the student profile.
+
+| Query param | Type | Default | Description |
+|-------------|------|---------|-------------|
+| `granularity` | `"day" \| "month" \| "year"` | auto-inferred | Bucket size. Auto-inference: ≤90 days → `day`, ≤730 days → `month`, >730 days → `year` |
+| `from` | `YYYY-MM-DD` | date of student's first evaluation | Start of range (inclusive) |
+| `to` | `YYYY-MM-DD` | today | End of range (inclusive) |
+
+Response `200`:
+```json
+{
+  "studentId": 5,
+  "from": "2025-11-01",
+  "to": "2026-06-24",
+  "granularity": "month",
+  "totalEvaluations": 5,
+  "dataPoints": [
+    {
+      "period": "2025-11",
+      "predominantStyle": "Visual",
+      "avgVisualProbability": 62.0,
+      "avgAuditoryProbability": 28.0,
+      "avgKinestheticProbability": 10.0,
+      "count": 1
+    },
+    {
+      "period": "2026-01",
+      "predominantStyle": "Auditory",
+      "avgVisualProbability": 34.0,
+      "avgAuditoryProbability": 48.0,
+      "avgKinestheticProbability": 18.0,
+      "count": 1
+    }
+  ]
+}
+```
+
+- `period` format: `YYYY-MM-DD` (day) · `YYYY-MM` (month) · `YYYY` (year).
+- `predominantStyle` per bucket = most frequent style in that bucket (statistical mode).
+- Probabilities are averaged across all evaluations in the bucket, rounded to 2 decimal places.
+- `totalEvaluations` = sum of all `count` values.
+- If student has no evaluations, `dataPoints` is `[]` and `totalEvaluations` is `0`.
+
+Errors: `400` invalid params or `from > to` · `403` student accessing another student's data.
+
+```ts
+interface EvolutionDataPoint {
+  period: string;
+  predominantStyle: "Visual" | "Auditory" | "Kinesthetic";
+  avgVisualProbability: number;      // 0..100, 2 decimal places
+  avgAuditoryProbability: number;
+  avgKinestheticProbability: number;
+  count: number;                     // evaluations in this bucket
+}
+
+interface UserEvolutionResult {
+  studentId: number;
+  from: string;                      // YYYY-MM-DD (effective range start)
+  to: string;                        // YYYY-MM-DD (effective range end)
+  granularity: "day" | "month" | "year";
+  totalEvaluations: number;
+  dataPoints: EvolutionDataPoint[];
+}
+```
+
+---
+
+### `GET /api/results/stats/user/:userId` 🔑 S(own),T,A
+
+Summary stats for a user, computed dynamically from all their results. Powers the stats card on the student profile.
+
+Path: `userId` int.
+
+Response `200`:
+```json
+{
+  "userId": 5,
+  "total": 3,
+  "predominantStyle": "Visual",
+  "profile": "Estable"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `total` | `number` | Total completed evaluations |
+| `predominantStyle` | `"Visual" \| "Auditory" \| "Kinesthetic" \| null` | Most frequent style overall; `null` if no evaluations |
+| `profile` | `"Estable" \| "Variable" \| null` | `"Estable"` if predominant style appears in ≥60% of evaluations; `"Variable"` otherwise; `null` if no evaluations |
+
+Errors: `400` invalid `userId` · `403` student accessing another user's stats.
+
+```ts
+interface UserResultStats {
+  userId: number;
+  total: number;
+  predominantStyle: "Visual" | "Auditory" | "Kinesthetic" | null;
+  profile: "Estable" | "Variable" | null;
+}
+```
+
+---
+
+### `GET /api/results/stats/school/:schoolId` 🔑 T,A
+
+Aggregate VAK summary for a school.
+
+Path: `schoolId` int.
+
+Response `200`:
+```json
+{
+  "schoolId": 1,
+  "evaluatedStudents": 42,
+  "mostCommonStyle": "Visual",
+  "avgPredominantConfidence": 78.34
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `evaluatedStudents` | `number` | Count of distinct students with ≥1 result |
+| `mostCommonStyle` | `string \| null` | Most frequent predominant style in school; `null` if no results |
+| `avgPredominantConfidence` | `number \| null` | Average classifier confidence (0–100); `null` if no results |
+
+Errors: `400` invalid `schoolId`.
+
+```ts
+interface SchoolResultStats {
+  schoolId: number;
+  evaluatedStudents: number;
+  mostCommonStyle: "Visual" | "Auditory" | "Kinesthetic" | null;
+  avgPredominantConfidence: number | null;
+}
+```
+
+---
+
+### `GET /api/results/stats/school/:schoolId/by-grade` 🔑 T,A
+
+Average VAK probabilities broken down by academic grade for a school.
+
+Path: `schoolId` int. Query: `level?` — `"Primaria"` or `"Secundaria"` to filter grades.
+
+Response `200`: `GradeVakStats[]` (array, one entry per grade, ordered by grade).
+```json
+[
+  {
+    "gradeId": 1,
+    "gradeName": "1° Primaria",
+    "level": "Primaria",
+    "evaluatedStudents": 8,
+    "avgVisualProbability": 55.2,
+    "avgAuditoryProbability": 30.1,
+    "avgKinestheticProbability": 14.7
+  }
+]
+```
+
+Errors: `400` invalid `schoolId`.
+
+```ts
+interface GradeVakStats {
+  gradeId: number;
+  gradeName: string;
+  level: string;                          // "Primaria" | "Secundaria"
+  evaluatedStudents: number;
+  avgVisualProbability: number | null;    // null if grade has no evaluated students
+  avgAuditoryProbability: number | null;
+  avgKinestheticProbability: number | null;
+}
+```
+
+---
 
 ### `GET /api/results/:id` 🔑 S(own),T,A
-Path: `id` int. Response `200`: `Result`. Errors: `403` not yours · `404` not found.
+
+Path: `id` int. Response `200`: `Result`. Errors: `403` not yours (student) · `404` not found.
+
+---
 
 ### `PATCH /api/results/:id/correct-label` 🔑 T,A
-Pilot ground-truth: sets `correctedVakLabel` on result + marks matching ML dataset row `labelSource=teacher_validated`.
-Request:
+
+Pilot ground-truth: sets `correctedVakLabel` on result + marks the matching ML dataset row `labelSource=teacher_validated`.
+
+Path: `id` int. Request:
 ```json
 { "vakLabel": "Auditory" }
 ```

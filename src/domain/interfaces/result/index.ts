@@ -94,3 +94,30 @@ export interface GradeVakStats {
   avgAuditoryProbability: number | null;
   avgKinestheticProbability: number | null;
 }
+
+export interface UserResultStats {
+  userId: number;
+  total: number;
+  predominantStyle: "Visual" | "Auditory" | "Kinesthetic" | null;
+  profile: "Estable" | "Variable" | null;
+}
+
+export type Granularity = "day" | "month" | "year";
+
+export interface EvolutionDataPoint {
+  period: string;
+  predominantStyle: "Visual" | "Auditory" | "Kinesthetic";
+  avgVisualProbability: number;
+  avgAuditoryProbability: number;
+  avgKinestheticProbability: number;
+  count: number;
+}
+
+export interface UserEvolutionResult {
+  studentId: number;
+  from: string;
+  to: string;
+  granularity: Granularity;
+  totalEvaluations: number;
+  dataPoints: EvolutionDataPoint[];
+}

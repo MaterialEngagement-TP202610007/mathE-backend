@@ -190,7 +190,7 @@ export class UserRoutes {
      *       200: { description: User payload }
      *       404: { description: User not found }
      */
-    router.get("/:id", selfOrRoleGuard(ROLES.ADMIN), controller.getById);
+    router.get("/:id", selfOrRoleGuard(ROLES.ADMIN, ROLES.TEACHER), controller.getById);
 
     /**
      * @openapi

@@ -3,11 +3,14 @@ import { ResultRepository } from "../../domain/repositories/result.repository.js
 import { ResultEntity } from "../../domain/entities/result.entity.js";
 import {
   CorrectResultLabelData,
+  EvolutionDataPoint,
   GradeVakStats,
+  Granularity,
   ResultListFilters,
   SaveResultData,
   SchoolResultStats,
   StudentResultFilters,
+  UserResultStats,
 } from "../../domain/interfaces/result/index.js";
 import { PaginationDto } from "../../domain/dtos/shared/pagination.dto.js";
 import { PaginatedResult } from "../../domain/interfaces/shared/paginated-result.interface.js";
@@ -256,6 +259,113 @@ export class ResultRepositoryImpl implements ResultRepository {
     );
 
     return stats;
+  }
+
+  async getUserStats(userId: number): Promise<UserResultStats> {
+    const baseWhere = { studentId: userId, deletedAt: null };
+
+    const [total, styleGroups] = await Promise.all([
+      prisma.result.count({ where: baseWhere }),
+      prisma.result.groupBy({
+        by: ["predominantStyle"],
+        where: { ...baseWhere, predominantStyle: { not: null } },
+        _count: { predominantStyle: true },
+        orderBy: { _count: { predominantStyle: "desc" } },
+      }),
+    ]);
+
+    if (total === 0) {
+      return { userId, total: 0, predominantStyle: null, profile: null };
+    }
+
+    const topGroup = styleGroups[0];
+    const predominantStyle = (topGroup?.predominantStyle ?? null) as
+      | "Visual"
+      | "Auditory"
+      | "Kinesthetic"
+      | null;
+    const topCount = topGroup?._count.predominantStyle ?? 0;
+    const profile: "Estable" | "Variable" =
+      predominantStyle && topCount / total >= 0.6 ? "Estable" : "Variable";
+
+    return { userId, total, predominantStyle, profile };
+  }
+
+  async findFirstResultDateByStudent(studentId: number): Promise<Date | null> {
+    const first = await prisma.result.findFirst({
+      where: { studentId, deletedAt: null },
+      orderBy: { createdAt: "asc" },
+      select: { createdAt: true },
+    });
+    return first?.createdAt ?? null;
+  }
+
+  async getUserEvolution(
+    studentId: number,
+    from: Date,
+    to: Date,
+    granularity: Granularity,
+  ): Promise<{ dataPoints: EvolutionDataPoint[]; totalEvaluations: number }> {
+    const endOfTo = new Date(to);
+    endOfTo.setUTCHours(23, 59, 59, 999);
+
+    type RawRow = {
+      period: Date;
+      predominantStyle: string;
+      avgVisualProbability: number | null;
+      avgAuditoryProbability: number | null;
+      avgKinestheticProbability: number | null;
+      count: bigint;
+    };
+
+    const rows = await prisma.$queryRaw<RawRow[]>`
+      SELECT
+        period,
+        MODE() WITHIN GROUP (ORDER BY "predominantStyle")           AS "predominantStyle",
+        ROUND(AVG("visualProbability")::numeric, 2)::float          AS "avgVisualProbability",
+        ROUND(AVG("auditoryProbability")::numeric, 2)::float        AS "avgAuditoryProbability",
+        ROUND(AVG("kinestheticProbability")::numeric, 2)::float     AS "avgKinestheticProbability",
+        COUNT(*)                                                     AS count
+      FROM (
+        SELECT
+          DATE_TRUNC(${granularity}, "createdAt") AS period,
+          "predominantStyle",
+          "visualProbability",
+          "auditoryProbability",
+          "kinestheticProbability"
+        FROM "Result"
+        WHERE "studentId" = ${studentId}
+          AND "deletedAt" IS NULL
+          AND "predominantStyle" IS NOT NULL
+          AND "createdAt" >= ${from}
+          AND "createdAt" <= ${endOfTo}
+      ) sub
+      GROUP BY period
+      ORDER BY period ASC
+    `;
+
+    const dataPoints: EvolutionDataPoint[] = rows.map((row) => {
+      let period: string;
+      const d = new Date(row.period);
+      if (granularity === "day") period = d.toISOString().slice(0, 10);
+      else if (granularity === "month") period = d.toISOString().slice(0, 7);
+      else period = d.toISOString().slice(0, 4);
+
+      return {
+        period,
+        predominantStyle: row.predominantStyle as
+          | "Visual"
+          | "Auditory"
+          | "Kinesthetic",
+        avgVisualProbability: row.avgVisualProbability ?? 0,
+        avgAuditoryProbability: row.avgAuditoryProbability ?? 0,
+        avgKinestheticProbability: row.avgKinestheticProbability ?? 0,
+        count: Number(row.count),
+      };
+    });
+
+    const totalEvaluations = dataPoints.reduce((sum, p) => sum + p.count, 0);
+    return { dataPoints, totalEvaluations };
   }
 
   async correctLabel(data: CorrectResultLabelData): Promise<ResultEntity> {
