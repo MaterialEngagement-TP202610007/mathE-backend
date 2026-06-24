@@ -31,6 +31,9 @@ COPY --from=builder /app/dist ./dist
 # Generated Prisma client (built in builder stage)
 COPY --from=builder /app/src/generated ./src/generated
 
+# Prisma config (root-level, tells Prisma where schema/migrations live)
+COPY prisma.config.ts ./
+
 # Prisma directory: schema, migrations, seed script, seed data
 COPY prisma ./prisma
 
