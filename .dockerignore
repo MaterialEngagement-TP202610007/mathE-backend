@@ -3,6 +3,14 @@ node_modules/
 dist/
 public/
 .env*
-!.env.example
+!.env.template
 docker-compose.override.yml
 .dockerignore
+src/generated/
+prisma/data/schools.csv
+*.log
+npm-debug.log*
+pnpm-debug.log*
+.DS_Store
+docs/
+README.md
