@@ -11,7 +11,7 @@ const AUTH_COOKIE = "auth_token";
 const AUTH_COOKIE_OPTIONS: CookieOptions = {
   httpOnly: true,
   secure: true,
-  sameSite: "strict",
+  sameSite: "none",
   path: "/",
 };
 
