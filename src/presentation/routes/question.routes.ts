@@ -15,6 +15,8 @@ import { QuestionRepositoryImpl } from "../../infrastructure/repositories/questi
 import { NotificationRepositoryImpl } from "../../infrastructure/repositories/notification.repository.impl.js";
 import { GeminiQuestionGeneratorAdapter } from "../../infrastructure/adapters/gemini-question-generator.adapter.impl.js";
 import { GeminiEmbeddingAdapter } from "../../infrastructure/adapters/gemini-embedding.adapter.impl.js";
+import { GeminiImageGeneratorAdapter } from "../../infrastructure/adapters/gemini-image-generator.adapter.impl.js";
+import { S3ImageStorageAdapter } from "../../infrastructure/adapters/s3-image-storage.adapter.impl.js";
 import { envs } from "../../config/envs.js";
 
 export class QuestionRoutes {
@@ -25,6 +27,8 @@ export class QuestionRoutes {
     const notificationRepository = new NotificationRepositoryImpl();
     const aiGenerator = new GeminiQuestionGeneratorAdapter();
     const embeddingAdapter = new GeminiEmbeddingAdapter();
+    const imageGenerator = new GeminiImageGeneratorAdapter();
+    const imageStorage = new S3ImageStorageAdapter();
 
     const controller = new QuestionController(
       new BulkGenerateQuestionsUseCase(
@@ -32,6 +36,8 @@ export class QuestionRoutes {
           questionRepository,
           aiGenerator,
           embeddingAdapter,
+          imageGenerator,
+          imageStorage,
           {
             similarityThreshold: envs.QUESTION_SIMILARITY_THRESHOLD,
             maxAttempts: envs.QUESTION_MAX_GENERATION_ATTEMPTS,

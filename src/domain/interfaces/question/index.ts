@@ -33,4 +33,5 @@ export interface CreateQuestionData {
   options: GeneratedOption[];
   embeddingVector: number[];
   embeddingModelVersion: string;
+  mediaUrl?: string | null;
 }

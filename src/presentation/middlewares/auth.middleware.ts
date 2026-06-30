@@ -8,7 +8,12 @@ export const authMiddleware = async (
   res: Response,
   next: NextFunction,
 ) => {
-  const token = req.cookies?.auth_token;
+  const cookieToken = req.cookies?.auth_token;
+  const authHeader = req.headers.authorization;
+  const bearerToken =
+    authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : undefined;
+
+  const token = cookieToken ?? bearerToken;
   if (!token) {
     return res.status(401).json({ error: "No token provided" });
   }

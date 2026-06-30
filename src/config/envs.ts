@@ -36,6 +36,18 @@ export const envs = {
     .default("3")
     .asIntPositive(),
 
+  GEMINI_IMAGE_MODEL: envVar
+    .get("GEMINI_IMAGE_MODEL")
+    .default("gemini-2.0-flash-preview-image-generation")
+    .asString(),
+
+  // AWS S3 — image storage
+  AWS_BUCKET: envVar.get("AWS_BUCKET").required().asString(),
+  AWS_REGION: envVar.get("AWS_REGION").default("us-east-1").asString(),
+  AWS_ACCESS_KEY_ID: envVar.get("AWS_ACCESS_KEY_ID").required().asString(),
+  AWS_SECRET_ACCESS_KEY: envVar.get("AWS_SECRET_ACCESS_KEY").required().asString(),
+  CLOUDFRONT_DOMAIN: envVar.get("CLOUDFRONT_DOMAIN").required().asString(),
+
   // ML / Lambda
   LAMBDA_URL: envVar.get("LAMBDA_URL").default("").asString(),
 };

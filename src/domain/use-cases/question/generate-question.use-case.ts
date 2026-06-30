@@ -1,6 +1,9 @@
+import { v4 as uuidv4 } from "uuid";
 import { CustomError } from "../../error/custom-error.js";
 import { QuestionRepository } from "../../repositories/question.repository.js";
 import { AIQuestionGeneratorAdapter } from "../../adapters/ai-question-generator.adapter.js";
+import { AIImageGeneratorAdapter } from "../../adapters/ai-image-generator.adapter.js";
+import { ImageStorageAdapter } from "../../adapters/image-storage.adapter.js";
 import { EmbeddingAdapter } from "../../adapters/embedding.adapter.js";
 import { GenerateQuestionDto } from "../../dtos/question/generate-question.dto.js";
 import { QuestionEntity } from "../../entities/question.entity.js";
@@ -17,6 +20,8 @@ export class GenerateQuestionUseCase {
     private readonly questionRepository: QuestionRepository,
     private readonly aiGenerator: AIQuestionGeneratorAdapter,
     private readonly embeddingAdapter: EmbeddingAdapter,
+    private readonly imageGenerator: AIImageGeneratorAdapter,
+    private readonly imageStorage: ImageStorageAdapter,
     private readonly config: GenerateQuestionConfig,
   ) {}
 
@@ -42,23 +47,40 @@ export class GenerateQuestionUseCase {
       
       if (maxSimilarity >= this.config.similarityThreshold) continue;
 
+      const mediaUrl = await this.generateAndUploadImage(generated.statement);
+
       return this.questionRepository.createWithOptionsAndEmbedding({
         statement: generated.statement,
         vakStyle: dto.vakStyle,
         contentType: "text",
         origin: "ai_generated",
-        validationStatus: "pending", //  se espera a la validación del prosooorr
+        validationStatus: "pending",
         generationDate: new Date(),
         teacherId: dto.teacherId,
         options: generated.options,
         embeddingVector: vector,
         embeddingModelVersion: this.embeddingAdapter.modelVersion,
+        mediaUrl,
       });
     }
 
     throw CustomError.serviceUnavailable(
       `Could not generate a unique ${dto.vakStyle} question after ${this.config.maxAttempts} attempts`,
     );
+  }
+
+  private async generateAndUploadImage(statement: string): Promise<string | null> {
+    try {
+      const prompt = `Colorful educational illustration for a Peruvian school activity. Scene: "${statement}". Child-friendly art style, vibrant colors, no text or labels.`;
+      const imageBuffer = await this.imageGenerator.generateImage(prompt);
+      return await this.imageStorage.upload(
+        `questions/${uuidv4()}.jpeg`,
+        imageBuffer,
+        "image/jpeg",
+      );
+    } catch {
+      return null;
+    }
   }
 
   private isValid(q: GeneratedQuestion): boolean {

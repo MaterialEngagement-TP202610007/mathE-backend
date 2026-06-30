@@ -42,6 +42,7 @@ export class QuestionRepositoryImpl implements QuestionRepository {
           validationStatus: data.validationStatus,
           generationDate: data.generationDate,
           teacherId: data.teacherId,
+          mediaUrl: data.mediaUrl ?? null,
           options: {
             create: data.options.map((opt) => ({
               text: opt.text,

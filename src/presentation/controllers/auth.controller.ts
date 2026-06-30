@@ -42,7 +42,7 @@ export class AuthController {
         maxAge: 604800 * 1000, // 7 days
       });
 
-      res.json({ user: this.toPublicUser(user) });
+      res.json({ user: this.toPublicUser(user), token });
     } catch (err) {
       next(err);
     }
