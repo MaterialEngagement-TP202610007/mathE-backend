@@ -26,11 +26,15 @@ export class ActivateUserUseCase {
 
     const user = await this.userRepository.setActive(id, true);
 
+    const message =
+      existing.roleId === ROLES.TEACHER
+        ? "¡Tu cuenta ha sido activada! Ya puedes gestionar alumnos y generar preguntas VAK."
+        : "¡Tu cuenta ha sido activada! Ya puedes iniciar el cuestionario de estilos de aprendizaje.";
+
     await this.notificationRepository.create({
       studentId: id,
       type: "account_activated",
-      message:
-        "¡Tu cuenta ha sido activada! Ya puedes iniciar el cuestionario de estilos de aprendizaje.",
+      message,
     });
 
     return user;

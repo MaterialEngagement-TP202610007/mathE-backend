@@ -47,8 +47,8 @@ export class RegisterUserDto {
     }
 
     const parsedRoleId = Number(roleId);
-    // Students start inactive — require admin activation before they can log in.
-    const isActive = parsedRoleId !== ROLES.STUDENT;
+    // Students and Teachers start inactive — admin must activate them before first login.
+    const isActive = parsedRoleId === ROLES.ADMIN;
 
     return [
       undefined,

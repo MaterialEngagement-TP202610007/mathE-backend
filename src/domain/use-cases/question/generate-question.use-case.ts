@@ -68,7 +68,9 @@ export class GenerateQuestionUseCase {
         imageBuffer,
         "image/jpeg",
       );
-    } catch {
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("[image] generation failed:", message);
       return null;
     }
   }
