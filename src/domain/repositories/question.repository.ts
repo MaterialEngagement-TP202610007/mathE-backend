@@ -1,8 +1,5 @@
 import { QuestionEntity } from "../entities/question.entity.js";
-import {
-  CreateQuestionData,
-  QuestionEmbeddingVector,
-} from "../interfaces/question/index.js";
+import { CreateQuestionData } from "../interfaces/question/index.js";
 import { PaginationDto } from "../dtos/shared/pagination.dto.js";
 import { PaginatedResult } from "../interfaces/shared/paginated-result.interface.js";
 
@@ -22,9 +19,10 @@ export interface QuestionFilters {
 }
 
 export abstract class QuestionRepository {
-  abstract findEmbeddingsByVakStyle(
+  abstract findRecentStatementsByVakStyle(
     vakStyle: string,
-  ): Promise<QuestionEmbeddingVector[]>;
+    limit: number,
+  ): Promise<string[]>;
 
   abstract createWithOptionsAndEmbedding(
     data: CreateQuestionData,

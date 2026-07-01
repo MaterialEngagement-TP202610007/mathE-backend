@@ -11,6 +11,7 @@ import { GetQuestionUseCase } from "../../domain/use-cases/question/get-question
 import { ApproveQuestionUseCase } from "../../domain/use-cases/question/approve-question.use-case.js";
 import { RejectQuestionUseCase } from "../../domain/use-cases/question/reject-question.use-case.js";
 import { DeleteQuestionUseCase } from "../../domain/use-cases/question/delete-question.use-case.js";
+import { SseNotificationService } from "../../infrastructure/services/sse-notification.service.js";
 
 export class QuestionController {
   constructor(
@@ -21,6 +22,7 @@ export class QuestionController {
     private readonly approveQuestionUseCase: ApproveQuestionUseCase,
     private readonly rejectQuestionUseCase: RejectQuestionUseCase,
     private readonly deleteQuestionUseCase: DeleteQuestionUseCase,
+    private readonly sseService: SseNotificationService,
   ) {}
 
   private parsePagination(req: Request): [string?, PaginationDto?] {
@@ -41,16 +43,31 @@ export class QuestionController {
     });
     if (error) return res.status(400).json({ error });
 
-    try {
-      const questions = await this.bulkGenerateQuestionsUseCase.execute(
-        dto!,
-        rawCount,
-        req.user!.id,
-      );
-      res.status(201).json(questions);
-    } catch (err) {
-      next(err);
-    }
+    const userId = req.user!.id;
+
+    res.status(202).json({
+      message: "Generation started",
+      vakStyle: dto!.vakStyle,
+      count: rawCount,
+    });
+
+    this.bulkGenerateQuestionsUseCase
+      .execute(dto!, rawCount, userId, {
+        onGenerated: (q) => {
+          this.sseService.push(userId, "notification", {
+            type: "question_generated",
+            questionId: q.id,
+            vakStyle: q.vakStyle,
+          });
+        },
+        onFailed: () => {
+          this.sseService.push(userId, "notification", {
+            type: "question_failed",
+            vakStyle: dto!.vakStyle,
+          });
+        },
+      })
+      .catch(() => {});
   };
 
   listMyQuestions = async (req: Request, res: Response, next: NextFunction) => {

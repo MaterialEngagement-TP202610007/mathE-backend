@@ -17,6 +17,7 @@ import { GeminiQuestionGeneratorAdapter } from "../../infrastructure/adapters/ge
 import { GeminiEmbeddingAdapter } from "../../infrastructure/adapters/gemini-embedding.adapter.impl.js";
 import { GeminiImageGeneratorAdapter } from "../../infrastructure/adapters/gemini-image-generator.adapter.impl.js";
 import { S3ImageStorageAdapter } from "../../infrastructure/adapters/s3-image-storage.adapter.impl.js";
+import { sseNotificationService } from "../../infrastructure/services/sse-notification.service.js";
 import { envs } from "../../config/envs.js";
 
 export class QuestionRoutes {
@@ -38,12 +39,10 @@ export class QuestionRoutes {
           embeddingAdapter,
           imageGenerator,
           imageStorage,
-          {
-            similarityThreshold: envs.QUESTION_SIMILARITY_THRESHOLD,
-            maxAttempts: envs.QUESTION_MAX_GENERATION_ATTEMPTS,
-          },
+          { maxAttempts: envs.QUESTION_MAX_GENERATION_ATTEMPTS },
         ),
         notificationRepository,
+        questionRepository,
       ),
       new ListQuestionsUseCase(questionRepository),
       new ValidatedHistoryUseCase(questionRepository),
@@ -51,6 +50,7 @@ export class QuestionRoutes {
       new ApproveQuestionUseCase(questionRepository),
       new RejectQuestionUseCase(questionRepository),
       new DeleteQuestionUseCase(questionRepository),
+      sseNotificationService,
     );
 
     router.use(authMiddleware);

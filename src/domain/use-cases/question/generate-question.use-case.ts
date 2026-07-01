@@ -9,9 +9,10 @@ import { GenerateQuestionDto } from "../../dtos/question/generate-question.dto.j
 import { QuestionEntity } from "../../entities/question.entity.js";
 import { GeneratedQuestion } from "../../interfaces/question/index.js";
 import { VAK_VALUES } from "../../constants/vak.constant.js";
+import { buildQuestionGenerationPrompt } from "../../prompts/question-generation.prompt.js";
+import { buildQuestionImagePrompt } from "../../prompts/question-image.prompt.js";
 
 export interface GenerateQuestionConfig {
-  similarityThreshold: number;
   maxAttempts: number;
 }
 
@@ -25,28 +26,17 @@ export class GenerateQuestionUseCase {
     private readonly config: GenerateQuestionConfig,
   ) {}
 
-  async execute(dto: GenerateQuestionDto): Promise<QuestionEntity> {
-    
-    const existing = await this.questionRepository.findEmbeddingsByVakStyle(
-      dto.vakStyle,
-    );
-
+  async execute(
+    dto: GenerateQuestionDto,
+    recentStatements: string[] = [],
+  ): Promise<QuestionEntity> {
     for (let attempt = 1; attempt <= this.config.maxAttempts; attempt++) {
-
-      const generated = await this.aiGenerator.generateQuestion(dto.vakStyle);
+      const prompt = buildQuestionGenerationPrompt(dto.vakStyle, recentStatements);
+      const generated = await this.aiGenerator.generateQuestion(prompt);
 
       if (!this.isValid(generated)) continue;
 
       const vector = await this.embeddingAdapter.embed(generated.statement);
-
-      // se compara el vector de la pregunta generada con los vectores de las preguntas existentes
-      const maxSimilarity = existing.reduce(
-        (max, e) => Math.max(max, this.cosineSimilarity(vector, e.vector)),
-        0,
-      );
-      
-      if (maxSimilarity >= this.config.similarityThreshold) continue;
-
       const mediaUrl = await this.generateAndUploadImage(generated.statement);
 
       return this.questionRepository.createWithOptionsAndEmbedding({
@@ -65,13 +55,13 @@ export class GenerateQuestionUseCase {
     }
 
     throw CustomError.serviceUnavailable(
-      `Could not generate a unique ${dto.vakStyle} question after ${this.config.maxAttempts} attempts`,
+      `Could not generate a valid ${dto.vakStyle} question after ${this.config.maxAttempts} attempts`,
     );
   }
 
   private async generateAndUploadImage(statement: string): Promise<string | null> {
     try {
-      const prompt = `Colorful educational illustration for a Peruvian school activity. Scene: "${statement}". Child-friendly art style, vibrant colors, no text or labels.`;
+      const prompt = buildQuestionImagePrompt(statement);
       const imageBuffer = await this.imageGenerator.generateImage(prompt);
       return await this.imageStorage.upload(
         `questions/${uuidv4()}.jpeg`,
@@ -91,22 +81,5 @@ export class GenerateQuestionUseCase {
     }
     const present = new Set(q.options.map((o) => o.vakValue));
     return VAK_VALUES.every((v) => present.has(v));
-  }
-
-  /** Cosine similarity of two equal-length vectors; 0 if either is degenerate. */
-  private cosineSimilarity(a: number[], b: number[]): number {
-    if (a.length !== b.length || a.length === 0) return 0;
-
-    let dot = 0;
-    let normA = 0;
-    let normB = 0;
-    for (let i = 0; i < a.length; i++) {
-      dot += a[i] * b[i];
-      normA += a[i] * a[i];
-      normB += b[i] * b[i];
-    }
-    if (normA === 0 || normB === 0) return 0;
-
-    return dot / (Math.sqrt(normA) * Math.sqrt(normB));
   }
 }

@@ -26,11 +26,6 @@ export const envs = {
     .default("768")
     .asIntPositive(),
 
-  // Question generation tuning
-  QUESTION_SIMILARITY_THRESHOLD: envVar
-    .get("QUESTION_SIMILARITY_THRESHOLD")
-    .default("0.85")
-    .asFloat(),
   QUESTION_MAX_GENERATION_ATTEMPTS: envVar
     .get("QUESTION_MAX_GENERATION_ATTEMPTS")
     .default("3")

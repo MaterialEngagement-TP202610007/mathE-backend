@@ -4,6 +4,7 @@ import { GetNotificationsUseCase } from "../../domain/use-cases/notification/get
 import { MarkNotificationReadUseCase } from "../../domain/use-cases/notification/mark-notification-read.use-case.js";
 import { MarkAllNotificationsReadUseCase } from "../../domain/use-cases/notification/mark-all-notifications-read.use-case.js";
 import { GetUnreadCountUseCase } from "../../domain/use-cases/notification/get-unread-count.use-case.js";
+import { SseNotificationService } from "../../infrastructure/services/sse-notification.service.js";
 
 export class NotificationController {
   constructor(
@@ -11,6 +12,7 @@ export class NotificationController {
     private readonly markNotificationReadUseCase: MarkNotificationReadUseCase,
     private readonly markAllNotificationsReadUseCase: MarkAllNotificationsReadUseCase,
     private readonly getUnreadCountUseCase: GetUnreadCountUseCase,
+    private readonly sseService: SseNotificationService,
   ) {}
 
   private parsePagination(req: Request): [string?, PaginationDto?] {
@@ -71,5 +73,9 @@ export class NotificationController {
     } catch (err) {
       next(err);
     }
+  };
+
+  stream = (req: Request, res: Response): void => {
+    this.sseService.register(req.user!.id, res);
   };
 }

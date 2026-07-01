@@ -6,5 +6,5 @@ import { GeneratedQuestion } from "../interfaces/question/index.js";
  * structured data — JSON parsing lives in the impl, not in the use case.
  */
 export abstract class AIQuestionGeneratorAdapter {
-  abstract generateQuestion(vakStyle: string): Promise<GeneratedQuestion>;
+  abstract generateQuestion(prompt: string): Promise<GeneratedQuestion>;
 }

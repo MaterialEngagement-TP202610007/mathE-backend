@@ -5,28 +5,22 @@ import {
   QuestionFilters,
 } from "../../domain/repositories/question.repository.js";
 import { QuestionEntity } from "../../domain/entities/question.entity.js";
-import {
-  CreateQuestionData,
-  QuestionEmbeddingVector,
-} from "../../domain/interfaces/question/index.js";
+import { CreateQuestionData } from "../../domain/interfaces/question/index.js";
 import { PaginationDto } from "../../domain/dtos/shared/pagination.dto.js";
 import { PaginatedResult } from "../../domain/interfaces/shared/paginated-result.interface.js";
 
 export class QuestionRepositoryImpl implements QuestionRepository {
-  async findEmbeddingsByVakStyle(
+  async findRecentStatementsByVakStyle(
     vakStyle: string,
-  ): Promise<QuestionEmbeddingVector[]> {
-    const rows = await prisma.questionEmbedding.findMany({
-      where: { question: { vakStyle, deletedAt: null } },
-      select: { questionId: true, embeddingVector: true },
+    limit: number,
+  ): Promise<string[]> {
+    const rows = await prisma.question.findMany({
+      where: { vakStyle, deletedAt: null },
+      orderBy: { generationDate: "desc" },
+      take: limit,
+      select: { statement: true },
     });
-
-    return rows
-      .map((row) => ({
-        questionId: row.questionId,
-        vector: this.parseVector(row.embeddingVector),
-      }))
-      .filter((row) => row.vector.length > 0);
+    return rows.map((r) => r.statement);
   }
 
   async createWithOptionsAndEmbedding(
@@ -204,12 +198,4 @@ export class QuestionRepositoryImpl implements QuestionRepository {
     return a;
   }
 
-  private parseVector(raw: string): number[] {
-    try {
-      const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  }
 }
