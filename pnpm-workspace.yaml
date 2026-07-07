@@ -3,3 +3,4 @@ allowBuilds:
   '@scarf/scarf': false
   esbuild: false
   prisma: false
+  unrs-resolver: true

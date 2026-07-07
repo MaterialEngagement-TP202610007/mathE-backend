@@ -20,7 +20,7 @@ export class GeminiImageGeneratorAdapter implements AIImageGeneratorAdapter {
           prompt,
           response_format: "b64_json",
           n: 1,
-          size: "1536x1024",
+          size: "1792x1024",
         }),
       });
     } catch {

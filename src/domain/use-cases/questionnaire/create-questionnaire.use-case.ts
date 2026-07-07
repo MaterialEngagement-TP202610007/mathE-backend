@@ -36,37 +36,47 @@ export class CreateQuestionnaireUseCase {
         "You already have an active questionnaire in progress",
       );
 
-    const slots: QuestionSlot[] = [];
-    let usedFallback = false;
+    // 1. For each VAK style, check whether the DB has enough approved
+    //    (AI-generated) questions to cover the full distribution.
+    const dbQuestionsByStyle = new Map<VakStyle, { id: number }[]>();
+    let allStylesFullyCovered = true;
 
-    // 1. For each VAK style, fetch available approved questions from DB.
-    //    Fill missing slots with fallback templates.
     for (const style of VAK_STYLES) {
       const needed = STYLE_DISTRIBUTION[style];
       const dbQuestions = await this.questionRepository.findApprovedByStyle(
         style,
         needed,
       );
+      dbQuestionsByStyle.set(style, dbQuestions);
+      if (dbQuestions.length < needed) allStylesFullyCovered = false;
+    }
 
-      for (const q of dbQuestions) {
-        slots.push({ dbQuestionId: q.id });
-      }
+    // 2. All-or-nothing: either every question comes from the DB (AI-generated)
+    //    or every question comes from the fallback bank. Never mix both.
+    const slots: QuestionSlot[] = [];
+    const usedFallback = !allStylesFullyCovered;
 
-      const deficit = needed - dbQuestions.length;
-      if (deficit > 0) {
-        usedFallback = true;
+    for (const style of VAK_STYLES) {
+      const needed = STYLE_DISTRIBUTION[style];
+
+      if (allStylesFullyCovered) {
+        const dbQuestions = dbQuestionsByStyle.get(style) ?? [];
+        for (const q of dbQuestions) {
+          slots.push({ dbQuestionId: q.id });
+        }
+      } else {
         const pool = this.fallbackAdapter.getByStyle(style);
-        const picked = shuffle(pool).slice(0, deficit);
+        const picked = shuffle(pool).slice(0, needed);
         for (const fb of picked) {
           slots.push({ fallback: fb });
         }
       }
     }
 
-    // 2. Shuffle all slots so questions are not grouped by style.
+    // 3. Shuffle all slots so questions are not grouped by style.
     const shuffledSlots = shuffle(slots).slice(0, TOTAL_QUESTIONS);
 
-    // 3. Split into DB questions and fallback questions, assigning order.
+    // 4. Split into DB questions and fallback questions, assigning order.
     const params: QuestionnaireCreationParams = {
       studentId,
       usedFallback,

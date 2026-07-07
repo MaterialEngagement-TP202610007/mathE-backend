@@ -71,8 +71,9 @@ export class QuestionnaireRoutes {
      *     description: >
      *       Creates a questionnaire (status=in_progress) and selects 10 questions
      *       distributed across VAK styles (Visual=4, Auditory=3, Kinesthetic=3).
-     *       Questions are selected randomly from approved DB questions; if there
-     *       are not enough for a style, the local fallback bank is used (usedFallback=true).
+     *       Questions are all-or-nothing: if every VAK style has enough approved
+     *       AI-generated DB questions, all 10 come from the DB. Otherwise all 10 come
+     *       from the local fallback bank (usedFallback=true). The two sources are never mixed.
      *       The response includes the 10 questions in randomised order. The question's
      *       own vakStyle is hidden, but each option exposes its vakValue (V|A|K) label.
      *     security: [{ bearerAuth: [] }]
