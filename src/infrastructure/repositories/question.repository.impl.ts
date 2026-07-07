@@ -66,7 +66,12 @@ export class QuestionRepositoryImpl implements QuestionRepository {
     // Fetch up to 3× the needed amount then shuffle — gives random selection
     // without a DB-specific random order clause.
     const rows = await prisma.question.findMany({
-      where: { vakStyle, validationStatus: "approved", deletedAt: null },
+      where: {
+        vakStyle,
+        validationStatus: "approved",
+        origin: "ai_generated",
+        deletedAt: null,
+      },
       take: limit * 3,
       include: { options: { where: { deletedAt: null } } },
       orderBy: { id: "asc" },
