@@ -81,6 +81,9 @@ export class ResultRepositoryImpl implements ResultRepository {
       ...(filters.predominantStyle !== undefined && {
         predominantStyle: filters.predominantStyle,
       }),
+      ...(filters.classifierType !== undefined && {
+        classifierType: filters.classifierType,
+      }),
       ...((filters.startDate !== undefined || filters.endDate !== undefined) && {
         createdAt: {
           ...(filters.startDate !== undefined && { gte: filters.startDate }),
@@ -118,11 +121,14 @@ export class ResultRepositoryImpl implements ResultRepository {
       ...(filters.classifierType !== undefined && {
         classifierType: filters.classifierType,
       }),
-      ...(filters.gradeId !== undefined && {
-        student: { academicGradeId: filters.gradeId },
-      }),
-      ...(filters.schoolId !== undefined && {
-        student: { schoolId: filters.schoolId },
+      // Both conditions target the same relation — merge them into one object.
+      ...((filters.gradeId !== undefined || filters.schoolId !== undefined) && {
+        student: {
+          ...(filters.gradeId !== undefined && {
+            academicGradeId: filters.gradeId,
+          }),
+          ...(filters.schoolId !== undefined && { schoolId: filters.schoolId }),
+        },
       }),
     };
 

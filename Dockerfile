@@ -1,7 +1,8 @@
 # ── Builder ──────────────────────────────────────────────────────────────────
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 
-RUN npm install -g pnpm
+# pnpm version pinned to the one that produced pnpm-lock.yaml (devEngines ^11).
+RUN corepack enable && corepack prepare pnpm@11.1.2 --activate
 
 WORKDIR /app
 
@@ -14,9 +15,9 @@ RUN DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy" pnpm exec prism
 RUN pnpm build
 
 # ── Runner ────────────────────────────────────────────────────────────────────
-FROM node:20-alpine AS runner
+FROM node:22-alpine AS runner
 
-RUN npm install -g pnpm
+RUN corepack enable && corepack prepare pnpm@11.1.2 --activate
 
 WORKDIR /app
 
@@ -40,6 +41,8 @@ COPY prisma ./prisma
 # Source files imported by seed.ts at runtime via tsx
 COPY src/config ./src/config
 COPY src/domain ./src/domain
+# Admin bootstrap (seed + `pnpm db:bootstrap-admin`) uses repository/bcrypt impls
+COPY src/infrastructure ./src/infrastructure
 
 COPY start.sh ./
 RUN chmod +x start.sh

@@ -10,4 +10,8 @@ export abstract class MLDatasetRepository {
   ): Promise<PaginatedResult<MLDatasetEntity>>;
 
   abstract findById(id: number): Promise<MLDatasetEntity | null>;
+
+  abstract findByQuestionnaire(
+    questionnaireId: number,
+  ): Promise<MLDatasetEntity | null>;
 }

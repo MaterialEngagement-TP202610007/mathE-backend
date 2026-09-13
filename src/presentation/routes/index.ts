@@ -7,11 +7,13 @@ import { NotificationRoutes } from "./notification.routes.js";
 import { ResultRoutes } from "./result.routes.js";
 import { MLDatasetRoutes } from "./ml-dataset.routes.js";
 import { SchoolRoutes } from "./school.routes.js";
+import { HealthRoutes } from "./health.routes.js";
 
 export class AppRoutes {
   static get routes(): Router {
     const router = Router();
 
+    router.use("/api/health", HealthRoutes.routes);
     router.use("/api/auth", AuthRoutes.routes);
     router.use("/api/users", UserRoutes.routes);
     router.use("/api/questions", QuestionRoutes.routes);

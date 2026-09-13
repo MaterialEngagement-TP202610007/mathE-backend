@@ -5,11 +5,24 @@ import {
   CompleteWithAnswersAndDatasetParams,
   CompleteWithAnswersAndDatasetResult,
   CreateQuestionnaireResult,
+  PublicOptionView,
   PublicQuestionView,
   QuestionnaireCreationParams,
+  QuestionnaireQuestionOptions,
 } from "../../domain/interfaces/questionnaire/index.js";
 import { PaginationDto } from "../../domain/dtos/shared/pagination.dto.js";
 import { PaginatedResult } from "../../domain/interfaces/shared/paginated-result.interface.js";
+import { CustomError } from "../../domain/error/custom-error.js";
+
+const CREATE_TRANSACTION_TIMEOUT_MS = 15_000;
+
+/**
+ * Student-facing option: the VAK label (`vakValue`) is never sent while the
+ * quiz is running — completion reads it from the database instead.
+ */
+function toPublicOption(option: { id: number; text: string }): PublicOptionView {
+  return { id: option.id, text: option.text };
+}
 
 export class QuestionnaireRepositoryImpl implements QuestionnaireRepository {
   async createWithQuestions(
@@ -51,35 +64,27 @@ export class QuestionnaireRepositoryImpl implements QuestionnaireRepository {
           statement: existing.statement,
           contentType: existing.contentType,
           mediaUrl: existing.mediaUrl,
-          options: existing.options.map((o) => ({
-            id: o.id,
-            text: o.text,
-            vakValue: o.vakValue,
-          })),
+          options: existing.options.map(toPublicOption),
         });
       }
 
-      // 2. Fetch DB question details (strip sensitive fields).
-      const dbViews: Array<PublicQuestionView> = await Promise.all(
-        params.assignedQuestions.map(async ({ questionId, order }) => {
-          const q = await tx.question.findFirstOrThrow({
-            where: { id: questionId, deletedAt: null },
-            include: { options: { where: { deletedAt: null } } },
-          });
-          return {
-            order,
-            questionId: q.id,
-            statement: q.statement,
-            contentType: q.contentType,
-            mediaUrl: q.mediaUrl,
-            options: q.options.map((o) => ({
-              id: o.id,
-              text: o.text,
-              vakValue: o.vakValue,
-            })),
-          };
-        }),
-      );
+      // 2. Fetch DB question details (strip sensitive fields). Sequential on
+      //    purpose: an interactive transaction uses a single connection.
+      const dbViews: Array<PublicQuestionView> = [];
+      for (const { questionId, order } of params.assignedQuestions) {
+        const q = await tx.question.findFirstOrThrow({
+          where: { id: questionId, deletedAt: null },
+          include: { options: { where: { deletedAt: null } } },
+        });
+        dbViews.push({
+          order,
+          questionId: q.id,
+          statement: q.statement,
+          contentType: q.contentType,
+          mediaUrl: q.mediaUrl,
+          options: q.options.map(toPublicOption),
+        });
+      }
 
       // 3. Create the questionnaire record.
       const questionnaire = await tx.questionnaire.create({
@@ -114,7 +119,7 @@ export class QuestionnaireRepositoryImpl implements QuestionnaireRepository {
         updatedAt: questionnaire.updatedAt,
         questions: sortedQuestions,
       };
-    });
+    }, { timeout: CREATE_TRANSACTION_TIMEOUT_MS });
   }
 
   async findById(id: number): Promise<QuestionnaireEntity | null> {
@@ -168,11 +173,7 @@ export class QuestionnaireRepositoryImpl implements QuestionnaireRepository {
         statement: qq.question.statement,
         contentType: qq.question.contentType,
         mediaUrl: qq.question.mediaUrl,
-        options: qq.question.options.map((o) => ({
-          id: o.id,
-          text: o.text,
-          vakValue: o.vakValue,
-        })),
+        options: qq.question.options.map(toPublicOption),
       })),
     };
   }
@@ -206,6 +207,26 @@ export class QuestionnaireRepositoryImpl implements QuestionnaireRepository {
     params: CompleteWithAnswersAndDatasetParams,
   ): Promise<CompleteWithAnswersAndDatasetResult> {
     return prisma.$transaction(async (tx) => {
+      // 0. Claim the questionnaire first. The conditional update row-locks it,
+      //    so a concurrent submit waits here and then matches zero rows.
+      const claimed = await tx.questionnaire.updateMany({
+        where: {
+          id: params.questionnaireId,
+          status: "in_progress",
+          deletedAt: null,
+        },
+        data: {
+          status: "completed",
+          endTime: new Date(),
+          completionPercentage: params.completionPercentage,
+        },
+      });
+      if (claimed.count === 0) {
+        throw CustomError.conflict(
+          "Questionnaire is already being completed, retry shortly",
+        );
+      }
+
       // 1. Save all 10 answers
       await tx.answer.createMany({
         data: params.answers.map((a) => ({
@@ -282,16 +303,6 @@ export class QuestionnaireRepositoryImpl implements QuestionnaireRepository {
         },
       });
 
-      // 5. Mark questionnaire as completed
-      await tx.questionnaire.update({
-        where: { id: params.questionnaireId },
-        data: {
-          status: "completed",
-          endTime: new Date(),
-          completionPercentage: params.completionPercentage,
-        },
-      });
-
       return {
         visualScore,
         auditoryScore,
@@ -303,6 +314,27 @@ export class QuestionnaireRepositoryImpl implements QuestionnaireRepository {
         vakLabel,
       };
     });
+  }
+
+  async findQuestionOptions(
+    questionnaireId: number,
+  ): Promise<QuestionnaireQuestionOptions[]> {
+    const rows = await prisma.questionnaireQuestion.findMany({
+      where: { questionnaireId },
+      select: {
+        questionId: true,
+        question: {
+          select: {
+            options: { where: { deletedAt: null }, select: { id: true } },
+          },
+        },
+      },
+    });
+
+    return rows.map((row) => ({
+      questionId: row.questionId,
+      optionIds: row.question.options.map((o) => o.id),
+    }));
   }
 
   async abandon(id: number): Promise<QuestionnaireEntity> {

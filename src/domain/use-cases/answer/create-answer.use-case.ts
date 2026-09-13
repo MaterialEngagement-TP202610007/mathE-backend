@@ -3,6 +3,7 @@ import { AnswerRepository } from "../../repositories/answer.repository.js";
 import { QuestionnaireRepository } from "../../repositories/questionnaire.repository.js";
 import { CreateAnswerDto } from "../../dtos/answer/create-answer.dto.js";
 import { CustomError } from "../../error/custom-error.js";
+import { assertOwnsQuestionnaire } from "../../policies/questionnaire-access.policy.js";
 
 export class CreateAnswerUseCase {
   constructor(
@@ -10,7 +11,7 @@ export class CreateAnswerUseCase {
     private readonly questionnaireRepository: QuestionnaireRepository,
   ) {}
 
-  async execute(dto: CreateAnswerDto): Promise<AnswerEntity> {
+  async execute(dto: CreateAnswerDto, studentId: number): Promise<AnswerEntity> {
     const questionnaire = await this.questionnaireRepository.findById(
       dto.questionnaireId,
     );
@@ -18,6 +19,7 @@ export class CreateAnswerUseCase {
       throw CustomError.notFound(
         `Questionnaire ${dto.questionnaireId} not found`,
       );
+    assertOwnsQuestionnaire(questionnaire, studentId);
     if (questionnaire.status !== "in_progress")
       throw CustomError.badRequest(
         `Questionnaire is ${questionnaire.status}, answers cannot be submitted`,

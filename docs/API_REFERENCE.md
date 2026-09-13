@@ -380,15 +380,15 @@ interface Questionnaire {
   deletedAt: string | null;
 }
 
-// Question as delivered to a student. The question's own vakStyle is hidden,
-// but each option carries its vakValue (V|A|K) label.
+// Question as delivered to a student. The question's vakStyle and each
+// option's vakValue are hidden while the quiz is running.
 interface PublicQuestionView {
   order: number;
   questionId: number;
   statement: string;
   contentType: string;
   mediaUrl: string | null;
-  options: { id: number; text: string; vakValue: "V" | "A" | "K" }[];
+  options: { id: number; text: string }[];
 }
 
 // Returned by POST /api/questionnaires and GET /api/questionnaires/active
@@ -424,10 +424,10 @@ Response `201`: `CreateQuestionnaireResponse`.
       "contentType": "text",
       "mediaUrl": null,
       "options": [
-        { "id": 301, "text": "Ver un diagrama", "vakValue": "V" },
-        { "id": 302, "text": "Escuchar una explicación", "vakValue": "A" },
-        { "id": 303, "text": "Hacerlo con las manos", "vakValue": "K" },
-        { "id": 304, "text": "Leer un instructivo", "vakValue": "V" }
+        { "id": 301, "text": "Ver un diagrama" },
+        { "id": 302, "text": "Escuchar una explicación" },
+        { "id": 303, "text": "Hacerlo con las manos" },
+        { "id": 304, "text": "Leer un instructivo" }
       ]
     }
   ]

@@ -1,8 +1,17 @@
 import { VakFeedbackAdapter } from "../../domain/adapters/vak-feedback.adapter.js";
 import { CustomError } from "../../domain/error/custom-error.js";
 import { envs } from "../../config/envs.js";
+import {
+  fetchWithTimeout,
+  readJson,
+  upstreamStatusError,
+} from "../http/fetch-with-timeout.js";
+import {
+  GEMINI_MODELS_BASE_URL,
+  extractCandidateText,
+} from "./gemini-response.helper.js";
 
-const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
+const SERVICE_NAME = "Gemini feedback";
 
 export class GeminiVakFeedbackAdapterImpl implements VakFeedbackAdapter {
   async generateFeedback(
@@ -18,30 +27,25 @@ export class GeminiVakFeedbackAdapterImpl implements VakFeedbackAdapter {
       kinestheticProbability,
     );
 
-    const url = `${GEMINI_BASE}/${envs.GEMINI_CHAT_MODEL}:generateContent?key=${envs.GEMINI_API_KEY}`;
+    const url = `${GEMINI_MODELS_BASE_URL}/${envs.GEMINI_CHAT_MODEL}:generateContent`;
 
-    let response: Response;
-    try {
-      response = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-        }),
-      });
-    } catch {
-      throw CustomError.serviceUnavailable("Gemini feedback request failed");
-    }
+    const response = await fetchWithTimeout(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": envs.GEMINI_API_KEY,
+      },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+      }),
+      timeoutMs: envs.GEMINI_FEEDBACK_TIMEOUT_MS,
+      serviceName: SERVICE_NAME,
+    });
 
-    if (!response.ok) {
-      throw CustomError.badGateway(
-        `Gemini feedback returned status ${response.status}`,
-      );
-    }
+    if (!response.ok) throw upstreamStatusError(response, SERVICE_NAME);
 
-    const payload = (await response.json()) as any;
-    const text: string | undefined =
-      payload?.candidates?.[0]?.content?.parts?.[0]?.text;
+    const payload = await readJson(response, SERVICE_NAME);
+    const text = extractCandidateText(payload);
 
     if (!text) throw CustomError.badGateway("Gemini feedback returned no content");
 
@@ -61,9 +65,10 @@ export class GeminiVakFeedbackAdapterImpl implements VakFeedbackAdapter {
     };
 
     const styleLabel = styleES[predominantStyle] ?? predominantStyle;
-    const vPct = Math.round(visualProbability * 100);
-    const aPct = Math.round(auditoryProbability * 100);
-    const kPct = Math.round(kinestheticProbability * 100);
+    // Probabilities are already on a 0-100 scale (Lambda and simple_score).
+    const vPct = Math.round(visualProbability);
+    const aPct = Math.round(auditoryProbability);
+    const kPct = Math.round(kinestheticProbability);
 
     return `Eres un experto en estilos de aprendizaje VAK especializado en educación básica (primaria y secundaria) en Perú.
 Escribe una retroalimentación personalizada en español castellano peruano para un estudiante cuyos resultados son:

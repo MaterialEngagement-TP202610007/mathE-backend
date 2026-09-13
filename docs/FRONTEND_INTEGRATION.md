@@ -161,14 +161,14 @@ interface Questionnaire {
 }
 
 // Questions as delivered to a student taking a questionnaire. The question's
-// own vakStyle is hidden, but each option exposes its vakValue (V|A|K) label.
+// own vakStyle and each option's vakValue are hidden while the quiz is running.
 interface PublicQuestionView {
   order: number;
   questionId: number;
   statement: string;
   contentType: string;          // e.g. "text"
   mediaUrl: string | null;
-  options: { id: number; text: string; vakValue: "V" | "A" | "K" }[];
+  options: { id: number; text: string }[];
 }
 
 interface CreateQuestionnaireResponse {

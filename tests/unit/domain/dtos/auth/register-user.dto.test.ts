@@ -28,9 +28,27 @@ describe('RegisterUserDto.create', () => {
     expect(dto!.isActive).toBe(false);
   });
 
-  it('admin starts active (isActive=true)', () => {
-    const [, dto] = RegisterUserDto.create({ ...base, roleId: ROLES.ADMIN });
-    expect(dto!.isActive).toBe(true);
+  it('rejects admin roleId (public registration cannot create admins)', () => {
+    const [err, dto] = RegisterUserDto.create({ ...base, roleId: ROLES.ADMIN });
+    expect(err).toBe('Invalid Role Id');
+    expect(dto).toBeUndefined();
+  });
+
+  it('rejects unknown roleId', () => {
+    const [err] = RegisterUserDto.create({ ...base, roleId: 99 });
+    expect(err).toBe('Invalid Role Id');
+  });
+
+  it('rejects non-numeric roleId', () => {
+    const [err] = RegisterUserDto.create({ ...base, roleId: 'abc' });
+    expect(err).toBe('Invalid Role Id');
+  });
+
+  it('accepts numeric string roleId for student', () => {
+    const [err, dto] = RegisterUserDto.create({ ...base, roleId: String(ROLES.STUDENT) });
+    expect(err).toBeUndefined();
+    expect(dto!.roleId).toBe(ROLES.STUDENT);
+    expect(dto!.isActive).toBe(false);
   });
 
   it('rejects missing password', () => {

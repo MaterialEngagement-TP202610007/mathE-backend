@@ -165,6 +165,92 @@ describe('GenerateQuestionUseCase', () => {
     expect(aiGenerator.generateQuestion).toHaveBeenCalledTimes(3);
   });
 
+  it('saves the question without an embedding when embedding fails', async () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    aiGenerator.generateQuestion.mockResolvedValueOnce(validGenerated);
+    embeddingAdapter.embed.mockRejectedValueOnce(new Error('embedding down'));
+    repo.createWithOptionsAndEmbedding.mockResolvedValueOnce(makeEntity());
+
+    const result = await useCase.execute(visualDto!);
+
+    expect(result).toBeInstanceOf(QuestionEntity);
+    const payload = repo.createWithOptionsAndEmbedding.mock.calls[0][0];
+    expect(payload.embeddingVector).toBeNull();
+    expect(aiGenerator.generateQuestion).toHaveBeenCalledTimes(1);
+  });
+
+  describe('when the AI generator throws', () => {
+    let sleep: jest.Mock;
+
+    beforeEach(() => {
+      jest.spyOn(console, 'error').mockImplementation(() => {});
+      sleep = jest.fn().mockResolvedValue(undefined);
+      useCase = new GenerateQuestionUseCase(
+        repo, aiGenerator, embeddingAdapter, imageGenerator, imageStorage,
+        { maxAttempts: 3, retryBaseDelayMs: 1000, sleep },
+      );
+    });
+
+    it('retries with exponential backoff and succeeds', async () => {
+      aiGenerator.generateQuestion
+        .mockRejectedValueOnce(Object.assign(new Error('rate limited'), { statusCode: 429 }))
+        .mockRejectedValueOnce(new Error('timeout'))
+        .mockResolvedValueOnce(validGenerated);
+      repo.createWithOptionsAndEmbedding.mockResolvedValueOnce(makeEntity());
+
+      const result = await useCase.execute(visualDto!);
+
+      expect(result).toBeInstanceOf(QuestionEntity);
+      expect(aiGenerator.generateQuestion).toHaveBeenCalledTimes(3);
+      expect(sleep.mock.calls).toEqual([[1000], [2000]]);
+    });
+
+    it('rethrows the last error after maxAttempts without sleeping after the last attempt', async () => {
+      const lastError = new Error('still failing');
+      aiGenerator.generateQuestion
+        .mockRejectedValueOnce(new Error('first'))
+        .mockRejectedValueOnce(new Error('second'))
+        .mockRejectedValueOnce(lastError);
+
+      await expect(useCase.execute(visualDto!)).rejects.toBe(lastError);
+      expect(sleep).toHaveBeenCalledTimes(2);
+      expect(repo.createWithOptionsAndEmbedding).not.toHaveBeenCalled();
+    });
+
+    it('does not back off between invalid-content retries', async () => {
+      aiGenerator.generateQuestion
+        .mockResolvedValueOnce({ statement: '', options: [] } as any)
+        .mockResolvedValueOnce(validGenerated);
+      repo.createWithOptionsAndEmbedding.mockResolvedValueOnce(makeEntity());
+
+      await useCase.execute(visualDto!);
+
+      expect(sleep).not.toHaveBeenCalled();
+    });
+  });
+
+  it('uploads PNG images with a .png key and image/png content type', async () => {
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]);
+    aiGenerator.generateQuestion.mockResolvedValueOnce(validGenerated);
+    imageGenerator.generateImage.mockResolvedValueOnce(png);
+    repo.createWithOptionsAndEmbedding.mockResolvedValueOnce(makeEntity());
+
+    await useCase.execute(visualDto!);
+
+    expect(imageStorage.upload).toHaveBeenCalledWith('questions/test-uuid-1234.png', png, 'image/png');
+  });
+
+  it('uploads JPEG images with a .jpeg key and image/jpeg content type', async () => {
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00]);
+    aiGenerator.generateQuestion.mockResolvedValueOnce(validGenerated);
+    imageGenerator.generateImage.mockResolvedValueOnce(jpeg);
+    repo.createWithOptionsAndEmbedding.mockResolvedValueOnce(makeEntity());
+
+    await useCase.execute(visualDto!);
+
+    expect(imageStorage.upload).toHaveBeenCalledWith('questions/test-uuid-1234.jpeg', jpeg, 'image/jpeg');
+  });
+
   it('passes recentStatements to prompt builder', async () => {
     const recent = ['Pregunta A', 'Pregunta B'];
     aiGenerator.generateQuestion.mockResolvedValueOnce(validGenerated);

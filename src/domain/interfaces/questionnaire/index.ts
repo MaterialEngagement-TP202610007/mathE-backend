@@ -29,10 +29,15 @@ export interface CompleteWithAnswersAndDatasetResult {
   vakLabel: string;
 }
 
+/** Question ids assigned to a questionnaire with their valid (non-deleted) option ids. */
+export interface QuestionnaireQuestionOptions {
+  questionId: number;
+  optionIds: number[];
+}
+
 export interface PublicOptionView {
   id: number;
   text: string;
-  vakValue: string; // V | A | K — the option's VAK label
 }
 
 export interface PublicQuestionView {

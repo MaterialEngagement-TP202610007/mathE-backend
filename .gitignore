@@ -17,6 +17,9 @@ pnpm-debug.log*
 # OS / editor
 .DS_Store
 
+# CodeGraph local index
+.codegraph/
+
 src/generated/
 
 # Source CSV for school seed (parsed offline into schools.generated.ts)

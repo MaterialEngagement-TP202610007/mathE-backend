@@ -118,6 +118,48 @@ describe('BulkGenerateQuestionsUseCase', () => {
     await expect(useCase.execute(visualDto!, 3, 5)).rejects.toMatchObject({ statusCode: 503 });
   });
 
+  it('never runs more generations in parallel than the configured concurrency', async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    let nextId = 1;
+    generateUseCase.execute.mockImplementation(async () => {
+      inFlight++;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise((resolve) => setImmediate(resolve));
+      inFlight--;
+      return makeEntity(nextId++);
+    });
+    useCase = new BulkGenerateQuestionsUseCase(
+      generateUseCase as unknown as GenerateQuestionUseCase,
+      notificationRepo,
+      questionRepo,
+      { concurrency: 2 },
+    );
+
+    const result = await useCase.execute(visualDto!, 5, 5);
+
+    expect(result).toHaveLength(5);
+    expect(generateUseCase.execute).toHaveBeenCalledTimes(5);
+    expect(maxInFlight).toBe(2);
+  });
+
+  it('keeps generating remaining questions after a failure under limited concurrency', async () => {
+    generateUseCase.execute
+      .mockRejectedValueOnce(CustomError.serviceUnavailable('fail'))
+      .mockResolvedValueOnce(makeEntity(2))
+      .mockResolvedValueOnce(makeEntity(3));
+    useCase = new BulkGenerateQuestionsUseCase(
+      generateUseCase as unknown as GenerateQuestionUseCase,
+      notificationRepo,
+      questionRepo,
+      { concurrency: 1 },
+    );
+
+    const result = await useCase.execute(visualDto!, 3, 5);
+
+    expect(result.map((q) => q.id)).toEqual([2, 3]);
+  });
+
   it('creates notification with correct count after success', async () => {
     generateUseCase.execute
       .mockResolvedValueOnce(makeEntity(1))

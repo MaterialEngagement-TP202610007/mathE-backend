@@ -4,7 +4,7 @@ import { RegisterUserDto } from "../../domain/dtos/auth/register-user.dto.js";
 import { LoginUserUseCase } from "../../domain/use-cases/auth/login-user.use-case.js";
 import { RegisterUserUseCase } from "../../domain/use-cases/auth/register-user.use-case.js";
 import { GetCurrentUserUseCase } from "../../domain/use-cases/auth/get-current-user.use-case.js";
-import { UserEntity } from "../../domain/entities/user.entity.js";
+import { toAuthUser } from "../mappers/user.mapper.js";
 
 const AUTH_COOKIE = "auth_token";
 
@@ -15,20 +15,18 @@ const AUTH_COOKIE_OPTIONS: CookieOptions = {
   path: "/",
 };
 
+export interface AuthControllerConfig {
+  /** Cookie lifetime — must match the JWT expiry (SESSION_TTL_HOURS). */
+  sessionTtlMs: number;
+}
+
 export class AuthController {
   constructor(
     private readonly loginUserUseCase: LoginUserUseCase,
     private readonly registerUserUseCase: RegisterUserUseCase,
     private readonly getCurrentUserUseCase: GetCurrentUserUseCase,
+    private readonly config: AuthControllerConfig,
   ) {}
-
-  private toPublicUser(user: UserEntity) {
-    const { password, schoolId, schoolName, ...rest } = user;
-    return {
-      ...rest,
-      school: schoolId ? { id: schoolId, name: schoolName ?? null } : null,
-    };
-  }
 
   login = async (req: Request, res: Response, next: NextFunction) => {
     const [error, dto] = LoginUserDto.create(req.body);
@@ -39,10 +37,10 @@ export class AuthController {
 
       res.cookie(AUTH_COOKIE, token, {
         ...AUTH_COOKIE_OPTIONS,
-        maxAge: 604800 * 1000, // 7 days
+        maxAge: this.config.sessionTtlMs,
       });
 
-      res.json({ user: this.toPublicUser(user), token });
+      res.json({ user: toAuthUser(user), token });
     } catch (err) {
       next(err);
     }
@@ -56,7 +54,7 @@ export class AuthController {
   me = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const user = await this.getCurrentUserUseCase.execute(req.user!.id);
-      res.json({ user: this.toPublicUser(user) });
+      res.json({ user: toAuthUser(user) });
     } catch (err) {
       next(err);
     }

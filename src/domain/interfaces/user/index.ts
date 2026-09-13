@@ -8,3 +8,24 @@ export interface UserListFilters {
   createdAtFrom?: Date;
   createdAtTo?: Date;
 }
+
+export interface CreateAdminData {
+  email: string;
+  name: string;
+  passwordHash: string;
+  roleId: number;
+  birthDate: Date;
+}
+
+export interface PromoteToAdminData {
+  name: string;
+  roleId: number;
+  /** Only set when the password must be replaced. */
+  passwordHash?: string;
+}
+
+export interface BootstrapAdminResult {
+  userId: number;
+  created: boolean;
+  passwordUpdated: boolean;
+}

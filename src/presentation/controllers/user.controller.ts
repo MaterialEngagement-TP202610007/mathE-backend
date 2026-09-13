@@ -10,6 +10,7 @@ import { GetUserByIdUseCase } from "../../domain/use-cases/user/get-user-by-id.u
 import { UpdateUserProfileUseCase } from "../../domain/use-cases/user/update-user-profile.use-case.js";
 import { DeleteUserUseCase } from "../../domain/use-cases/user/delete-user.use-case.js";
 import { ActivateUserUseCase } from "../../domain/use-cases/user/activate-user.use-case.js";
+import { toPublicUser } from "../mappers/user.mapper.js";
 
 export class UserController {
   constructor(
@@ -42,7 +43,7 @@ export class UserController {
 
     try {
       const result = await this.getUsersUseCase.execute(pagination!, filters);
-      res.json({ ...result, items: result.items });
+      res.json({ ...result, items: result.items.map(toPublicUser) });
     } catch (err) {
       next(err);
     }
@@ -57,7 +58,7 @@ export class UserController {
 
     try {
       const result = await this.getStudentsUseCase.execute(pagination!, filters);
-      res.json({ ...result, items: result.items });
+      res.json({ ...result, items: result.items.map(toPublicUser) });
     } catch (err) {
       next(err);
     }
@@ -72,7 +73,7 @@ export class UserController {
 
     try {
       const result = await this.getTeachersUseCase.execute(pagination!, filters);
-      res.json({ ...result, items: result.items });
+      res.json({ ...result, items: result.items.map(toPublicUser) });
     } catch (err) {
       next(err);
     }
@@ -100,7 +101,7 @@ export class UserController {
         pagination!,
         filters,
       );
-      res.json({ ...result, items: result.items });
+      res.json({ ...result, items: result.items.map(toPublicUser) });
     } catch (err) {
       next(err);
     }
@@ -112,7 +113,7 @@ export class UserController {
 
     try {
       const user = await this.getUserByIdUseCase.execute(id);
-      res.json(user);
+      res.json(toPublicUser(user));
     } catch (err) {
       next(err);
     }
@@ -127,7 +128,7 @@ export class UserController {
 
     try {
       const user = await this.updateUserProfileUseCase.execute(id, dto!);
-      res.json(user);
+      res.json(toPublicUser(user));
     } catch (err) {
       next(err);
     }
@@ -142,7 +143,7 @@ export class UserController {
         id,
         req.user?.roleId ?? undefined,
       );
-      res.json({ message: "User deleted", user });
+      res.json({ message: "User deleted", user: toPublicUser(user) });
     } catch (err) {
       next(err);
     }
@@ -157,7 +158,7 @@ export class UserController {
         id,
         req.user?.roleId ?? undefined,
       );
-      res.json({ message: "User activated", user });
+      res.json({ message: "User activated", user: toPublicUser(user) });
     } catch (err) {
       next(err);
     }

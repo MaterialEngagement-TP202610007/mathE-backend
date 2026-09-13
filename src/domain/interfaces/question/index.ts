@@ -31,7 +31,8 @@ export interface CreateQuestionData {
   generationDate: Date;
   teacherId: number | null;
   options: GeneratedOption[];
-  embeddingVector: number[];
+  /** Null when embedding generation failed — the question is saved without one. */
+  embeddingVector: number[] | null;
   embeddingModelVersion: string;
   mediaUrl?: string | null;
 }

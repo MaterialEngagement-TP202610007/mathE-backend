@@ -14,7 +14,16 @@ import { buildQuestionImagePrompt } from "../../prompts/question-image.prompt.js
 
 export interface GenerateQuestionConfig {
   maxAttempts: number;
+  /** Base delay for exponential backoff when the AI call throws (default 1000 ms). */
+  retryBaseDelayMs?: number;
+  /** Injectable delay — lets tests skip real waiting. */
+  sleep?: (ms: number) => Promise<void>;
 }
+
+const DEFAULT_RETRY_BASE_DELAY_MS = 1000;
+
+const defaultSleep = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 export class GenerateQuestionUseCase {
   constructor(
@@ -30,13 +39,30 @@ export class GenerateQuestionUseCase {
     dto: GenerateQuestionDto,
     recentStatements: string[] = [],
   ): Promise<QuestionEntity> {
-    for (let attempt = 1; attempt <= this.config.maxAttempts; attempt++) {
+    const { maxAttempts } = this.config;
+    const baseDelay = this.config.retryBaseDelayMs ?? DEFAULT_RETRY_BASE_DELAY_MS;
+    const sleep = this.config.sleep ?? defaultSleep;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       const prompt = buildQuestionGenerationPrompt(dto.vakStyle, recentStatements);
-      const generated = await this.aiGenerator.generateQuestion(prompt);
+
+      let generated: GeneratedQuestion;
+      try {
+        generated = await this.aiGenerator.generateQuestion(prompt);
+      } catch (err) {
+        // Transient AI failures (429 / 5xx / timeout): back off and retry.
+        if (attempt === maxAttempts) throw err;
+        console.error(
+          `[question] AI generation attempt ${attempt} failed:`,
+          errorMessage(err),
+        );
+        await sleep(baseDelay * 2 ** (attempt - 1));
+        continue;
+      }
 
       if (!this.isValid(generated)) continue;
 
-      const vector = await this.embeddingAdapter.embed(generated.statement);
+      const vector = await this.embedOrNull(generated.statement);
       const mediaUrl = await this.generateAndUploadImage(generated.statement);
 
       return this.questionRepository.createWithOptionsAndEmbedding({
@@ -55,22 +81,32 @@ export class GenerateQuestionUseCase {
     }
 
     throw CustomError.serviceUnavailable(
-      `Could not generate a valid ${dto.vakStyle} question after ${this.config.maxAttempts} attempts`,
+      `Could not generate a valid ${dto.vakStyle} question after ${maxAttempts} attempts`,
     );
+  }
+
+  /** Embeddings are auxiliary — a failure must not discard a valid question. */
+  private async embedOrNull(statement: string): Promise<number[] | null> {
+    try {
+      return await this.embeddingAdapter.embed(statement);
+    } catch (err) {
+      console.error("[embedding] generation failed:", errorMessage(err));
+      return null;
+    }
   }
 
   private async generateAndUploadImage(statement: string): Promise<string | null> {
     try {
       const prompt = buildQuestionImagePrompt(statement);
       const imageBuffer = await this.imageGenerator.generateImage(prompt);
+      const { extension, mimeType } = detectImageType(imageBuffer);
       return await this.imageStorage.upload(
-        `questions/${uuidv4()}.jpeg`,
+        `questions/${uuidv4()}.${extension}`,
         imageBuffer,
-        "image/jpeg",
+        mimeType,
       );
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.error("[image] generation failed:", message);
+      console.error("[image] generation failed:", errorMessage(err));
       return null;
     }
   }
@@ -84,4 +120,18 @@ export class GenerateQuestionUseCase {
     const present = new Set(q.options.map((o) => o.vakValue));
     return VAK_VALUES.every((v) => present.has(v));
   }
+}
+
+const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47];
+
+/** Detects PNG from magic bytes; anything else keeps the previous JPEG default. */
+function detectImageType(data: Buffer): { extension: string; mimeType: string } {
+  const isPng = PNG_SIGNATURE.every((byte, i) => data[i] === byte);
+  return isPng
+    ? { extension: "png", mimeType: "image/png" }
+    : { extension: "jpeg", mimeType: "image/jpeg" };
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }

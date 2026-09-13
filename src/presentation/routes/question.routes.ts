@@ -2,6 +2,7 @@ import { Router } from "express";
 import { QuestionController } from "../controllers/question.controller.js";
 import { authMiddleware } from "../middlewares/auth.middleware.js";
 import { roleGuard } from "../middlewares/role.middleware.js";
+import { questionGenerationRateLimiter } from "../middlewares/rate-limit.middleware.js";
 import { ROLES } from "../../domain/constants/roles.constant.js";
 import { GenerateQuestionUseCase } from "../../domain/use-cases/question/generate-question.use-case.js";
 import { BulkGenerateQuestionsUseCase } from "../../domain/use-cases/question/bulk-generate-questions.use-case.js";
@@ -43,6 +44,7 @@ export class QuestionRoutes {
         ),
         notificationRepository,
         questionRepository,
+        { concurrency: envs.QUESTION_GENERATION_CONCURRENCY },
       ),
       new ListQuestionsUseCase(questionRepository),
       new ValidatedHistoryUseCase(questionRepository),
@@ -60,14 +62,15 @@ export class QuestionRoutes {
      * /api/questions/generate:
      *   post:
      *     tags: [Questions]
-     *     summary: Generate N VAK questions in parallel via Gemini. Admin or Teacher.
+     *     summary: Start background generation of N VAK questions via Gemini. Admin or Teacher.
      *     description: >
-     *       Runs the full generation pipeline N times in parallel (Promise.all):
-     *       Gemini produces a statement + 4 options per question, each is embedded
-     *       and checked for redundancy against existing same-style questions, then
-     *       persisted atomically. All questions start with validationStatus=pending.
-     *       After all are created, a notification is sent with type "questions_generated".
-     *       Slow — allow ~10–30s × count.
+     *       Responds 202 immediately and runs the generation pipeline N times in the
+     *       background with bounded concurrency (QUESTION_GENERATION_CONCURRENCY).
+     *       Each question is embedded (non-fatal on failure), gets an optional image,
+     *       and is persisted with validationStatus=pending. Progress is pushed over SSE
+     *       as `notification` events ({ type: "question_generated", questionId, vakStyle }
+     *       or { type: "question_failed", vakStyle }). Rate limited per user: 10 requests
+     *       every 10 minutes.
      *     security: [{ bearerAuth: [] }]
      *     parameters:
      *       - in: query
@@ -93,20 +96,19 @@ export class QuestionRoutes {
      *               teacherId:
      *                 type: integer
      *                 nullable: true
-     *                 description: Defaults to the authenticated user's id.
+     *                 description: Admin only (ignored for teachers, who are always credited themselves). Defaults to the authenticated user's id.
      *     responses:
-     *       201:
-     *         description: Array of generated questions (validationStatus=pending)
+     *       202:
+     *         description: Generation started — { message, vakStyle, count }
      *       400:
      *         description: Validation error (missing/invalid vakStyle or count out of range)
-     *       502:
-     *         description: Gemini returned an invalid or failed response
-     *       503:
-     *         description: Could not generate a unique question after max attempts
+     *       429:
+     *         description: Too many generation requests — { error }
      */
     router.post(
       "/generate",
       roleGuard(ROLES.ADMIN, ROLES.TEACHER),
+      questionGenerationRateLimiter,
       controller.generate,
     );
 

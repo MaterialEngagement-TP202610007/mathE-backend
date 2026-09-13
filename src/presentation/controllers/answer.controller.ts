@@ -30,7 +30,7 @@ export class AnswerController {
     if (error) return res.status(400).json({ error });
 
     try {
-      const answer = await this.createAnswerUseCase.execute(dto!);
+      const answer = await this.createAnswerUseCase.execute(dto!, req.user!.id);
       res.status(201).json(answer);
     } catch (err) {
       next(err);
@@ -52,6 +52,7 @@ export class AnswerController {
     try {
       const result = await this.listAnswersUseCase.execute(
         questionnaireId,
+        { id: req.user!.id, roleId: req.user!.roleId },
         pagination!,
       );
       res.json(result);
@@ -73,6 +74,7 @@ export class AnswerController {
       const answer = await this.getAnswerUseCase.execute(
         answerId,
         questionnaireId,
+        { id: req.user!.id, roleId: req.user!.roleId },
       );
       res.json(answer);
     } catch (err) {

@@ -43,12 +43,14 @@ export class QuestionRepositoryImpl implements QuestionRepository {
               vakValue: opt.vakValue,
             })),
           },
-          embedding: {
-            create: {
-              embeddingVector: JSON.stringify(data.embeddingVector),
-              modelVersion: data.embeddingModelVersion,
+          ...(data.embeddingVector && {
+            embedding: {
+              create: {
+                embeddingVector: JSON.stringify(data.embeddingVector),
+                modelVersion: data.embeddingModelVersion,
+              },
             },
-          },
+          }),
         },
         include: { options: true },
       });

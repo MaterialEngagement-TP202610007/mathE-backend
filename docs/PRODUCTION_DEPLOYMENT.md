@@ -91,24 +91,48 @@ Set these in **Render → your service → Environment**.
 | `DATABASE_URL` | `postgresql://user:pass@host:5432/db` | Use Render Postgres internal URL for same-region |
 | `JWT_SEED` | random 64-char string | `openssl rand -hex 32` |
 | `GEMINI_API_KEY` | your Gemini key | Google AI Studio |
+| `CORS_ORIGIN` | `https://your-frontend.onrender.com` | exact match, no trailing slash; comma-separated list allowed |
+
+### Image storage (optional — question images are skipped when unset)
+
+| Variable | Value | Notes |
+|----------|-------|-------|
 | `AWS_ACCESS_KEY_ID` | IAM long-term key (AKIA…) | NOT session key (ASIA…) |
 | `AWS_SECRET_ACCESS_KEY` | IAM secret | |
 | `AWS_BUCKET` | `material-engagement-images` | |
 | `CLOUDFRONT_DOMAIN` | `https://d3f9588bi29pky.cloudfront.net` | must include `https://`, no trailing slash |
-| `CORS_ORIGIN` | `https://your-frontend.onrender.com` | exact match, no trailing slash |
 
 ### Optional (safe defaults built in)
 
 | Variable | Default | Override when |
 |----------|---------|---------------|
 | `PORT` | `3000` | Render sets this automatically — do NOT set manually |
-| `GEMINI_CHAT_MODEL` | `gemini-2.0-flash` | switching model |
-| `GEMINI_IMAGE_MODEL` | `gemini-2.0-flash-preview-image-generation` | switching model |
+| `GEMINI_CHAT_MODEL` | `gemini-3.6-flash` | switching model |
+| `GEMINI_IMAGE_MODEL` | `gemini-2.5-flash-image` | switching model |
 | `GEMINI_EMBEDDING_MODEL` | `gemini-embedding-001` | |
 | `GEMINI_EMBEDDING_DIMENSIONS` | `768` | must match stored vectors |
+| `SESSION_TTL_HOURS` | `24` | JWT expiry and auth cookie Max-Age |
 | `QUESTION_MAX_GENERATION_ATTEMPTS` | `3` | lower = faster fail; higher = more retry cost |
+| `QUESTION_GENERATION_CONCURRENCY` | `2` | parallel Gemini generations per batch |
+| `LAMBDA_TIMEOUT_MS` | `7000` | Lambda + feedback run inside `PATCH /complete` |
+| `GEMINI_FEEDBACK_TIMEOUT_MS` | `8000` | |
+| `GEMINI_CHAT_TIMEOUT_MS` | `30000` | |
+| `GEMINI_EMBEDDING_TIMEOUT_MS` | `15000` | |
+| `GEMINI_IMAGE_TIMEOUT_MS` | `60000` | |
 | `AWS_REGION` | `us-east-1` | if bucket is in a different region |
 | `LAMBDA_URL` | `` (empty) | when Lambda integration is active |
+| `RUN_SEED` | `false` | set `true` to run `prisma db seed` on boot (failure does not block startup) |
+
+### Admin bootstrap (needed once — public registration can never create admins)
+
+| Variable | Default | Notes |
+|----------|---------|-------|
+| `ADMIN_EMAIL` | unset | admin login email |
+| `ADMIN_PASSWORD` | unset | ≥ 8 chars, letters and digits only, at least one letter and one digit |
+| `ADMIN_NAME` | unset | display name |
+| `ADMIN_RESET_PASSWORD` | `false` | `true` overwrites the password of an existing user with `ADMIN_EMAIL` |
+
+The seed skips the admin step (with a log line) when any of the first three is unset. See [Create the first admin](#5-create-the-first-admin).
 
 > **Do NOT set `PORT`** on Render. Render injects it automatically and the app reads it from `envs.PORT`. Setting it manually to a fixed value can cause port mismatch on restarts.
 
@@ -141,11 +165,11 @@ Vite bakes env vars starting with `VITE_` into the bundle at build time. Changin
 - **Dockerfile path**: `Dockerfile` (root)
 - **Region**: same as Postgres
 - Add all required env vars from the table above
-- Health check path: `/api/health` (if you have one) or leave default
+- Health check path: `/api/health` (returns 200 `{ status: "ok", db: "up" }`, 503 when the database is down)
 
 Render will:
 1. Build the Docker image
-2. Run `start.sh` which runs `prisma migrate deploy` then `node dist/app.js`
+2. Run `start.sh` which runs `prisma migrate deploy`, runs the seed only when `RUN_SEED=true`, then `node dist/app.js`
 
 ### 3. Frontend Static Site
 
@@ -162,6 +186,24 @@ After the frontend is deployed and you have its URL, update `CORS_ORIGIN` on the
 CORS_ORIGIN=https://your-frontend.onrender.com,https://your-staging-frontend.onrender.com
 ```
 
+### 5. Create the first admin
+
+A fresh database has no admin, and only admins can activate teacher accounts.
+
+1. Set `ADMIN_EMAIL`, `ADMIN_PASSWORD` and `ADMIN_NAME` on the backend service.
+2. Render → backend service → **Shell**, then run:
+
+```
+pnpm db:bootstrap-admin
+```
+
+This runs only the admin step (no schools re-seed) and is idempotent:
+
+- Unknown email → creates an active ADMIN (birthDate `1970-01-01`, no phone/school/grade).
+- Existing email → promotes that user to ADMIN, activates and restores it, and updates the name. The password is kept unless `ADMIN_RESET_PASSWORD=true` (run it once with that, then set it back to `false`).
+
+Alternatively, `RUN_SEED=true` runs the same step at the end of the full seed on boot.
+
 ---
 
 ## Checklist before first deploy
@@ -171,6 +213,7 @@ CORS_ORIGIN=https://your-frontend.onrender.com,https://your-staging-frontend.onr
 - [ ] `CLOUDFRONT_DOMAIN` starts with `https://` and has no trailing slash
 - [ ] `AWS_ACCESS_KEY_ID` starts with `AKIA` (long-term), not `ASIA` (session key)
 - [ ] `JWT_SEED` is set and matches any existing sessions you want to preserve
+- [ ] First admin created with `pnpm db:bootstrap-admin` (Render Shell)
 - [ ] Frontend `VITE_API_URL` is set to backend URL (no trailing slash)
 - [ ] Auth cookie in frontend code: `credentials: "include"` on all fetch calls
 - [ ] `EventSource` uses `${API_BASE}/api/notifications/stream` (not hardcoded localhost)

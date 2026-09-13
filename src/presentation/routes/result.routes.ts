@@ -90,11 +90,15 @@ export class ResultRoutes {
      *       - in: query
      *         name: endDate
      *         schema: { type: string, format: date }
-     *         description: Filter results up to this date (ISO 8601, e.g. 2025-12-31)
+     *         description: Filter results up to this date, inclusive (a date-only value covers the whole day, UTC)
      *       - in: query
      *         name: predominantStyle
      *         schema: { type: string, enum: [Visual, Auditory, Kinesthetic] }
      *         description: Filter by predominant VAK style
+     *       - in: query
+     *         name: classifierType
+     *         schema: { type: string }
+     *         description: Filter by classifier type (e.g. xgboost)
      *     responses:
      *       200: { description: Paginated results }
      *       400: { description: Invalid query params }
@@ -254,9 +258,14 @@ export class ResultRoutes {
      *       - in: query
      *         name: endDate
      *         schema: { type: string, format: date }
+     *         description: Inclusive; a date-only value covers the whole day (UTC)
      *       - in: query
      *         name: predominantStyle
      *         schema: { type: string, enum: [Visual, Auditory, Kinesthetic] }
+     *       - in: query
+     *         name: classifierType
+     *         schema: { type: string }
+     *         description: Filter by classifier type (e.g. xgboost)
      *     responses:
      *       200: { description: Paginated results for student }
      *       400: { description: Invalid params }

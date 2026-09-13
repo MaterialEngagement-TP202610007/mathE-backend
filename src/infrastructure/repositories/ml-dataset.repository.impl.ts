@@ -49,4 +49,13 @@ export class MLDatasetRepositoryImpl implements MLDatasetRepository {
     const entry = await prisma.mLDataset.findUnique({ where: { id } });
     return entry ? MLDatasetEntity.fromObject(entry) : null;
   }
+
+  async findByQuestionnaire(
+    questionnaireId: number,
+  ): Promise<MLDatasetEntity | null> {
+    const entry = await prisma.mLDataset.findUnique({
+      where: { questionnaireId },
+    });
+    return entry ? MLDatasetEntity.fromObject(entry) : null;
+  }
 }

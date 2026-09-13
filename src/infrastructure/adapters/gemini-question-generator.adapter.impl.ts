@@ -2,36 +2,40 @@ import { AIQuestionGeneratorAdapter } from "../../domain/adapters/ai-question-ge
 import { GeneratedQuestion } from "../../domain/interfaces/question/index.js";
 import { CustomError } from "../../domain/error/custom-error.js";
 import { envs } from "../../config/envs.js";
+import {
+  fetchWithTimeout,
+  readJson,
+  upstreamStatusError,
+} from "../http/fetch-with-timeout.js";
+import {
+  GEMINI_MODELS_BASE_URL,
+  extractCandidateText,
+} from "./gemini-response.helper.js";
 
-const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
+const SERVICE_NAME = "Gemini chat";
 
 export class GeminiQuestionGeneratorAdapter implements AIQuestionGeneratorAdapter {
   async generateQuestion(prompt: string): Promise<GeneratedQuestion> {
-    const url = `${GEMINI_BASE}/${envs.GEMINI_CHAT_MODEL}:generateContent?key=${envs.GEMINI_API_KEY}`;
+    const url = `${GEMINI_MODELS_BASE_URL}/${envs.GEMINI_CHAT_MODEL}:generateContent`;
 
-    let response: Response;
-    try {
-      response = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { responseMimeType: "application/json" },
-        }),
-      });
-    } catch {
-      throw CustomError.serviceUnavailable("Gemini chat request failed");
-    }
+    const response = await fetchWithTimeout(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": envs.GEMINI_API_KEY,
+      },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { responseMimeType: "application/json" },
+      }),
+      timeoutMs: envs.GEMINI_CHAT_TIMEOUT_MS,
+      serviceName: SERVICE_NAME,
+    });
 
-    if (!response.ok) {
-      throw CustomError.badGateway(
-        `Gemini chat returned status ${response.status}`,
-      );
-    }
+    if (!response.ok) throw upstreamStatusError(response, SERVICE_NAME);
 
-    const payload = (await response.json()) as any;
-    const text: string | undefined =
-      payload?.candidates?.[0]?.content?.parts?.[0]?.text;
+    const payload = await readJson(response, SERVICE_NAME);
+    const text = extractCandidateText(payload);
 
     if (!text) throw CustomError.badGateway("Gemini chat returned no content");
 

@@ -17,6 +17,7 @@ import { QuestionnaireRepositoryImpl } from "../../infrastructure/repositories/q
 import { AnswerRepositoryImpl } from "../../infrastructure/repositories/answer.repository.impl.js";
 import { QuestionRepositoryImpl } from "../../infrastructure/repositories/question.repository.impl.js";
 import { ResultRepositoryImpl } from "../../infrastructure/repositories/result.repository.impl.js";
+import { MLDatasetRepositoryImpl } from "../../infrastructure/repositories/ml-dataset.repository.impl.js";
 import { MLModelRepositoryImpl } from "../../infrastructure/repositories/ml-model.repository.impl.js";
 import { FallbackQuestionsAdapterImpl } from "../../infrastructure/adapters/fallback-questions.adapter.impl.js";
 import { LambdaClassifierAdapterImpl } from "../../infrastructure/adapters/lambda-classifier.adapter.impl.js";
@@ -31,6 +32,7 @@ export class QuestionnaireRoutes {
     const answerRepository = new AnswerRepositoryImpl();
     const resultRepository = new ResultRepositoryImpl();
     const mlModelRepository = new MLModelRepositoryImpl();
+    const mlDatasetRepository = new MLDatasetRepositoryImpl();
     const fallbackAdapter = new FallbackQuestionsAdapterImpl();
     const lambdaAdapter = new LambdaClassifierAdapterImpl();
     const feedbackAdapter = new GeminiVakFeedbackAdapterImpl();
@@ -45,6 +47,7 @@ export class QuestionnaireRoutes {
       new ListQuestionnairesUseCase(questionnaireRepository),
       new CompleteQuestionnaireUseCase(
         questionnaireRepository,
+        mlDatasetRepository,
         mlModelRepository,
         resultRepository,
         lambdaAdapter,
@@ -56,8 +59,8 @@ export class QuestionnaireRoutes {
 
     const answerController = new AnswerController(
       new CreateAnswerUseCase(answerRepository, questionnaireRepository),
-      new ListAnswersUseCase(answerRepository),
-      new GetAnswerUseCase(answerRepository),
+      new ListAnswersUseCase(answerRepository, questionnaireRepository),
+      new GetAnswerUseCase(answerRepository, questionnaireRepository),
     );
 
     router.use(authMiddleware);
@@ -75,7 +78,7 @@ export class QuestionnaireRoutes {
      *       AI-generated DB questions, all 10 come from the DB. Otherwise all 10 come
      *       from the local fallback bank (usedFallback=true). The two sources are never mixed.
      *       The response includes the 10 questions in randomised order. The question's
-     *       own vakStyle is hidden, but each option exposes its vakValue (V|A|K) label.
+     *       own vakStyle and each option's vakValue are hidden (id + text only).
      *     security: [{ bearerAuth: [] }]
      *     responses:
      *       201:
@@ -109,7 +112,6 @@ export class QuestionnaireRoutes {
      *                           properties:
      *                             id: { type: integer }
      *                             text: { type: string }
-     *                             vakValue: { type: string, enum: [V, A, K] }
      *       401: { description: Not authenticated }
      *       403: { description: Student role required }
      */
@@ -178,7 +180,6 @@ export class QuestionnaireRoutes {
      *                           properties:
      *                             id: { type: integer }
      *                             text: { type: string }
-     *                             vakValue: { type: string, enum: [V, A, K] }
      *       401: { description: Not authenticated }
      *       403: { description: Student role required }
      *       404: { description: No active questionnaire found }
@@ -194,7 +195,7 @@ export class QuestionnaireRoutes {
      * /api/questionnaires/{id}:
      *   get:
      *     tags: [Questionnaires]
-     *     summary: Get questionnaire detail. Student, Teacher or Admin.
+     *     summary: Get questionnaire detail. Student (own only), Teacher or Admin.
      *     security: [{ bearerAuth: [] }]
      *     parameters:
      *       - in: path
@@ -204,6 +205,7 @@ export class QuestionnaireRoutes {
      *     responses:
      *       200: { description: Questionnaire detail }
      *       400: { description: Invalid id }
+     *       403: { description: Student requesting another student's questionnaire }
      *       404: { description: Questionnaire not found }
      */
     router.get(
@@ -218,6 +220,11 @@ export class QuestionnaireRoutes {
      *   patch:
      *     tags: [Questionnaires]
      *     summary: Mark an in-progress questionnaire as completed. Student only.
+     *     description: >
+     *       Idempotent. If the questionnaire is already completed and has a result,
+     *       returns that result (200, same shape). If it is completed but the result
+     *       was never saved (previous attempt failed), classification is resumed from
+     *       the persisted answers. A concurrent duplicate submit returns 409.
      *     security: [{ bearerAuth: [] }]
      *     parameters:
      *       - in: path
@@ -250,9 +257,11 @@ export class QuestionnaireRoutes {
      *                     numberOfChanges: { type: integer }
      *                     timesReviewed: { type: integer }
      *     responses:
-     *       200: { description: Questionnaire completed }
-     *       400: { description: Invalid id, body, or questionnaire not in_progress }
+     *       200: { description: Questionnaire completed (or existing result on retry) }
+     *       400: { description: Invalid id or body, answers not matching the questionnaire, or questionnaire abandoned }
+     *       403: { description: Questionnaire belongs to another student }
      *       404: { description: Questionnaire not found }
+     *       409: { description: Another completion request for this questionnaire is in progress }
      */
     router.patch(
       "/:id/complete",
@@ -275,6 +284,7 @@ export class QuestionnaireRoutes {
      *     responses:
      *       200: { description: Questionnaire abandoned }
      *       400: { description: Invalid id or questionnaire not in_progress }
+     *       403: { description: Questionnaire belongs to another student }
      *       404: { description: Questionnaire not found }
      */
     router.patch(
@@ -357,6 +367,8 @@ export class QuestionnaireRoutes {
      *     responses:
      *       200: { description: Paginated answers ordered by navigationSequence }
      *       400: { description: Invalid id or pagination params }
+     *       403: { description: Student requesting another student's questionnaire }
+     *       404: { description: Questionnaire not found }
      */
     router.get(
       "/:id/answers",

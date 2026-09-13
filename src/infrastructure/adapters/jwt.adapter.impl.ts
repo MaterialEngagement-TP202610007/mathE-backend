@@ -8,7 +8,7 @@ import {
 export class JwtAdapter implements TokenAdapter {
   generate(
     payload: TokenPayload,
-    duration: string = "2h",
+    duration: string = `${envs.SESSION_TTL_HOURS}h`,
   ): Promise<string | null> {
     return new Promise((resolve) => {
       jwt.sign(

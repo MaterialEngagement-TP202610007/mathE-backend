@@ -4,6 +4,7 @@ import {
   CompleteWithAnswersAndDatasetResult,
   CreateQuestionnaireResult,
   QuestionnaireCreationParams,
+  QuestionnaireQuestionOptions,
 } from "../interfaces/questionnaire/index.js";
 import { PaginationDto } from "../dtos/shared/pagination.dto.js";
 import { PaginatedResult } from "../interfaces/shared/paginated-result.interface.js";
@@ -33,10 +34,17 @@ export abstract class QuestionnaireRepository {
     pagination: PaginationDto,
   ): Promise<PaginatedResult<QuestionnaireEntity>>;
 
+  /** Questions assigned to the questionnaire with their valid option ids. */
+  abstract findQuestionOptions(
+    questionnaireId: number,
+  ): Promise<QuestionnaireQuestionOptions[]>;
+
   /**
    * Atomic transaction: saves 10 answers, computes VAK features by joining
    * with Option table, creates the MLDataset row, and marks the questionnaire
    * as completed. Returns computed features and the simple-score vak label.
+   * Throws a 409 CustomError when the questionnaire is no longer in_progress
+   * (e.g. a concurrent request already completed it).
    */
   abstract completeWithAnswersAndDataset(
     params: CompleteWithAnswersAndDatasetParams,

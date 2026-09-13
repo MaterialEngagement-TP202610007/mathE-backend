@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response } from "express";
 import { PaginationDto } from "../../domain/dtos/shared/pagination.dto.js";
 import { CorrectResultLabelDto } from "../../domain/dtos/result/correct-result-label.dto.js";
+import { StudentResultsFilterDto } from "../../domain/dtos/result/student-results-filter.dto.js";
 import { GetResultUseCase } from "../../domain/use-cases/result/get-result.use-case.js";
 import { GetResultByQuestionnaireUseCase } from "../../domain/use-cases/result/get-result-by-questionnaire.use-case.js";
 import { GetStudentResultsUseCase } from "../../domain/use-cases/result/get-student-results.use-case.js";
@@ -71,25 +72,14 @@ export class ResultController {
     const [error, pagination] = this.parsePagination(req);
     if (error) return res.status(400).json({ error });
 
-    const startDate = req.query.startDate
-      ? new Date(req.query.startDate as string)
-      : undefined;
-    const endDate = req.query.endDate
-      ? new Date(req.query.endDate as string)
-      : undefined;
-
-    if (startDate && isNaN(startDate.getTime()))
-      return res.status(400).json({ error: "Invalid startDate" });
-    if (endDate && isNaN(endDate.getTime()))
-      return res.status(400).json({ error: "Invalid endDate" });
-
-    const predominantStyle = req.query.predominantStyle as string | undefined;
+    const [filterError, filters] = StudentResultsFilterDto.create(req.query);
+    if (filterError) return res.status(400).json({ error: filterError });
 
     try {
       const result = await this.getStudentResultsUseCase.execute(
         req.user!.id,
         pagination!,
-        { startDate, endDate, predominantStyle },
+        filters,
       );
       res.json(result);
     } catch (err) {
@@ -174,25 +164,14 @@ export class ResultController {
     const [error, pagination] = this.parsePagination(req);
     if (error) return res.status(400).json({ error });
 
-    const startDate = req.query.startDate
-      ? new Date(req.query.startDate as string)
-      : undefined;
-    const endDate = req.query.endDate
-      ? new Date(req.query.endDate as string)
-      : undefined;
-
-    if (startDate && isNaN(startDate.getTime()))
-      return res.status(400).json({ error: "Invalid startDate" });
-    if (endDate && isNaN(endDate.getTime()))
-      return res.status(400).json({ error: "Invalid endDate" });
-
-    const predominantStyle = req.query.predominantStyle as string | undefined;
+    const [filterError, filters] = StudentResultsFilterDto.create(req.query);
+    if (filterError) return res.status(400).json({ error: filterError });
 
     try {
       const result = await this.getStudentResultsUseCase.execute(
         studentId,
         pagination!,
-        { startDate, endDate, predominantStyle },
+        filters,
       );
       res.json(result);
     } catch (err) {

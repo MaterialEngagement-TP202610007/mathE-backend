@@ -51,4 +51,10 @@ describe('CustomError', () => {
     const err = CustomError.gatewayTimeout('timeout');
     expect(err.statusCode).toBe(504);
   });
+
+  it('tooManyRequests → 429', () => {
+    const err = CustomError.tooManyRequests('slow down');
+    expect(err.statusCode).toBe(429);
+    expect(err.message).toBe('slow down');
+  });
 });

@@ -68,6 +68,7 @@ export interface ResultListFilters {
 
 export interface StudentResultFilters {
   predominantStyle?: string;
+  classifierType?: string;
   startDate?: Date;
   endDate?: Date;
 }

@@ -1,4 +1,5 @@
 import { NextFunction, Request, Response } from "express";
+import { ROLES } from "../../domain/constants/roles.constant.js";
 import { PaginationDto } from "../../domain/dtos/shared/pagination.dto.js";
 import { GenerateQuestionDto } from "../../domain/dtos/question/generate-question.dto.js";
 import { ListQuestionsDto } from "../../domain/dtos/question/list-questions.dto.js";
@@ -37,9 +38,11 @@ export class QuestionController {
       return res.status(400).json({ error: "count must be an integer between 1 and 10" });
     }
 
+    // Teachers are always credited themselves; only admins may attribute to another teacher.
+    const isAdmin = req.user?.roleId === ROLES.ADMIN;
     const [error, dto] = GenerateQuestionDto.create({
       ...req.body,
-      teacherId: req.body.teacherId ?? req.user?.id,
+      teacherId: isAdmin ? (req.body.teacherId ?? req.user?.id) : req.user?.id,
     });
     if (error) return res.status(400).json({ error });
 
@@ -51,9 +54,19 @@ export class QuestionController {
       count: rawCount,
     });
 
+    const pushFailed = () =>
+      this.sseService.push(userId, "notification", {
+        type: "question_failed",
+        vakStyle: dto!.vakStyle,
+      });
+
+    // Tracks whether the teacher already got per-question events for this batch.
+    let progressNotified = false;
+
     this.bulkGenerateQuestionsUseCase
       .execute(dto!, rawCount, userId, {
         onGenerated: (q) => {
+          progressNotified = true;
           this.sseService.push(userId, "notification", {
             type: "question_generated",
             questionId: q.id,
@@ -61,13 +74,18 @@ export class QuestionController {
           });
         },
         onFailed: () => {
-          this.sseService.push(userId, "notification", {
-            type: "question_failed",
-            vakStyle: dto!.vakStyle,
-          });
+          progressNotified = true;
+          pushFailed();
         },
       })
-      .catch(() => {});
+      .catch((err) => {
+        console.error(
+          `[questions] background generation failed (user ${userId}, ${dto!.vakStyle} x${rawCount}):`,
+          err instanceof Error ? err.message : String(err),
+        );
+        // Failed before any question finished (e.g. DB error) — tell the teacher.
+        if (!progressNotified) pushFailed();
+      });
   };
 
   listMyQuestions = async (req: Request, res: Response, next: NextFunction) => {

@@ -1,12 +1,17 @@
 import { Router } from "express";
 import { AuthController } from "../controllers/auth.controller.js";
 import { authMiddleware } from "../middlewares/auth.middleware.js";
+import {
+  loginRateLimiter,
+  registerRateLimiter,
+} from "../middlewares/rate-limit.middleware.js";
 import { LoginUserUseCase } from "../../domain/use-cases/auth/login-user.use-case.js";
 import { RegisterUserUseCase } from "../../domain/use-cases/auth/register-user.use-case.js";
 import { GetCurrentUserUseCase } from "../../domain/use-cases/auth/get-current-user.use-case.js";
 import { UserRepositoryImpl } from "../../infrastructure/repositories/user.repository.impl.js";
 import { BcryptAdapter } from "../../infrastructure/adapters/bcrypt.adapter.impl.js";
 import { JwtAdapter } from "../../infrastructure/adapters/jwt.adapter.impl.js";
+import { envs } from "../../config/envs.js";
 
 export class AuthRoutes {
   static get routes(): Router {
@@ -20,6 +25,7 @@ export class AuthRoutes {
       new LoginUserUseCase(userRepository, passwordAdapter, tokenAdapter),
       new RegisterUserUseCase(userRepository, passwordAdapter),
       new GetCurrentUserUseCase(userRepository),
+      { sessionTtlMs: envs.SESSION_TTL_HOURS * 60 * 60 * 1000 },
     );
 
     /**
@@ -29,9 +35,10 @@ export class AuthRoutes {
      *     tags: [Auth]
      *     summary: Authenticate a user and set the auth_token HttpOnly cookie
      *     description: >
-     *       On success sets an HttpOnly, Secure, SameSite=Strict cookie named
-     *       auth_token (Max-Age 7 days, Path=/). The JWT is no longer returned
-     *       in the body — only the public user is.
+     *       On success sets an HttpOnly, Secure, SameSite=None cookie named
+     *       auth_token (Path=/). The cookie Max-Age and the JWT expiry both equal
+     *       SESSION_TTL_HOURS (default 24 h). Rate limited: 10 failed attempts per
+     *       email every 15 minutes (429).
      *     requestBody:
      *       required: true
      *       content:
@@ -50,14 +57,16 @@ export class AuthRoutes {
      *         description: Authenticated — sets auth_token cookie, returns { user }
      *         headers:
      *           Set-Cookie:
-     *             description: auth_token=<jwt>; HttpOnly; Secure; SameSite=Strict; Max-Age=604800; Path=/
+     *             description: auth_token=<jwt>; HttpOnly; Secure; SameSite=None; Max-Age=<SESSION_TTL_HOURS * 3600>; Path=/
      *             schema: { type: string }
      *       400:
      *         description: Validation error
      *       401:
      *         description: Invalid credentials or inactive account
+     *       429:
+     *         description: Too many login attempts — { error }
      */
-    router.post("/login", controller.login);
+    router.post("/login", loginRateLimiter, controller.login);
 
     /**
      * @openapi
@@ -102,7 +111,10 @@ export class AuthRoutes {
      *   post:
      *     tags: [Auth]
      *     summary: Register a new user
-     *     description: Creates a new user account. The account is active by default (isActive=true).
+     *     description: >
+     *       Creates a new student or teacher account. roleId must be the student or
+     *       teacher role id (admin cannot self-register). The account starts inactive
+     *       until an admin activates it. Rate limited: 10 attempts per email every 15 minutes.
      *     requestBody:
      *       required: true
      *       content:
@@ -136,9 +148,11 @@ export class AuthRoutes {
      *       201:
      *         description: User created successfully
      *       400:
-     *         description: Validation error
+     *         description: Validation error (including "Invalid Role Id")
+     *       429:
+     *         description: Too many registration attempts — { error }
      */
-    router.post("/register", controller.register);
+    router.post("/register", registerRateLimiter, controller.register);
 
     return router;
   }

@@ -1,6 +1,8 @@
 import { regularExps } from "../../../config/helpers/regular-exp.js";
 import { ROLES } from "../../constants/roles.constant.js";
 
+const PUBLIC_REGISTRATION_ROLES: number[] = [ROLES.STUDENT, ROLES.TEACHER];
+
 export class RegisterUserDto {
   private constructor(
     public password: string,
@@ -47,8 +49,12 @@ export class RegisterUserDto {
     }
 
     const parsedRoleId = Number(roleId);
-    // Students and Teachers start inactive — admin must activate them before first login.
-    const isActive = parsedRoleId === ROLES.ADMIN;
+    // Public registration can only create students or teachers — never admins.
+    if (!PUBLIC_REGISTRATION_ROLES.includes(parsedRoleId)) {
+      return ["Invalid Role Id"];
+    }
+    // Every self-registered account starts inactive — an admin must activate it.
+    const isActive = false;
 
     return [
       undefined,

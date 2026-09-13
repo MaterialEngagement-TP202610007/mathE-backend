@@ -27,6 +27,14 @@ export class SseNotificationService {
     });
   }
 
+  /** Ends every open stream (used on graceful shutdown). */
+  closeAll(): void {
+    for (const pool of this.connections.values()) {
+      for (const res of pool) res.end();
+    }
+    this.connections.clear();
+  }
+
   push(userId: number, event: string, data: object): void {
     const pool = this.connections.get(userId);
     if (!pool || pool.size === 0) return;

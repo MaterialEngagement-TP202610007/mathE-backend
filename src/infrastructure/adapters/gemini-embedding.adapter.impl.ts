@@ -1,8 +1,14 @@
 import { EmbeddingAdapter } from "../../domain/adapters/embedding.adapter.js";
 import { CustomError } from "../../domain/error/custom-error.js";
 import { envs } from "../../config/envs.js";
+import {
+  fetchWithTimeout,
+  readJson,
+  upstreamStatusError,
+} from "../http/fetch-with-timeout.js";
+import { GEMINI_MODELS_BASE_URL } from "./gemini-response.helper.js";
 
-const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
+const SERVICE_NAME = "Gemini embedding";
 
 /**
  * Gemini embeddings implementation (PASO 3). Uses the REST `embedContent`
@@ -15,31 +21,27 @@ export class GeminiEmbeddingAdapter implements EmbeddingAdapter {
 
   async embed(text: string): Promise<number[]> {
     const model = envs.GEMINI_EMBEDDING_MODEL;
-    const url = `${GEMINI_BASE}/${model}:embedContent?key=${envs.GEMINI_API_KEY}`;
+    const url = `${GEMINI_MODELS_BASE_URL}/${model}:embedContent`;
 
-    let response: Response;
-    try {
-      response = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: `models/${model}`,
-          content: { parts: [{ text }] },
-          taskType: "SEMANTIC_SIMILARITY",
-          outputDimensionality: envs.GEMINI_EMBEDDING_DIMENSIONS,
-        }),
-      });
-    } catch {
-      throw CustomError.serviceUnavailable("Gemini embedding request failed");
-    }
+    const response = await fetchWithTimeout(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": envs.GEMINI_API_KEY,
+      },
+      body: JSON.stringify({
+        model: `models/${model}`,
+        content: { parts: [{ text }] },
+        taskType: "SEMANTIC_SIMILARITY",
+        outputDimensionality: envs.GEMINI_EMBEDDING_DIMENSIONS,
+      }),
+      timeoutMs: envs.GEMINI_EMBEDDING_TIMEOUT_MS,
+      serviceName: SERVICE_NAME,
+    });
 
-    if (!response.ok) {
-      throw CustomError.badGateway(
-        `Gemini embedding returned status ${response.status}`,
-      );
-    }
+    if (!response.ok) throw upstreamStatusError(response, SERVICE_NAME);
 
-    const payload = (await response.json()) as any;
+    const payload = await readJson<any>(response, SERVICE_NAME);
     const values: number[] | undefined = payload?.embedding?.values;
 
     if (!Array.isArray(values) || values.length === 0) {

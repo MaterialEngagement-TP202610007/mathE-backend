@@ -41,7 +41,10 @@ export class QuestionnaireController {
       return res.status(400).json({ error: "Invalid questionnaire id" });
 
     try {
-      const questionnaire = await this.getQuestionnaireUseCase.execute(id);
+      const questionnaire = await this.getQuestionnaireUseCase.execute(id, {
+        id: req.user!.id,
+        roleId: req.user!.roleId,
+      });
       res.json(questionnaire);
     } catch (err) {
       next(err);
@@ -101,7 +104,7 @@ export class QuestionnaireController {
 
     try {
       const questionnaire =
-        await this.abandonQuestionnaireUseCase.execute(id);
+        await this.abandonQuestionnaireUseCase.execute(id, req.user!.id);
       res.json(questionnaire);
     } catch (err) {
       next(err);

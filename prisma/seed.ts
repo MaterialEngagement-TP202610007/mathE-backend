@@ -12,6 +12,7 @@ import { PrismaClient } from "../src/generated/prisma/client.js";
 import { envs } from "../src/config/envs.js";
 import { ROLES } from "../src/domain/constants/roles.constant.js";
 import { SCHOOLS } from "./data/schools.generated.js";
+import { runAdminBootstrap } from "./admin-bootstrap.js";
 
 const adapter = new PrismaPg({ connectionString: envs.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
@@ -88,6 +89,8 @@ async function main() {
   await seedRoles();
   await seedAcademicGrades();
   await seedSchools();
+  // Runs last: needs the ADMIN role. Skipped when ADMIN_* vars are unset.
+  await runAdminBootstrap(prisma);
 }
 
 main()
