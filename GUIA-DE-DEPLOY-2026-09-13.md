@@ -20,17 +20,25 @@
 | Servidor (Render Web Service) | **Standard** — 1 CPU, 2 GB RAM | USD 25/mes | No se duerme y tiene margen para picos de 30–60 alumnos terminando cuestionarios a la vez. Starter (0,5 CPU, 512 MB, USD 7) queda justo. |
 | Base de datos (Render Postgres) | **Basic-1gb** + 5–10 GB de disco | USD 19/mes + USD 0,30 por GB/mes | Es de pago, así que incluye copias de seguridad. La gratuita **vence a los 30 días** y no tiene copias. |
 | Espacio de trabajo en Render | **Pro** (recomendado) o Hobby | Pro USD 25/mes · Hobby USD 0 | Pro permite recuperar la base a cualquier momento de los **últimos 7 días**; Hobby, solo de los últimos 3. |
-| Frontend (Netlify) | **Personal** | USD 9/mes (1.000 créditos) | Todas las llamadas a la API pasan por Netlify y consumen créditos. Los 300 créditos del plan gratuito pueden no alcanzar la semana. |
+| Frontend (Netlify) | **Free**, si se cumplen las condiciones de la sección 6.1; si no, **Personal** | Free USD 0 (300 créditos/mes) · Personal USD 9/mes (1.000 créditos) | Todas las llamadas a la API pasan por Netlify y consumen créditos. La semana estimada usa ~160 créditos. Si se agotan en el plan Free, **Netlify pausa todos los sitios del equipo** hasta el próximo ciclo. |
 | Gemini API | **Facturación activada** (nivel de pago) | Por uso | Con el nivel gratuito, 200 alumnos pueden agotar la cuota y el feedback saldría predefinido. |
 | AWS (S3, CloudFront, Lambda) | Sin cambios | Por uso, bajo | Revisa en la sección 5 cómo mantener el clasificador caliente. |
 
-**Costo estimado:** entre USD 55 (Render en Hobby) y USD 80 (Render en Pro) por mes, más el uso de Gemini y AWS. Render cobra de forma prorrateada, así que usarlo una semana cuesta menos que el mes completo. Al terminar, se puede bajar de plan (sección 9).
+**Costo estimado** (sin contar el uso de Gemini y AWS). Render cobra proporcional al tiempo de uso, así que una semana cuesta cerca de 7/30 del precio mensual.
+
+| Escenario | Servidor Standard | Base Basic-1gb + 10 GB | Espacio Render | Netlify | Total aprox. |
+|---|---|---|---|---|---|
+| Mínimo: 1 semana | ~USD 6 | ~USD 5 | Hobby USD 0 | Free USD 0 | **~USD 11** |
+| Servidor 1 semana y base el mes completo | ~USD 6 | USD 22 | Hobby USD 0 | Free USD 0 | **~USD 28** |
+| Con más respaldo (7 días de recuperación) y sin riesgo en Netlify | ~USD 6 | USD 22 | Pro USD 25 | Personal USD 9 | **~USD 62** |
+
+Confirma en el panel de Render si la cuota mensual del espacio Pro también se prorratea. Al terminar se puede bajar de plan (sección 9).
 
 ### Región
 
-- Crea el servidor y la base en la **misma región**: **Virginia (US East)**. De las regiones de Render (Oregon, Ohio, Virginia, Frankfurt, Singapur), es la más cercana a Lima.
+- El servidor y la base deben estar en la **misma región**. Si se crea algo desde cero, elige **Virginia (US East)**: de las regiones de Render (Oregon, Ohio, Virginia, Frankfurt, Singapur), es la más cercana a Lima.
 - Deja el bucket de S3, CloudFront y la Lambda en `us-east-1`, que es el valor por defecto de `AWS_REGION`.
-- La región de un servicio de Render no se cambia después de crearlo. Si hoy el servidor y la base están en regiones distintas, crea el que falte en Virginia.
+- La región de un servicio de Render no se cambia después de crearlo. Como el servidor ya existe, la base nueva se crea **en la región del servidor**. Recrear el servidor en otra región cambiaría su URL y habría que actualizar `netlify.toml`; no vale el riesgo para esta semana.
 
 ### Una sola instancia
 
@@ -41,27 +49,30 @@ Mantén el servidor en **1 instancia** y **sin autoescalado**. Las notificacione
 ## 2. Antes de tocar producción
 
 - [ ] **Subir el código.** La última tanda de cambios (colegios unificados, banco de preguntas por colegio, activación de cuentas, Claretiano duplicado) debe estar commiteada y pusheada en la rama que despliega Render y Netlify.
-- [ ] **Hacer una copia de seguridad de la base actual**, aunque tenga solo datos de prueba. Se hace desde tu computadora con la **External Database URL** que aparece en Render → base de datos → *Info*:
-  ```bash
-  pg_dump "<EXTERNAL_DATABASE_URL>" --format=custom --file=mathe-antes-deploy-$(date +%Y%m%d-%H%M).dump
-  ```
-- [ ] **Confirmar la fecha de creación de la base.** Si es la gratuita, vence a los 30 días. Pásala a un plan de pago (sección 3) antes de que empiecen los alumnos.
+- [ ] **Decidir la región.** Revisa en Render → servidor actual → *Settings* en qué región está. La base nueva debe crearse **en esa misma región** (sección 3).
 
-> **Importante:** al publicar se ejecutan tres migraciones automáticas. Unifican los colegios (no se puede deshacer), activan a los alumnos pendientes y quitan el Claretiano de Villa María del Triunfo. Por eso la copia de seguridad es obligatoria.
+> **Base de datos definitiva desde cero.** Los datos que hay hoy en producción son de una demo anterior y se descartan. No hace falta copiarlos ni migrarlos: se crea una base nueva y vacía, y el primer deploy la prepara sola (tablas, colegios y administrador). A partir del primer alumno registrado, **esta base pasa a ser la importante** y aplica todo lo de la sección 8.
 
 ---
 
-## 3. Base de datos en Render
+## 3. Base de datos en Render (nueva)
 
-1. Si la base actual es gratuita, cámbiale el tipo de instancia a **Basic-1gb** desde *Info → Instance Type* (o *Update*).
-   - Si Render no permite cambiarla, crea una base nueva **Basic-1gb en Virginia**.
-   - Restaura en ella la copia del paso 2: `pg_restore --no-owner --dbname "<EXTERNAL_URL_NUEVA>" archivo.dump`.
-   - Después apunta el servidor a la base nueva.
-2. Asigna **5–10 GB** de disco. Sobra para una semana y el disco se puede ampliar después.
-3. Verifica que las copias de seguridad aparezcan en *Recovery / Backups*:
+1. Crea la base en **https://dashboard.render.com/new/database**:
+
+   | Campo | Valor |
+   |---|---|
+   | Name | `mathe-db` (o similar) |
+   | Region | **La misma que el servidor** |
+   | PostgreSQL Version | 16 |
+   | Compute Plan | **Basic-1gb** |
+   | Storage | **10 GB** (se puede ampliar, no reducir) |
+   | Storage Autoscaling | Activado |
+
+2. Cuando esté disponible, copia la **Internal Database URL** (*Info*). Es la que usará el servidor: es más rápida y no sale a internet.
+3. Verifica que aparezca la sección *Recovery / Backups*:
    - Recuperación a un momento pasado: los últimos 3 días en Hobby, 7 días en Pro.
    - Copias lógicas: se guardan 7 días en cualquier plan de pago.
-4. Copia la **Internal Database URL** para el servidor. Es más rápida y no sale a internet.
+4. **La base anterior** (la de la demo) no se toca hasta terminar la prueba de la sección 7. Recién entonces bórrala desde Render → esa base → *Settings → Delete Database*, para no pagarla ni confundir conexiones.
 
 ---
 
@@ -75,7 +86,7 @@ Mantén el servidor en **1 instancia** y **sin autoescalado**. Las notificacione
 | Rama | la rama con los cambios (`release` o `main` después de mergear) |
 | Instance type | **Standard** |
 | Instancias | **1** (sin autoescalado) |
-| Región | **Virginia** (igual que la base) |
+| Región | La del servidor actual; la base debe estar en la misma |
 | Health Check Path | `/api/health` |
 | Auto-Deploy | **Desactivado durante la semana**, para que un push no reinicie el servidor en plena clase |
 
@@ -114,15 +125,22 @@ El contenedor ejecuta `start.sh`, que aplica las migraciones (`prisma migrate de
 
 > `LAMBDA_TIMEOUT_MS` + `GEMINI_FEEDBACK_TIMEOUT_MS` deben sumar menos de 20 s, porque Netlify corta las llamadas a los ~26 s.
 
-### 4.3 Primer arranque
+### 4.3 Primer arranque sobre la base nueva
 
-1. Despliega y revisa los logs. Tienen que aparecer las migraciones aplicadas y luego el mensaje de servidor iniciado.
-2. Abre `https://<servicio>.onrender.com/api/health`. Debe responder `{"status":"ok","db":"up"}`.
-3. Crea el administrador desde **Shell** (disponible en instancias de pago):
-   ```bash
-   pnpm db:bootstrap-admin
-   ```
-4. Si la base estaba vacía, confirma que el seed cargó los colegios y vuelve a poner `RUN_SEED=false`.
+1. En *Environment* del servidor configura, antes de desplegar:
+   - `DATABASE_URL`: Internal Database URL de la base **nueva**.
+   - `RUN_SEED`: `true`.
+   - `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NAME`.
+   - `JWT_SEED`: uno **nuevo**. Así se invalidan las sesiones de la demo anterior.
+2. Despliega (*Manual Deploy → Deploy latest commit*) y revisa los logs. Deben aparecer, en este orden:
+   - las 12 migraciones aplicadas;
+   - `Seeded 3 roles`, `Seeded 11 academic grades`, `Seeded schools: 3998 inserted`;
+   - `Admin <correo> created`;
+   - el mensaje de servidor iniciado.
+3. Abre `https://<servicio>.onrender.com/api/health`. Debe responder `{"status":"ok","db":"up"}`.
+4. Inicia sesión en el sitio de Netlify con el administrador.
+5. Vuelve a poner `RUN_SEED=false` y guarda. No hace falta redesplegar por eso; aplica en el siguiente reinicio.
+6. Si el administrador no se creó (por ejemplo, porque faltaba una variable), créalo desde **Shell** con `pnpm db:bootstrap-admin`. Shell está disponible en instancias de pago.
 
 ---
 
@@ -154,7 +172,7 @@ El contenedor ejecuta `start.sh`, que aplica las migraciones (`prisma migrate de
 
 | Opción | Valor |
 |---|---|
-| Plan | **Personal** |
+| Plan | **Free** (ver 6.1) o **Personal** |
 | Rama | la misma que el backend |
 | Build command | `pnpm run build` |
 | Publish directory | `dist` |
@@ -163,6 +181,25 @@ El contenedor ejecuta `start.sh`, que aplica las migraciones (`prisma migrate de
 | Proxy | `netlify.toml` → `/api/*` hacia `https://mathe-backend-1cqc.onrender.com`. Si la URL del servicio de Render cambia, actualízala ahí y vuelve a desplegar. |
 
 Después de cambiar variables, usa **Clear cache and deploy site**.
+
+### 6.1 ¿Alcanza el plan Free?
+
+Estimación para 200 alumnos, ~1 hora diaria cada uno durante 5 días:
+
+| Consumo | Cálculo | Créditos |
+|---|---|---|
+| Llamadas a la API | ~250 llamadas por hora conectada (el aviso de notificaciones consulta cada 30 s y la conexión en vivo se renueva cada ~26 s) × 1.000 horas ≈ 300.000 llamadas. Netlify cobra 2 créditos cada 10.000. | ~60 |
+| Transferencia | La app (~0,6 MB por primera carga, luego queda en caché) más las respuestas de la API ≈ 1 GB, a 20 créditos por GB. Las imágenes salen de CloudFront y no cuentan. | ~20 |
+| Publicaciones | 15 créditos cada deploy; ~5 deploys de preparación | ~75 |
+| **Total** | | **~155 de 300** |
+
+**El plan Free alcanza si se cumplen estas condiciones:**
+
+- [ ] En **Netlify → Usage**, los créditos ya usados este mes dejan margen: al menos **150 disponibles**. Los créditos se comparten entre todos los sitios del equipo y no se acumulan de un mes a otro.
+- [ ] Hay **pocos deploys**. Desactiva *Deploy Previews* y *Branch deploys* en *Build & deploy*, y no publiques durante la semana. Cada deploy cuesta 15 créditos.
+- [ ] Alguien revisa **Usage** cada día. Si el consumo pasa del **70 %**, sube a Personal ese mismo día.
+
+Si no se cumplen, usa **Personal**: con el plan Free, al agotarse los créditos Netlify **pausa todos los sitios del equipo** y los alumnos ven "Site not available" hasta el siguiente ciclo.
 
 ---
 
@@ -267,3 +304,5 @@ Exportación a CSV para análisis, desde `psql` con la External URL:
 - [Render pricing 2026 (G2)](https://www.g2.com/products/render-render/pricing)
 - [Render Postgres flexible plans (bex.co)](https://bex.co/blog/2026/09/11/render-postgres-flexible-plans-vs-self-hosted-cost)
 - [Netlify pricing](https://www.netlify.com/pricing/)
+- [Netlify — How credits work](https://docs.netlify.com/manage/accounts-and-billing/billing/billing-for-credit-based-plans/how-credits-work/)
+- [Netlify Free Plan Limits 2026 (Netli.fyi)](https://netli.fyi/blog/netlify-free-plan-limits-2026)
