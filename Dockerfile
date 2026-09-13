@@ -1,8 +1,9 @@
 # ── Builder ──────────────────────────────────────────────────────────────────
 FROM node:22-alpine AS builder
 
-# pnpm version pinned to the one that produced pnpm-lock.yaml (devEngines ^11).
-RUN corepack enable && corepack prepare pnpm@11.1.2 --activate
+# pnpm pinned to the version that produced pnpm-lock.yaml. Installed with npm:
+# corepack rejects the devEngines range (pnpm@^11) in package.json.
+RUN npm install -g pnpm@11.1.2
 
 WORKDIR /app
 
@@ -17,7 +18,7 @@ RUN pnpm build
 # ── Runner ────────────────────────────────────────────────────────────────────
 FROM node:22-alpine AS runner
 
-RUN corepack enable && corepack prepare pnpm@11.1.2 --activate
+RUN npm install -g pnpm@11.1.2
 
 WORKDIR /app
 
