@@ -1,5 +1,6 @@
 import { regularExps } from "../../../config/helpers/regular-exp.js";
 import { ROLES } from "../../constants/roles.constant.js";
+import { isActiveOnRegistration } from "../../policies/account-activation.policy.js";
 
 const PUBLIC_REGISTRATION_ROLES: number[] = [ROLES.STUDENT, ROLES.TEACHER];
 
@@ -53,8 +54,17 @@ export class RegisterUserDto {
     if (!PUBLIC_REGISTRATION_ROLES.includes(parsedRoleId)) {
       return ["Invalid Role Id"];
     }
-    // Every self-registered account starts inactive — an admin must activate it.
-    const isActive = false;
+
+    // Students and teachers always belong to a school (per-school question bank).
+    if (schoolId === undefined || schoolId === null || schoolId === "") {
+      return ["Missing School Id"];
+    }
+    const parsedSchoolId = Number(schoolId);
+    if (!Number.isInteger(parsedSchoolId) || parsedSchoolId <= 0) {
+      return ["Invalid School Id"];
+    }
+    // Students are active immediately; teachers wait for administrator approval.
+    const isActive = isActiveOnRegistration(parsedRoleId);
 
     return [
       undefined,
@@ -68,7 +78,7 @@ export class RegisterUserDto {
         academicGradeId !== undefined && academicGradeId !== null
           ? Number(academicGradeId)
           : null,
-        schoolId !== undefined && schoolId !== null ? Number(schoolId) : null,
+        parsedSchoolId,
         isActive,
       ),
     ];

@@ -17,6 +17,8 @@ export class QuestionEntity {
     public rejectionReason: string | null,
     public deletedAt: Date | null,
     public options: OptionEntity[],
+    /** Owning school's question bank; null for fallback-bank questions. */
+    public schoolId: number | null = null,
   ) {}
 
   static fromObject(object: { [key: string]: any }): QuestionEntity {
@@ -35,6 +37,7 @@ export class QuestionEntity {
       rejectionReason,
       deletedAt,
       options,
+      schoolId,
     } = object;
 
     if (!id) throw CustomError.badRequest("Missing Question Id");
@@ -58,6 +61,7 @@ export class QuestionEntity {
       Array.isArray(options)
         ? options.map((opt) => OptionEntity.fromObject(opt))
         : [],
+      schoolId ?? null,
     );
   }
 }

@@ -1,5 +1,6 @@
 import { QuestionRepository } from "../../repositories/question.repository.js";
 import { QuestionnaireRepository } from "../../repositories/questionnaire.repository.js";
+import { UserRepository } from "../../repositories/user.repository.js";
 import { FallbackQuestionsAdapter } from "../../adapters/fallback-questions.adapter.js";
 import {
   CreateQuestionnaireResult,
@@ -26,6 +27,7 @@ export class CreateQuestionnaireUseCase {
     private readonly questionnaireRepository: QuestionnaireRepository,
     private readonly questionRepository: QuestionRepository,
     private readonly fallbackAdapter: FallbackQuestionsAdapter,
+    private readonly userRepository: UserRepository,
   ) {}
 
   async execute(studentId: number): Promise<CreateQuestionnaireResult> {
@@ -36,19 +38,29 @@ export class CreateQuestionnaireUseCase {
         "You already have an active questionnaire in progress",
       );
 
-    // 1. For each VAK style, check whether the DB has enough approved
-    //    (AI-generated) questions to cover the full distribution.
+    // The JWT carries no school: load the student to scope the question bank.
+    const student = await this.userRepository.findById(studentId);
+    const schoolId = student?.schoolId ?? null;
+
+    // 1. For each VAK style, check whether the student's school bank has enough
+    //    approved (AI-generated) questions to cover the full distribution.
+    //    A student without school always gets the fallback bank.
     const dbQuestionsByStyle = new Map<VakStyle, { id: number }[]>();
-    let allStylesFullyCovered = true;
+    let allStylesFullyCovered = schoolId !== null;
 
     for (const style of VAK_STYLES) {
+      if (schoolId === null) break;
       const needed = STYLE_DISTRIBUTION[style];
       const dbQuestions = await this.questionRepository.findApprovedByStyle(
         style,
         needed,
+        schoolId,
       );
       dbQuestionsByStyle.set(style, dbQuestions);
-      if (dbQuestions.length < needed) allStylesFullyCovered = false;
+      if (dbQuestions.length < needed) {
+        allStylesFullyCovered = false;
+        break; // one short style already forces the full fallback
+      }
     }
 
     // 2. All-or-nothing: either every question comes from the DB (AI-generated)
@@ -60,7 +72,7 @@ export class CreateQuestionnaireUseCase {
       const needed = STYLE_DISTRIBUTION[style];
 
       if (allStylesFullyCovered) {
-        const dbQuestions = dbQuestionsByStyle.get(style) ?? [];
+        const dbQuestions = (dbQuestionsByStyle.get(style) ?? []).slice(0, needed);
         for (const q of dbQuestions) {
           slots.push({ dbQuestionId: q.id });
         }

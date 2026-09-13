@@ -10,7 +10,8 @@ import { GetUserByIdUseCase } from "../../domain/use-cases/user/get-user-by-id.u
 import { UpdateUserProfileUseCase } from "../../domain/use-cases/user/update-user-profile.use-case.js";
 import { DeleteUserUseCase } from "../../domain/use-cases/user/delete-user.use-case.js";
 import { ActivateUserUseCase } from "../../domain/use-cases/user/activate-user.use-case.js";
-import { toPublicUser } from "../mappers/user.mapper.js";
+import { toPublicUser, toPublicUserWithSchool } from "../mappers/user.mapper.js";
+import { toRequester } from "../mappers/requester.mapper.js";
 
 export class UserController {
   constructor(
@@ -73,7 +74,7 @@ export class UserController {
 
     try {
       const result = await this.getTeachersUseCase.execute(pagination!, filters);
-      res.json({ ...result, items: result.items.map(toPublicUser) });
+      res.json({ ...result, items: result.items.map(toPublicUserWithSchool) });
     } catch (err) {
       next(err);
     }
@@ -100,6 +101,7 @@ export class UserController {
         schoolId,
         pagination!,
         filters,
+        toRequester(req),
       );
       res.json({ ...result, items: result.items.map(toPublicUser) });
     } catch (err) {

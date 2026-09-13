@@ -2,6 +2,7 @@ import { NextFunction, Request, Response } from "express";
 import { PaginationDto } from "../../domain/dtos/shared/pagination.dto.js";
 import { GetDatasetUseCase } from "../../domain/use-cases/ml-dataset/get-dataset.use-case.js";
 import { GetDatasetEntryUseCase } from "../../domain/use-cases/ml-dataset/get-dataset-entry.use-case.js";
+import { toRequester } from "../mappers/requester.mapper.js";
 
 export class MLDatasetController {
   constructor(
@@ -42,7 +43,7 @@ export class MLDatasetController {
         schoolId: schoolId !== undefined && !isNaN(schoolId) ? schoolId : undefined,
         labelSource,
         includedInTraining,
-      });
+      }, toRequester(req));
       res.json(result);
     } catch (err) {
       next(err);

@@ -5,6 +5,11 @@ import { PaginationDto } from "../../domain/dtos/shared/pagination.dto.js";
 import { SchoolListFilters } from "../../domain/interfaces/school/index.js";
 import { PaginatedResult } from "../../domain/interfaces/shared/paginated-result.interface.js";
 
+const insensitiveContains = (value: string | undefined) => {
+  const trimmed = value?.trim();
+  return trimmed ? { contains: trimmed, mode: "insensitive" as const } : undefined;
+};
+
 export class SchoolRepositoryImpl implements SchoolRepository {
   async findById(id: number): Promise<SchoolEntity | null> {
     const school = await prisma.school.findUnique({ where: { id } });
@@ -16,15 +21,11 @@ export class SchoolRepositoryImpl implements SchoolRepository {
     pagination: PaginationDto,
     filters: SchoolListFilters = {},
   ): Promise<PaginatedResult<SchoolEntity>> {
+    const cenEdu = insensitiveContains(filters.search);
+    const district = insensitiveContains(filters.district);
     const where = {
-      ...(filters.search && filters.search.trim().length > 0
-        ? {
-            cenEdu: {
-              contains: filters.search.trim(),
-              mode: "insensitive" as const,
-            },
-          }
-        : {}),
+      ...(cenEdu && { cenEdu }),
+      ...(district && { district }),
     };
 
     const { page, limit } = pagination;
@@ -33,7 +34,8 @@ export class SchoolRepositoryImpl implements SchoolRepository {
         where,
         skip: (page - 1) * limit,
         take: limit,
-        orderBy: { cenEdu: "asc" },
+        // Homonymous schools stay distinguishable (and paging stable) by district/id.
+        orderBy: [{ cenEdu: "asc" }, { district: "asc" }, { id: "asc" }],
       }),
       prisma.school.count({ where }),
     ]);

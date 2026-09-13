@@ -7,6 +7,7 @@ const base = {
   name: 'Teacher Name',
   birthDate: '1990-01-01',
   roleId: ROLES.TEACHER,
+  schoolId: 5,
 };
 
 describe('RegisterUserDto.create', () => {
@@ -18,14 +19,14 @@ describe('RegisterUserDto.create', () => {
     expect(dto!.roleId).toBe(ROLES.TEACHER);
   });
 
-  it('teacher starts inactive (isActive=false)', () => {
+  it('teacher starts inactive until an admin approves it (isActive=false)', () => {
     const [, dto] = RegisterUserDto.create({ ...base, roleId: ROLES.TEACHER });
     expect(dto!.isActive).toBe(false);
   });
 
-  it('student starts inactive (isActive=false)', () => {
+  it('student is active immediately (isActive=true)', () => {
     const [, dto] = RegisterUserDto.create({ ...base, roleId: ROLES.STUDENT });
-    expect(dto!.isActive).toBe(false);
+    expect(dto!.isActive).toBe(true);
   });
 
   it('rejects admin roleId (public registration cannot create admins)', () => {
@@ -48,7 +49,7 @@ describe('RegisterUserDto.create', () => {
     const [err, dto] = RegisterUserDto.create({ ...base, roleId: String(ROLES.STUDENT) });
     expect(err).toBeUndefined();
     expect(dto!.roleId).toBe(ROLES.STUDENT);
-    expect(dto!.isActive).toBe(false);
+    expect(dto!.isActive).toBe(true);
   });
 
   it('rejects missing password', () => {
@@ -107,10 +108,29 @@ describe('RegisterUserDto.create', () => {
     expect(err).toBe('Invalid Phone Number');
   });
 
-  it('accepts optional schoolId', () => {
+  it('accepts schoolId', () => {
     const [err, dto] = RegisterUserDto.create({ ...base, schoolId: 5 });
     expect(err).toBeUndefined();
     expect(dto!.schoolId).toBe(5);
+  });
+
+  it('accepts a numeric string schoolId', () => {
+    const [err, dto] = RegisterUserDto.create({ ...base, schoolId: '7' });
+    expect(err).toBeUndefined();
+    expect(dto!.schoolId).toBe(7);
+  });
+
+  it.each([ROLES.STUDENT, ROLES.TEACHER])('requires schoolId for role %s', (roleId) => {
+    for (const schoolId of [undefined, null, '']) {
+      const [err, dto] = RegisterUserDto.create({ ...base, roleId, schoolId });
+      expect(err).toBe('Missing School Id');
+      expect(dto).toBeUndefined();
+    }
+  });
+
+  it.each([0, -3, 1.5, 'abc'])('rejects non positive-integer schoolId %p', (schoolId) => {
+    const [err] = RegisterUserDto.create({ ...base, schoolId });
+    expect(err).toBe('Invalid School Id');
   });
 
   it('defaults phoneNumber to null when not provided', () => {

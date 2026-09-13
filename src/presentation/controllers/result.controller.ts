@@ -11,6 +11,7 @@ import { GetSchoolStatsUseCase } from "../../domain/use-cases/result/get-school-
 import { GetStatsByGradeUseCase } from "../../domain/use-cases/result/get-stats-by-grade.use-case.js";
 import { GetUserStatsUseCase } from "../../domain/use-cases/result/get-user-stats.use-case.js";
 import { GetUserEvolutionUseCase } from "../../domain/use-cases/result/get-user-evolution.use-case.js";
+import { toRequester } from "../mappers/requester.mapper.js";
 
 export class ResultController {
   constructor(
@@ -106,7 +107,7 @@ export class ResultController {
         gradeId: !isNaN(gradeId!) ? gradeId : undefined,
         schoolId: !isNaN(schoolId!) ? schoolId : undefined,
         classifierType,
-      });
+      }, toRequester(req));
       res.json(result);
     } catch (err) {
       next(err);
@@ -119,7 +120,10 @@ export class ResultController {
       return res.status(400).json({ error: "Invalid schoolId" });
     }
     try {
-      const stats = await this.getSchoolStatsUseCase.execute(schoolId);
+      const stats = await this.getSchoolStatsUseCase.execute(
+        schoolId,
+        toRequester(req),
+      );
       res.json(stats);
     } catch (err) {
       next(err);
@@ -133,7 +137,11 @@ export class ResultController {
     }
     const level = req.query.level as string | undefined;
     try {
-      const stats = await this.getStatsByGradeUseCase.execute(schoolId, level);
+      const stats = await this.getStatsByGradeUseCase.execute(
+        schoolId,
+        level,
+        toRequester(req),
+      );
       res.json(stats);
     } catch (err) {
       next(err);

@@ -1,6 +1,7 @@
 import { CustomError } from "../../error/custom-error.js";
 import { UserRepository } from "../../repositories/user.repository.js";
 import { UserEntity } from "../../entities/user.entity.js";
+import { inactiveAccountMessage } from "../../policies/account-activation.policy.js";
 
 /**
  * Validates the current session: given the id decoded from the auth cookie,
@@ -14,7 +15,9 @@ export class GetCurrentUserUseCase {
     const user = await this.userRepository.findById(userId);
     // Unauthorized (not 404) — the session is no longer valid.
     if (!user) throw CustomError.unauthorized("Invalid session");
-    if (!user.isActive) throw CustomError.unauthorized("Account is inactive");
+    if (!user.isActive) {
+      throw CustomError.unauthorized(inactiveAccountMessage(user));
+    }
 
     return user;
   }

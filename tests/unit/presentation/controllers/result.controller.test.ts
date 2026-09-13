@@ -65,3 +65,47 @@ describe('ResultController student result listings', () => {
     expect(studentResults.execute).not.toHaveBeenCalled();
   });
 });
+
+describe('ResultController school-scoped endpoints', () => {
+  const teacher = { id: 7, roleId: 2 };
+
+  function makeController() {
+    const schoolStats = { execute: jest.fn().mockResolvedValue({}) };
+    const byGrade = { execute: jest.fn().mockResolvedValue([]) };
+    const allResults = { execute: jest.fn().mockResolvedValue({ items: [], total: 0, page: 1, limit: 10 }) };
+    const unused = {} as never;
+    const controller = new ResultController(
+      unused, unused, unused, allResults as never, unused, schoolStats as never, byGrade as never, unused, unused,
+    );
+    return { controller, schoolStats, byGrade, allResults };
+  }
+
+  it('getSchoolStats passes the authenticated requester', async () => {
+    const { controller, schoolStats } = makeController();
+    const req = { params: { schoolId: '3' }, query: {}, user: teacher } as unknown as Request;
+
+    await controller.getSchoolStats(req, makeRes(), jest.fn());
+
+    expect(schoolStats.execute).toHaveBeenCalledWith(3, teacher);
+  });
+
+  it('getStatsByGrade passes level and the authenticated requester', async () => {
+    const { controller, byGrade } = makeController();
+    const req = { params: { schoolId: '3' }, query: { level: 'Primaria' }, user: teacher } as unknown as Request;
+
+    await controller.getStatsByGrade(req, makeRes(), jest.fn());
+
+    expect(byGrade.execute).toHaveBeenCalledWith(3, 'Primaria', teacher);
+  });
+
+  it('listAll passes the schoolId filter and the authenticated requester', async () => {
+    const { controller, allResults } = makeController();
+    const req = { params: {}, query: { schoolId: '3' }, user: teacher } as unknown as Request;
+
+    await controller.listAll(req, makeRes(), jest.fn());
+
+    const [, filters, requester] = allResults.execute.mock.calls[0];
+    expect(filters.schoolId).toBe(3);
+    expect(requester).toEqual(teacher);
+  });
+});

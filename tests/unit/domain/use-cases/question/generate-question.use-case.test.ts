@@ -251,6 +251,17 @@ describe('GenerateQuestionUseCase', () => {
     expect(imageStorage.upload).toHaveBeenCalledWith('questions/test-uuid-1234.jpeg', jpeg, 'image/jpeg');
   });
 
+  it('stamps the question with the given school id', async () => {
+    aiGenerator.generateQuestion.mockResolvedValueOnce(validGenerated);
+    repo.createWithOptionsAndEmbedding.mockResolvedValueOnce(makeEntity());
+
+    await useCase.execute(visualDto!, [], 4);
+
+    const payload = repo.createWithOptionsAndEmbedding.mock.calls[0][0];
+    expect(payload.schoolId).toBe(4);
+    expect(payload.teacherId).toBe(1);
+  });
+
   it('passes recentStatements to prompt builder', async () => {
     const recent = ['Pregunta A', 'Pregunta B'];
     aiGenerator.generateQuestion.mockResolvedValueOnce(validGenerated);

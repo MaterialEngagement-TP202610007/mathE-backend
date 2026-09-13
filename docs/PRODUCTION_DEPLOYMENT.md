@@ -171,6 +171,8 @@ Render will:
 1. Build the Docker image
 2. Run `start.sh` which runs `prisma migrate deploy`, runs the seed only when `RUN_SEED=true`, then `node dist/app.js`
 
+> **Data migration `20260913120000_merge_schools_by_institution` is irreversible.** It merges per-level school rows into one row per real school (repointing users and questions) and adds `Question.schoolId`. Take a database backup (Render → Postgres → Backups, or `pg_dump`) **before** deploying a build that contains it. It runs automatically via `prisma migrate deploy`; no manual step is needed. `RUN_SEED=true` afterwards is optional and only refreshes school data.
+
 ### 3. Frontend Static Site
 
 - New → Static Site → Connect repo → select frontend repo
@@ -188,7 +190,7 @@ CORS_ORIGIN=https://your-frontend.onrender.com,https://your-staging-frontend.onr
 
 ### 5. Create the first admin
 
-A fresh database has no admin, and only admins can activate teacher accounts.
+A fresh database has no admin, and only admins can approve (activate) teacher accounts. Students are active on registration and need no approval.
 
 1. Set `ADMIN_EMAIL`, `ADMIN_PASSWORD` and `ADMIN_NAME` on the backend service.
 2. Render → backend service → **Shell**, then run:

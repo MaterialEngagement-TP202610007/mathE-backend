@@ -43,7 +43,9 @@ Numeric role ids (kept in sync with the DB seed):
 - Some routes are **self-or-admin**: a user may act on their own `:id`, otherwise admin role required (e.g. `GET /api/users/:id`, `PUT /api/users/:id`).
 
 ### Account activation gotcha
-On register, **students are created `isActive=false`** and **cannot log in** until an admin activates them (`PATCH /api/users/:id/activate`). Teachers/Admins are active immediately. Surface this in the registration UX: after a student signs up, show "pending activation" — login will fail with `401` until activated.
+- **Students** are active immediately on register and can log in right away (`requiresApproval: false`).
+- **Teachers** are created `isActive=false` and **cannot log in** until an **admin** approves them (`PATCH /api/users/:id/activate`). The register response has `requiresApproval: true`; show a "pending administrator approval" screen. Login fails with `401` `"Account is inactive. Your teacher account is pending administrator approval."` until approved.
+- Match inactive-login errors by the prefix `Account is inactive`.
 
 ---
 
@@ -83,7 +85,8 @@ Body:
 ```
 - `200` → `LoginResponse` `{ user }` **+** `Set-Cookie: auth_token=...; HttpOnly; Secure; SameSite=Strict; Max-Age=604800; Path=/`
 - `400` → validation error `{ "error": "Invalid Email" }`
-- `401` → invalid credentials or inactive account
+- `400` → invalid credentials
+- `401` → inactive account — pending teacher: `"Account is inactive. Your teacher account is pending administrator approval."` (always prefixed `Account is inactive`)
 
 ### `POST /api/auth/logout`
 No body. Clears the `auth_token` cookie.
@@ -104,12 +107,13 @@ Body:
   "birthDate": "2010-05-01",
   "roleId": 3,
   "phoneNumber": "+593987654321",   // optional, E.164
-  "schoolId": 1,                     // optional
+  "schoolId": 1,                     // REQUIRED (students and teachers), from GET /api/schools
   "academicGradeId": 2               // optional
 }
 ```
-- `201` → `{ "message": "User created successfully" }`
-- `400` → validation error
+- `201` student → `{ "message": "User created successfully", "requiresApproval": false }`
+- `201` teacher → `{ "message": "User created successfully. Your teacher account is pending administrator approval.", "requiresApproval": true }`
+- `400` → validation error, including `"Missing School Id"`, `"Invalid School Id"`, `"School not found"`
 
 **Password rule:** min 8 chars, at least one letter and one number (`/^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,}$/`).
 **Phone rule:** E.164-ish `+?[1-9]\d{1,14}`.
@@ -294,30 +298,30 @@ Legend: 🔓 public · 🔑 auth required · roles in parentheses.
 | POST | `/login` | 🔓 | `{email, password}` | `{user}` + sets cookie |
 | POST | `/logout` | 🔓 | — | `{ok:true}` clears cookie |
 | GET | `/me` | 🔑 | — | `{user}` (session check) |
-| POST | `/register` | 🔓 | register body (§3) | `{message}` |
+| POST | `/register` | 🔓 | register body (§3) | `{message, requiresApproval}` |
 
 ### Users — `/api/users` (all 🔑)
 | Method | Path | Roles | Notes |
 |--------|------|-------|-------|
 | GET | `/` | Admin | paginated all users |
 | GET | `/students` | Admin, Teacher | paginated students |
-| GET | `/teachers` | Admin | paginated teachers |
-| GET | `/students/by-school/:schoolId` | Admin, Teacher | paginated |
+| GET | `/teachers` | Admin | paginated teachers; `?isActive=false` = pending approval; items add `school: {id, name} \| null` |
+| GET | `/students/by-school/:schoolId` | Admin, Teacher | paginated; teachers only their own school (`403` otherwise) |
 | GET | `/:id` | Admin **or self** | single user |
 | PUT | `/:id` | Admin **or self** | update profile (body below) |
 | DELETE | `/:id` | Admin | soft-delete → `{message, user}` |
-| PATCH | `/:id/activate` | Admin | activate inactive user → `{message, user}` |
+| PATCH | `/:id/activate` | Admin | approve a pending **teacher** → `{message, user}`; `400 "Only teacher accounts require activation"` for students/admins |
 
 Update profile body (all optional, ≥1 required):
 ```json
 { "name": "...", "birthDate": "2010-05-01", "phoneNumber": "+593...", "academicGradeId": 2, "schoolId": 1 }
 ```
-Email / password / roleId are **not** editable here.
+Email / password / roleId are **not** editable here. `schoolId` must be an existing school (`400 "School not found"`); students and teachers cannot set it to `null` (`400 "Students and teachers must belong to a school"`).
 
 ### Questions — `/api/questions` (all 🔑, Admin/Teacher)
 | Method | Path | Body | Returns |
 |--------|------|------|---------|
-| POST | `/generate` | `{ vakStyle, teacherId? }` | `201` `Question` (status=pending) |
+| POST | `/generate?count=` | `{ vakStyle, teacherId? }` | `202` `{ message, vakStyle, count }` (progress over SSE) |
 | GET | `/my?status=&page=&limit=` | — | paginated own questions |
 | GET | `/my/validated-history` | — | paginated approved+rejected |
 | GET | `/:id` | — | `Question` with options |
@@ -325,7 +329,9 @@ Email / password / roleId are **not** editable here.
 | PATCH | `/:id/reject` | `{ rejectionReason }` | `Question` (status=rejected) |
 | DELETE | `/:id` | — | `204` (soft delete) |
 
-- `vakStyle` ∈ `"Visual" | "Auditory" | "Kinesthetic"`. `teacherId` defaults to the authenticated user.
+- `vakStyle` ∈ `"Visual" | "Auditory" | "Kinesthetic"`. `teacherId` defaults to the authenticated user (admins only may override it).
+- **Per-school bank:** generated questions get `schoolId` = the attributed teacher's school. A teacher without school gets `400 "Teacher must belong to a school to generate questions"` before anything starts.
+- `/:id`, `/:id/approve`, `/:id/reject`, `DELETE /:id`: teachers only for questions of **their own school** → otherwise `403 "Question does not belong to your school"`. Admins: any question. `Question` responses now include `schoolId: number | null`.
 - `status` filter ∈ `pending | approved | rejected` (omit for all).
 - Generation can return `502` (Gemini failed) or `503` (couldn't produce a unique, non-redundant question after max attempts). Show a retry affordance. **Generation is slow** (AI + embedding round-trips) — show a spinner and allow ~10–30s.
 
@@ -362,7 +368,7 @@ Only `questionId` is required; the behavioural metrics are nullable but **feed t
 ### Results — `/api/results` (all 🔑)
 | Method | Path | Roles | Notes |
 |--------|------|-------|-------|
-| GET | `/` | Teacher, Admin | paginated; filters `studentId, gradeId, schoolId, classifierType` |
+| GET | `/` | Teacher, Admin | paginated; filters `studentId, gradeId, schoolId, classifierType` (teacher + foreign `schoolId` → `403`) |
 | GET | `/my` | Student | own results (paginated + filtered — see below) |
 | GET | `/questionnaire/:questionnaireId` | Student(own), Teacher, Admin | result for a questionnaire |
 | GET | `/:id` | Student(own), Teacher, Admin | single result |
@@ -386,8 +392,10 @@ Returns `Paginated<Result>`. Invalid date strings return `400 { "error": "Invali
 | `limit` | integer | Items per page (default `10`) |
 | `studentId` | integer | Filter by student |
 | `gradeId` | integer | Filter by academic grade |
-| `schoolId` | integer | Filter by school |
+| `schoolId` | integer | Filter by school (teachers: own school only, else `403`) |
 | `classifierType` | string | Filter by classifier, e.g. `xgboost` |
+
+`GET /stats/school/:schoolId` and `GET /stats/school/:schoolId/by-grade`: teachers only for their own school → otherwise `403 { "error": "You can only access data from your own school" }`; admins any school.
 
 `correct-label` body: `{ "vakLabel": "Visual" | "Auditory" | "Kinesthetic" }`. Sets `correctedVakLabel` on the result and marks the matching ML dataset row `labelSource=teacher_validated`.
 
@@ -402,7 +410,7 @@ Returns `Paginated<Result>`. Invalid date strings return `400 { "error": "Invali
 ### ML Dataset — `/api/ml-dataset` (all 🔑, Teacher/Admin)
 | Method | Path | Notes |
 |--------|------|-------|
-| GET | `/?page=&limit=&studentId=&gradeId=&schoolId=&labelSource=&includedInTraining=` | paginated dataset entries |
+| GET | `/?page=&limit=&studentId=&gradeId=&schoolId=&labelSource=&includedInTraining=` | paginated dataset entries (teacher + foreign `schoolId` → `403`) |
 | GET | `/:id` | single entry |
 
 `labelSource` ∈ `simple_score | teacher_validated`. `includedInTraining` ∈ `true | false`.
@@ -410,15 +418,22 @@ Returns `Paginated<Result>`. Invalid date strings return `400 { "error": "Invali
 ### Schools — `/api/schools` (🔓 public, no auth)
 | Method | Path | Notes |
 |--------|------|-------|
-| GET | `/?page=&limit=&search=` | paginated; `search` = partial name match (searchbox) |
+| GET | `/?page=&limit=&search=&district=` | paginated; `search` = partial name match (searchbox); `limit` capped at 50 |
 | GET | `/:id` | single school by id |
 
-Public so the **registration form** can search/select a school before login. `search` matches the school name (`cenEdu`) case-insensitively. Returns `Paginated<School>`:
+Public so the **registration form** can search/select a school before login. `search` matches the school name (`cenEdu`) and `district` the district, both case-insensitively. **One item per real school**: MINEDU level-services of the same school (same premises + name) are merged. Homonymous schools in different districts stay separate — show `cenEdu · district`. Returns `Paginated<School>`:
 ```ts
 interface School {
-  id: number; codMod: string; cenEdu: string; level: string;
-  address: string; district: string; businessName: string;
-  createdAt: string; updatedAt: string;
+  id: number;
+  institutionKey: string;   // stable grouping key
+  cenEdu: string;
+  district: string;
+  address: string;
+  businessName: string;
+  levels: string[];         // e.g. ["Primaria", "Secundaria"]
+  codMods: string[];        // MINEDU modular codes of the merged services
+  createdAt: string;
+  updatedAt: string;
 }
 ```
 
@@ -465,14 +480,15 @@ Notes:
    Reject:   PATCH /api/questions/:id/reject { rejectionReason }
 4. Audit:    GET /api/questions/my/validated-history
 ```
-Only **approved** questions are eligible to appear in student questionnaires (with local fallback if a style runs short).
+Only **approved** questions of the **student's own school** are eligible to appear in student questionnaires. All-or-nothing: if any style is short for that school (or the student has no school), the whole questionnaire uses the local fallback bank (`usedFallback: true`).
 
 ### C. Admin onboarding
 ```
-1. Student self-registers (roleId=3) → created inactive.
-2. Admin lists pending: GET /api/users/students
-3. Admin activates: PATCH /api/users/:id/activate
-   → creates a notification for the student; they can now log in.
+1. Student self-registers (roleId=3) → active immediately, can log in.
+2. Teacher self-registers (roleId=2) → created inactive (requiresApproval: true).
+3. Admin lists pending teachers: GET /api/users/teachers?isActive=false
+4. Admin approves: PATCH /api/users/:id/activate
+   → creates an account_activated notification for the teacher; they can now log in.
 ```
 
 ### D. Teacher reviews results & builds ground truth (pilot)

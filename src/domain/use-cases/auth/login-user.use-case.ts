@@ -4,6 +4,7 @@ import { PasswordAdapter } from "../../adapters/password.adapter.js";
 import { TokenAdapter } from "../../adapters/token.adapter.js";
 import { LoginUserDto } from "../../dtos/auth/login-user.dto.js";
 import { UserEntity } from "../../entities/user.entity.js";
+import { inactiveAccountMessage } from "../../policies/account-activation.policy.js";
 
 export class LoginUserUseCase {
   constructor(
@@ -18,7 +19,9 @@ export class LoginUserUseCase {
     const user = await this.userRepository.findByEmail(dto.email);
     if (!user) throw CustomError.badRequest("Invalid credentials");
 
-    if (!user.isActive) throw CustomError.unauthorized("Account is inactive. Contact an administrator to activate your account.");
+    if (!user.isActive) {
+      throw CustomError.unauthorized(inactiveAccountMessage(user));
+    }
 
     const valid = this.passwordAdapter.compare(dto.password, user.password);
     if (!valid) throw CustomError.badRequest("Invalid credentials");

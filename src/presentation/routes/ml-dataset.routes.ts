@@ -4,6 +4,8 @@ import { authMiddleware } from "../middlewares/auth.middleware.js";
 import { roleGuard } from "../middlewares/role.middleware.js";
 import { ROLES } from "../../domain/constants/roles.constant.js";
 import { MLDatasetRepositoryImpl } from "../../infrastructure/repositories/ml-dataset.repository.impl.js";
+import { UserRepositoryImpl } from "../../infrastructure/repositories/user.repository.impl.js";
+import { SchoolAccessPolicy } from "../../domain/policies/school-access.policy.js";
 import { GetDatasetUseCase } from "../../domain/use-cases/ml-dataset/get-dataset.use-case.js";
 import { GetDatasetEntryUseCase } from "../../domain/use-cases/ml-dataset/get-dataset-entry.use-case.js";
 
@@ -14,7 +16,10 @@ export class MLDatasetRoutes {
     const mlDatasetRepository = new MLDatasetRepositoryImpl();
 
     const controller = new MLDatasetController(
-      new GetDatasetUseCase(mlDatasetRepository),
+      new GetDatasetUseCase(
+        mlDatasetRepository,
+        new SchoolAccessPolicy(new UserRepositoryImpl()),
+      ),
       new GetDatasetEntryUseCase(mlDatasetRepository),
     );
 
@@ -44,6 +49,7 @@ export class MLDatasetRoutes {
      *       - in: query
      *         name: schoolId
      *         schema: { type: integer }
+     *         description: Teachers may only filter by their own school.
      *       - in: query
      *         name: labelSource
      *         schema: { type: string, enum: [simple_score, teacher_validated] }
@@ -52,6 +58,7 @@ export class MLDatasetRoutes {
      *         schema: { type: boolean }
      *     responses:
      *       200: { description: Paginated dataset entries }
+     *       403: { description: "Teacher requesting another school — { error: 'You can only access data from your own school' }" }
      */
     router.get("/", controller.listAll);
 

@@ -21,10 +21,13 @@ export class SchoolController {
 
     const search =
       typeof req.query.search === "string" ? req.query.search : undefined;
+    const district =
+      typeof req.query.district === "string" ? req.query.district : undefined;
 
     try {
       const result = await this.listSchoolsUseCase.execute(pagination!, {
         search,
+        ...(district !== undefined && { district }),
       });
       res.json(result);
     } catch (err) {

@@ -4,7 +4,25 @@ import { GenerateQuestionDto } from '../../../../../src/domain/dtos/question/gen
 import { QuestionEntity } from '../../../../../src/domain/entities/question.entity.js';
 import { QuestionRepository } from '../../../../../src/domain/repositories/question.repository.js';
 import { NotificationRepository } from '../../../../../src/domain/repositories/notification.repository.js';
+import { UserRepository } from '../../../../../src/domain/repositories/user.repository.js';
+import { UserEntity } from '../../../../../src/domain/entities/user.entity.js';
 import { CustomError } from '../../../../../src/domain/error/custom-error.js';
+import { ROLES } from '../../../../../src/domain/constants/roles.constant.js';
+
+const TEACHER_SCHOOL_ID = 4;
+
+function makeTeacher(id: number, schoolId: number | null): UserEntity {
+  return new UserEntity(
+    id, 'hash', `teacher${id}@example.com`, 'Teacher', new Date('1990-01-01'),
+    new Date(), new Date(), null, true, ROLES.TEACHER, null, schoolId, null,
+  );
+}
+
+function makeUserRepo(users: UserEntity[] = [makeTeacher(1, TEACHER_SCHOOL_ID)]): jest.Mocked<UserRepository> {
+  return {
+    findById: jest.fn(async (id: number) => users.find((u) => u.id === id) ?? null),
+  } as unknown as jest.Mocked<UserRepository>;
+}
 
 function makeEntity(id: number): QuestionEntity {
   return new QuestionEntity(
@@ -48,25 +66,83 @@ describe('BulkGenerateQuestionsUseCase', () => {
   let generateUseCase: jest.Mocked<Pick<GenerateQuestionUseCase, 'execute'>>;
   let questionRepo: jest.Mocked<QuestionRepository>;
   let notificationRepo: jest.Mocked<NotificationRepository>;
+  let userRepo: jest.Mocked<UserRepository>;
   let useCase: BulkGenerateQuestionsUseCase;
 
   beforeEach(() => {
     generateUseCase = makeGenerateUseCase();
     questionRepo = makeQuestionRepo();
     notificationRepo = makeNotificationRepo();
+    userRepo = makeUserRepo();
     useCase = new BulkGenerateQuestionsUseCase(
       generateUseCase as unknown as GenerateQuestionUseCase,
       notificationRepo,
       questionRepo,
+      userRepo,
     );
   });
 
-  it('loads recent statements before generation', async () => {
+  it('loads recent statements of the teacher school before generation', async () => {
     generateUseCase.execute.mockResolvedValue(makeEntity(1));
 
     await useCase.execute(visualDto!, 1, 5);
 
-    expect(questionRepo.findRecentStatementsByVakStyle).toHaveBeenCalledWith('Visual', 20);
+    expect(questionRepo.findRecentStatementsByVakStyle).toHaveBeenCalledWith('Visual', 20, TEACHER_SCHOOL_ID);
+  });
+
+  it('stamps every generated question with the generating teacher school', async () => {
+    generateUseCase.execute.mockResolvedValue(makeEntity(1));
+
+    await useCase.execute(visualDto!, 2, 5);
+
+    expect(generateUseCase.execute).toHaveBeenCalledTimes(2);
+    for (const call of generateUseCase.execute.mock.calls) {
+      expect(call[2]).toBe(TEACHER_SCHOOL_ID);
+    }
+  });
+
+  describe('prepare', () => {
+    it('resolves the school of the attributed teacher', async () => {
+      await expect(useCase.prepare(visualDto!)).resolves.toEqual({ schoolId: TEACHER_SCHOOL_ID });
+      expect(userRepo.findById).toHaveBeenCalledWith(1);
+    });
+
+    it('rejects with 400 when the teacher has no school, before any AI call', async () => {
+      userRepo = makeUserRepo([makeTeacher(1, null)]);
+      useCase = new BulkGenerateQuestionsUseCase(
+        generateUseCase as unknown as GenerateQuestionUseCase,
+        notificationRepo,
+        questionRepo,
+        userRepo,
+      );
+
+      await expect(useCase.prepare(visualDto!)).rejects.toMatchObject({
+        statusCode: 400,
+        message: 'Teacher must belong to a school to generate questions',
+      });
+      await expect(useCase.execute(visualDto!, 3, 5)).rejects.toMatchObject({ statusCode: 400 });
+      expect(generateUseCase.execute).not.toHaveBeenCalled();
+      expect(questionRepo.findRecentStatementsByVakStyle).not.toHaveBeenCalled();
+    });
+
+    it('rejects with 404 when the attributed teacher does not exist', async () => {
+      const [, unknownTeacherDto] = GenerateQuestionDto.create({ vakStyle: 'Visual', teacherId: 404 });
+
+      await expect(useCase.prepare(unknownTeacherDto!)).rejects.toMatchObject({
+        statusCode: 404,
+        message: 'Teacher not found',
+      });
+    });
+
+    it('does not reload the teacher when execute receives a prepared context', async () => {
+      generateUseCase.execute.mockResolvedValue(makeEntity(1));
+
+      await useCase.execute(visualDto!, 1, 5, undefined, { schoolId: 8 });
+
+      expect(userRepo.findById).not.toHaveBeenCalled();
+      expect(questionRepo.findRecentStatementsByVakStyle).toHaveBeenCalledWith('Visual', 20, 8);
+      expect(generateUseCase.execute.mock.calls[0][2]).toBe(8);
+    });
   });
 
   it('generates requested count of questions', async () => {
@@ -133,6 +209,7 @@ describe('BulkGenerateQuestionsUseCase', () => {
       generateUseCase as unknown as GenerateQuestionUseCase,
       notificationRepo,
       questionRepo,
+      userRepo,
       { concurrency: 2 },
     );
 
@@ -152,6 +229,7 @@ describe('BulkGenerateQuestionsUseCase', () => {
       generateUseCase as unknown as GenerateQuestionUseCase,
       notificationRepo,
       questionRepo,
+      userRepo,
       { concurrency: 1 },
     );
 

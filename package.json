@@ -9,6 +9,7 @@
     "start": "node dist/app.js",
     "db:seed": "prisma db seed",
     "db:parse-schools": "tsx prisma/scripts/parse-schools.ts",
+    "db:school-merge-sql": "tsx prisma/scripts/generate-school-merge-sql.ts",
     "db:bootstrap-admin": "tsx prisma/scripts/bootstrap-admin.ts",
     "test": "jest --config jest.config.cjs"
   },

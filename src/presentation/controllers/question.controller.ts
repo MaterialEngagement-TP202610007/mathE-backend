@@ -5,7 +5,10 @@ import { GenerateQuestionDto } from "../../domain/dtos/question/generate-questio
 import { ListQuestionsDto } from "../../domain/dtos/question/list-questions.dto.js";
 import { RejectQuestionDto } from "../../domain/dtos/question/reject-question.dto.js";
 import { ValidatedHistoryDto } from "../../domain/dtos/question/validated-history.dto.js";
-import { BulkGenerateQuestionsUseCase } from "../../domain/use-cases/question/bulk-generate-questions.use-case.js";
+import {
+  BulkGenerateQuestionsUseCase,
+  QuestionGenerationContext,
+} from "../../domain/use-cases/question/bulk-generate-questions.use-case.js";
 import { ListQuestionsUseCase } from "../../domain/use-cases/question/list-questions.use-case.js";
 import { ValidatedHistoryUseCase } from "../../domain/use-cases/question/validated-history.use-case.js";
 import { GetQuestionUseCase } from "../../domain/use-cases/question/get-question.use-case.js";
@@ -13,6 +16,7 @@ import { ApproveQuestionUseCase } from "../../domain/use-cases/question/approve-
 import { RejectQuestionUseCase } from "../../domain/use-cases/question/reject-question.use-case.js";
 import { DeleteQuestionUseCase } from "../../domain/use-cases/question/delete-question.use-case.js";
 import { SseNotificationService } from "../../infrastructure/services/sse-notification.service.js";
+import { toRequester } from "../mappers/requester.mapper.js";
 
 export class QuestionController {
   constructor(
@@ -48,6 +52,14 @@ export class QuestionController {
 
     const userId = req.user!.id;
 
+    // Fail fast (e.g. teacher without school → 400) before acknowledging.
+    let context: QuestionGenerationContext;
+    try {
+      context = await this.bulkGenerateQuestionsUseCase.prepare(dto!);
+    } catch (err) {
+      return next(err);
+    }
+
     res.status(202).json({
       message: "Generation started",
       vakStyle: dto!.vakStyle,
@@ -77,7 +89,7 @@ export class QuestionController {
           progressNotified = true;
           pushFailed();
         },
-      })
+      }, context)
       .catch((err) => {
         console.error(
           `[questions] background generation failed (user ${userId}, ${dto!.vakStyle} x${rawCount}):`,
@@ -134,7 +146,7 @@ export class QuestionController {
     if (isNaN(id)) return res.status(400).json({ error: "Invalid question id" });
 
     try {
-      const question = await this.getQuestionUseCase.execute(id);
+      const question = await this.getQuestionUseCase.execute(id, toRequester(req));
       res.json(question);
     } catch (err) {
       next(err);
@@ -146,7 +158,10 @@ export class QuestionController {
     if (isNaN(id)) return res.status(400).json({ error: "Invalid question id" });
 
     try {
-      const question = await this.approveQuestionUseCase.execute(id);
+      const question = await this.approveQuestionUseCase.execute(
+        id,
+        toRequester(req),
+      );
       res.json(question);
     } catch (err) {
       next(err);
@@ -161,7 +176,11 @@ export class QuestionController {
     if (error) return res.status(400).json({ error });
 
     try {
-      const question = await this.rejectQuestionUseCase.execute(id, dto!);
+      const question = await this.rejectQuestionUseCase.execute(
+        id,
+        dto!,
+        toRequester(req),
+      );
       res.json(question);
     } catch (err) {
       next(err);
@@ -173,7 +192,7 @@ export class QuestionController {
     if (isNaN(id)) return res.status(400).json({ error: "Invalid question id" });
 
     try {
-      await this.deleteQuestionUseCase.execute(id);
+      await this.deleteQuestionUseCase.execute(id, toRequester(req));
       res.status(204).send();
     } catch (err) {
       next(err);

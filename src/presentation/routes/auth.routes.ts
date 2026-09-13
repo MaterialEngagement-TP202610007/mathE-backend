@@ -9,6 +9,7 @@ import { LoginUserUseCase } from "../../domain/use-cases/auth/login-user.use-cas
 import { RegisterUserUseCase } from "../../domain/use-cases/auth/register-user.use-case.js";
 import { GetCurrentUserUseCase } from "../../domain/use-cases/auth/get-current-user.use-case.js";
 import { UserRepositoryImpl } from "../../infrastructure/repositories/user.repository.impl.js";
+import { SchoolRepositoryImpl } from "../../infrastructure/repositories/school.repository.impl.js";
 import { BcryptAdapter } from "../../infrastructure/adapters/bcrypt.adapter.impl.js";
 import { JwtAdapter } from "../../infrastructure/adapters/jwt.adapter.impl.js";
 import { envs } from "../../config/envs.js";
@@ -23,7 +24,11 @@ export class AuthRoutes {
 
     const controller = new AuthController(
       new LoginUserUseCase(userRepository, passwordAdapter, tokenAdapter),
-      new RegisterUserUseCase(userRepository, passwordAdapter),
+      new RegisterUserUseCase(
+        userRepository,
+        passwordAdapter,
+        new SchoolRepositoryImpl(),
+      ),
       new GetCurrentUserUseCase(userRepository),
       { sessionTtlMs: envs.SESSION_TTL_HOURS * 60 * 60 * 1000 },
     );
@@ -62,7 +67,10 @@ export class AuthRoutes {
      *       400:
      *         description: Validation error
      *       401:
-     *         description: Invalid credentials or inactive account
+     *         description: >
+     *           Inactive account. Pending teachers get "Account is inactive. Your teacher
+     *           account is pending administrator approval."; any other inactive account gets
+     *           "Account is inactive. Contact an administrator." (both start with "Account is inactive").
      *       429:
      *         description: Too many login attempts — { error }
      */
@@ -113,15 +121,16 @@ export class AuthRoutes {
      *     summary: Register a new user
      *     description: >
      *       Creates a new student or teacher account. roleId must be the student or
-     *       teacher role id (admin cannot self-register). The account starts inactive
-     *       until an admin activates it. Rate limited: 10 attempts per email every 15 minutes.
+     *       teacher role id (admin cannot self-register). Students are active immediately
+     *       and can log in right away; teachers start inactive until an admin approves them
+     *       (PATCH /api/users/{id}/activate). Rate limited: 10 attempts per email every 15 minutes.
      *     requestBody:
      *       required: true
      *       content:
      *         application/json:
      *           schema:
      *             type: object
-     *             required: [password, email, name, birthDate, roleId]
+     *             required: [password, email, name, birthDate, roleId, schoolId]
      *             properties:
      *               password:
      *                 type: string
@@ -140,15 +149,21 @@ export class AuthRoutes {
      *                 nullable: true
      *               schoolId:
      *                 type: integer
-     *                 nullable: true
+     *                 minimum: 1
+     *                 description: Required for students and teachers. Must be an existing school (GET /api/schools).
      *               academicGradeId:
      *                 type: integer
      *                 nullable: true
      *     responses:
      *       201:
-     *         description: User created successfully
+     *         description: >
+     *           Student — { message: "User created successfully", requiresApproval: false }.
+     *           Teacher — { message: "User created successfully. Your teacher account is pending
+     *           administrator approval.", requiresApproval: true }
      *       400:
-     *         description: Validation error (including "Invalid Role Id")
+     *         description: >
+     *           Validation error (including "Invalid Role Id", "Missing School Id",
+     *           "Invalid School Id", "School not found")
      *       429:
      *         description: Too many registration attempts — { error }
      */

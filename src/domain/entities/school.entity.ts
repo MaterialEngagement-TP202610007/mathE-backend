@@ -1,14 +1,19 @@
 import { CustomError } from "../error/custom-error.js";
 
+/**
+ * One real school. MINEDU publishes one service per level (COD_MOD); services
+ * of the same school are merged, so `levels` and `codMods` list all of them.
+ */
 export class SchoolEntity {
   constructor(
     public id: number,
-    public codMod: string,
+    public institutionKey: string,
     public cenEdu: string, // name
-    public level: string,
-    public address: string,
     public district: string,
+    public address: string,
     public businessName: string,
+    public levels: string[],
+    public codMods: string[],
     public createdAt: Date,
     public updatedAt: Date,
   ) {}
@@ -16,12 +21,13 @@ export class SchoolEntity {
   static fromObject(object: { [key: string]: any }): SchoolEntity {
     const {
       id,
-      codMod,
+      institutionKey,
       cenEdu,
-      level,
-      address,
       district,
+      address,
       businessName,
+      levels,
+      codMods,
       createdAt,
       updatedAt,
     } = object;
@@ -31,12 +37,13 @@ export class SchoolEntity {
 
     return new SchoolEntity(
       id,
-      codMod ?? "",
+      institutionKey ?? "",
       cenEdu,
-      level ?? "",
-      address ?? "",
       district ?? "",
+      address ?? "",
       businessName ?? "",
+      Array.isArray(levels) ? [...levels] : [],
+      Array.isArray(codMods) ? [...codMods] : [],
       createdAt ? new Date(createdAt) : new Date(),
       updatedAt ? new Date(updatedAt) : new Date(),
     );

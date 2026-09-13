@@ -30,6 +30,8 @@ export interface CreateQuestionData {
   validationStatus: string;
   generationDate: Date;
   teacherId: number | null;
+  /** School whose question bank receives the question (the generating teacher's). */
+  schoolId: number | null;
   options: GeneratedOption[];
   /** Null when embedding generation failed — the question is saved without one. */
   embeddingVector: number[] | null;

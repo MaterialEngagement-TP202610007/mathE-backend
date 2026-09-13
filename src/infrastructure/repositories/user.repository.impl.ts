@@ -73,6 +73,7 @@ export class UserRepositoryImpl implements UserRepository {
     const [rows, total] = await Promise.all([
       prisma.user.findMany({
         where,
+        include: { school: { select: { cenEdu: true } } },
         skip: (page - 1) * limit,
         take: limit,
         orderBy: { id: "asc" },

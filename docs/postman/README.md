@@ -34,6 +34,6 @@ Test scripts save ids into collection variables so chained requests just work:
 ## Typical flows
 **Student:** Login → Create questionnaire → Submit answer (×N) → Complete → Results → List my results.
 **Teacher:** Login → Generate question → List my questions → Approve/Reject → Results → Correct label.
-**Admin:** Login → List students → Activate user.
+**Admin:** Login → List pending teachers (`GET /api/users/teachers?isActive=false`) → Activate teacher.
 
 See [`../API_REFERENCE.md`](../API_REFERENCE.md) for full request/response contracts.

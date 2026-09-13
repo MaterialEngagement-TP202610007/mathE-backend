@@ -141,7 +141,7 @@
               "mode": "raw",
               "raw": "{\n  \"email\": \"student@example.com\",\n  \"password\": \"Passw0rd\",\n  \"name\": \"Jane Doe\",\n  \"birthDate\": \"2010-05-01\",\n  \"roleId\": 3,\n  \"phoneNumber\": \"+593987654321\",\n  \"schoolId\": 1,\n  \"academicGradeId\": 2\n}"
             },
-            "description": "Register a user. Students (roleId=3) are created inactive and cannot log in until an admin activates them."
+            "description": "Register a user. Students (roleId=3) are active immediately. Teachers (roleId=2) are created inactive and cannot log in until an admin activates them."
           }
         },
         {
@@ -346,7 +346,7 @@
           }
         },
         {
-          "name": "Activate user (Admin)",
+          "name": "Activate teacher (Admin)",
           "request": {
             "method": "PATCH",
             "header": [],

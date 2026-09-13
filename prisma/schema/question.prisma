@@ -1,7 +1,8 @@
 model Question {
   id               Int      @id @default(autoincrement())
   teacherId        Int?
-  statement        String   @db.Text
+  schoolId         Int? // Owning school's question bank; NULL for fallback-bank questions
+  statement       String   @db.Text
   contentType      String   @db.VarChar(50) // 'text' | 'image' | 'audio' | 'interactive'
   vakStyle         String   @db.VarChar(20) // 'Visual' | 'Auditory' | 'Kinesthetic'
   mediaUrl         String?  @db.VarChar(500)
@@ -16,11 +17,14 @@ model Question {
   deletedAt DateTime?
 
   // Relations
-  teacher User? @relation("TeacherQuestions", fields: [teacherId], references: [id])
+  teacher User?   @relation("TeacherQuestions", fields: [teacherId], references: [id])
+  school  School? @relation(fields: [schoolId], references: [id], onDelete: SetNull)
 
   // Inverse relations
   embedding      QuestionEmbedding?
   options        Option[]
   answers        Answer[]
   questionnaires QuestionnaireQuestion[]
+
+  @@index([schoolId, validationStatus, origin, vakStyle])
 }

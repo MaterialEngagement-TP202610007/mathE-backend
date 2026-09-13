@@ -19,9 +19,11 @@ export interface QuestionFilters {
 }
 
 export abstract class QuestionRepository {
+  /** Most recent statements of a VAK style within one school's bank (dedupe hint). */
   abstract findRecentStatementsByVakStyle(
     vakStyle: string,
     limit: number,
+    schoolId: number,
   ): Promise<string[]>;
 
   abstract createWithOptionsAndEmbedding(
@@ -29,12 +31,14 @@ export abstract class QuestionRepository {
   ): Promise<QuestionEntity>;
 
   /**
-   * Returns up to `limit` randomly-selected approved questions for a given
-   * VAK style. Options are stripped of vakValue (not safe to expose).
+   * Returns up to `limit` questions sampled uniformly at random among the
+   * approved, AI-generated, non-deleted questions of a VAK style that belong
+   * to `schoolId`. Options are stripped of vakValue (not safe to expose).
    */
   abstract findApprovedByStyle(
     vakStyle: string,
     limit: number,
+    schoolId: number,
   ): Promise<ApprovedQuestionSlim[]>;
 
   abstract findByTeacher(

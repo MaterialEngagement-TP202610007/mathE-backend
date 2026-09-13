@@ -57,7 +57,7 @@ Response `200` — also sets `Set-Cookie: auth_token=...; HttpOnly; Secure; Same
   }
 }
 ```
-Errors: `400` validation · `401` invalid credentials or inactive account.
+Errors: `400` invalid credentials / validation · `401` inactive account — pending teacher: `"Account is inactive. Your teacher account is pending administrator approval."`; any other inactive account: `"Account is inactive. Contact an administrator."` (always prefixed `Account is inactive`).
 
 ```ts
 interface PublicUser {
@@ -91,10 +91,10 @@ Response `200`:
 Validates the current session: verifies the cookie JWT, then re-checks the user still exists and is active. Call on app load to know if the user is logged in.
 Request: no body (cookie only).
 Response `200`: `{ user: PublicUser }` (same shape as login).
-Errors: `401` no/invalid cookie, or account deleted/inactive.
+Errors: `401` no/invalid cookie (`"Invalid session"`), or inactive account (same messages as login).
 
 ### `POST /api/auth/register` 🔓
-Request (`phoneNumber`, `schoolId`, `academicGradeId` optional/nullable):
+Request (`phoneNumber`, `academicGradeId` optional/nullable; **`schoolId` required** — students and teachers always belong to a school):
 ```json
 {
   "email": "student@example.com",
@@ -107,12 +107,16 @@ Request (`phoneNumber`, `schoolId`, `academicGradeId` optional/nullable):
   "academicGradeId": 2
 }
 ```
-Response `201`:
+Response `201` — student (`roleId=3`, active immediately):
 ```json
-{ "message": "User created successfully" }
+{ "message": "User created successfully", "requiresApproval": false }
 ```
-Errors: `400` validation.
-Rules: password ≥8 chars w/ ≥1 letter + ≥1 digit · phone E.164 (`+?[1-9]\d{1,14}`) · **students (`roleId=3`) are created inactive** and cannot log in until an admin activates them.
+Response `201` — teacher (`roleId=2`, pending admin approval):
+```json
+{ "message": "User created successfully. Your teacher account is pending administrator approval.", "requiresApproval": true }
+```
+Errors: `400` validation — including `"Missing School Id"`, `"Invalid School Id"` (not a positive integer) and `"School not found"`.
+Rules: password ≥8 chars w/ ≥1 letter + ≥1 digit · phone E.164 (`+?[1-9]\d{1,14}`) · **students (`roleId=3`) are active immediately** and can log in right away · **teachers (`roleId=2`) are created inactive** and cannot log in until an admin approves them (`PATCH /api/users/:id/activate`).
 
 ```ts
 interface RegisterRequest {
@@ -122,7 +126,7 @@ interface RegisterRequest {
   birthDate: string;            // YYYY-MM-DD
   roleId: number;               // 1 admin | 2 teacher | 3 student
   phoneNumber?: string | null;
-  schoolId?: number | null;
+  schoolId: number;             // required, positive integer (GET /api/schools)
   academicGradeId?: number | null;
 }
 ```
@@ -176,13 +180,22 @@ All students. Accepts all shared filter params above.
 Response `200`: `Paginated<PublicUser>`.
 
 ### `GET /api/users/teachers` 🔑 A
-All teachers. Accepts all shared filter params above.
-Response `200`: `Paginated<PublicUser>`.
+All teachers. Accepts all shared filter params above (`page`, `limit`, `isActive`, ...). Use `?isActive=false` to list teachers pending administrator approval.
+Response `200`: `Paginated<TeacherListItem>` — each item is a `PublicUser` plus an additive nested school (flat `schoolId` is kept):
+```ts
+type TeacherListItem = PublicUser & {
+  schoolId: number | null;
+  schoolName: string | null;
+  school: { id: number; name: string | null } | null;
+};
+```
+Errors: `400` invalid filter/pagination · `403` non-admin.
 
 ### `GET /api/users/students/by-school/:schoolId` 🔑 A,T
 Path: `schoolId` int. Students filtered to that school. Accepts all shared filter params above.
+**Teachers may only query their own school** (school loaded from the DB, not the token); admins any school.
 Response `200`: `Paginated<PublicUser>`.
-Errors: `400` invalid `schoolId`.
+Errors: `400` invalid `schoolId` · `403` `"You can only access data from your own school"`.
 
 ---
 
@@ -200,7 +213,7 @@ Path: `id` int. Request — all optional, **≥1 required**; email/password/role
   "schoolId": 1
 }
 ```
-Response `200`: `PublicUser`. Errors: `400` validation / no fields · `404` not found.
+Response `200`: `PublicUser`. Errors: `400` validation / no fields · `400` `"Invalid School Id"` · `400` `"School not found"` · `400` `"Students and teachers must belong to a school"` (`schoolId: null` on a student/teacher) · `404` not found.
 
 ```ts
 interface UpdateUserRequest {
@@ -208,7 +221,7 @@ interface UpdateUserRequest {
   birthDate?: string;
   phoneNumber?: string | null;
   academicGradeId?: number | null;
-  schoolId?: number | null;
+  schoolId?: number | null;     // null only allowed for admin accounts
 }
 ```
 
@@ -221,18 +234,19 @@ Response `200`:
 ```
 Errors: `400` already deleted · `403` teacher targeting non-student · `404` not found.
 
-### `PATCH /api/users/:id/activate` 🔑 A,T
-Path: `id` int. Sets `isActive=true`; also creates an `account_activated` notification for the user.
-**Teachers may only activate students** — targeting a non-student returns `403`.
+### `PATCH /api/users/:id/activate` 🔑 A
+Path: `id` int. Approves a pending **teacher** account: sets `isActive=true` and creates an `account_activated` notification for that teacher. Students are active on registration, so they never need activation.
 Response `200`:
 ```json
 { "message": "User activated", "user": { /* PublicUser */ } }
 ```
-Errors: `400` already active or deleted · `403` teacher targeting non-student · `404` not found.
+Errors: `400` `"Only teacher accounts require activation"` (target is a student or admin) · `400` `"User is already active"` · `400` `"Cannot activate a deleted user"` · `400` `"Invalid User Id"` · `403` `"Insufficient permissions"` (caller is not an admin) · `404` `"User not found"`.
 
 ---
 
 ## 3. Questions — `/api/questions` (all 🔑 A,T)
+
+**Per-school question bank.** Every AI-generated question belongs to the school of the teacher it is attributed to (`schoolId`). Fallback-bank questions have `schoolId: null`. Teachers may only read/approve/reject/delete questions of **their own school** (`403` `"Question does not belong to your school"`); admins may act on any question. `/my` and `/my/validated-history` stay limited to the teacher's own questions.
 
 ```ts
 interface Option {
@@ -259,11 +273,12 @@ interface Question {
   rejectionReason: string | null;
   deletedAt: string | null;
   options: Option[];
+  schoolId: number | null;             // owning school bank; null for fallback questions
 }
 ```
 
 ### `POST /api/questions/generate` 🔑 A,T
-AI generates N questions in parallel (one Gemini call per question), dedupes each against existing embeddings, persists all as `pending`. **Slow** (AI + embedding per question; allow ~10–30s × count).
+Starts background generation of N questions (one Gemini call per question), persists all as `pending` in the attributed teacher's **school bank**. Recent-statement dedupe is scoped to that school. Responds `202` immediately; progress arrives over SSE.
 
 Query param: `count` (integer, 1–10, default `1`) — number of questions to generate in parallel.
 
@@ -271,11 +286,11 @@ Request body (`teacherId` optional, defaults to authenticated user):
 ```json
 { "vakStyle": "Visual", "teacherId": 2 }
 ```
-Response `201`: `Question[]` — array of generated questions (`validationStatus: "pending"`).
+Response `202`: `{ message: "Generation started", vakStyle, count }`.
 
-After all questions are created, a notification is sent to the requester with type `"questions_generated"`.
+After the batch finishes, a notification is sent to the requester with type `"questions_generated"`.
 
-Errors: `400` missing/invalid vakStyle or invalid `count` · `502` Gemini failed · `503` could not produce a unique question after max attempts (may be partial — `Promise.all` fails fast on first error).
+Errors (synchronous, before any AI call): `400` missing/invalid vakStyle or invalid `count` · `400` `"Teacher must belong to a school to generate questions"` (the attributed teacher — or the admin itself when no `teacherId` is given — has no school) · `404` `"Teacher not found"` (admin passed an unknown `teacherId`) · `429` rate limited.
 
 ```ts
 // Query
@@ -289,7 +304,7 @@ interface GenerateQuestionRequest {
   teacherId?: number | null;
 }
 
-// Response: Question[]
+// Response 202: { message: string; vakStyle: string; count: number }
 ```
 
 ### `GET /api/questions/my` 🔑 A,T
@@ -343,24 +358,24 @@ interface ValidatedHistoryQuery {
 ```
 
 ### `GET /api/questions/:id` 🔑 A,T
-Path: `id` int. Response `200`: `Question` (with options). Errors: `404` not found.
+Path: `id` int. Response `200`: `Question` (with options). Errors: `403` other school's question · `404` not found.
 
 ### `PATCH /api/questions/:id/approve` 🔑 A,T
-Path: `id` int. No body. Response `200`: `Question` (`validationStatus: "approved"`). Errors: `400` not pending · `404` not found.
+Path: `id` int. No body. Response `200`: `Question` (`validationStatus: "approved"`). Errors: `400` not pending · `403` other school's question · `404` not found.
 
 ### `PATCH /api/questions/:id/reject` 🔑 A,T
 Path: `id` int. Request:
 ```json
 { "rejectionReason": "Statement is ambiguous." }
 ```
-Response `200`: `Question` (`validationStatus: "rejected"`). Errors: `400` missing reason / not pending · `404` not found.
+Response `200`: `Question` (`validationStatus: "rejected"`). Errors: `400` missing reason / not pending · `403` other school's question · `404` not found.
 
 ```ts
 interface RejectQuestionRequest { rejectionReason: string }
 ```
 
 ### `DELETE /api/questions/:id` 🔑 A,T
-Path: `id` int. Soft-delete. Response `204` (no body). Errors: `404` not found.
+Path: `id` int. Soft-delete. Response `204` (no body). Errors: `403` other school's question · `404` not found.
 
 ---
 
@@ -405,7 +420,7 @@ interface CreateQuestionnaireResponse {
 ```
 
 ### `POST /api/questionnaires` 🔑 S
-No body. Creates session + selects 10 questions (Visual 4 / Auditory 3 / Kinesthetic 3; fallback bank if short).
+No body. Creates session + selects 10 questions (Visual 4 / Auditory 3 / Kinesthetic 3), sampled at random from the **student's school bank** (approved, AI-generated). All-or-nothing: if every style has enough approved questions for that school, all 10 come from it (`usedFallback: false`); otherwise — or when the student has no school — all 10 come from the fallback bank (`usedFallback: true`). Sources are never mixed and other schools' questions are never used.
 Response `201`: `CreateQuestionnaireResponse`.
 ```json
 {
@@ -616,10 +631,10 @@ All results across all students. Supports optional filters.
 | `limit` | integer | `10` | Items per page |
 | `studentId` | integer | — | Filter by student |
 | `gradeId` | integer | — | Filter by academic grade |
-| `schoolId` | integer | — | Filter by school |
+| `schoolId` | integer | — | Filter by school (teachers: own school only, else `403`) |
 | `classifierType` | string | — | `xgboost` \| `simple_score` |
 
-Response `200`: `Paginated<Result>`.
+Response `200`: `Paginated<Result>`. Errors: `403` `"You can only access data from your own school"` (teacher filtering by another school).
 
 ---
 
@@ -788,7 +803,7 @@ Response `200`:
 | `mostCommonStyle` | `string \| null` | Most frequent predominant style in school; `null` if no results |
 | `avgPredominantConfidence` | `number \| null` | Average classifier confidence (0–100); `null` if no results |
 
-Errors: `400` invalid `schoolId`.
+Errors: `400` invalid `schoolId` · `403` `"You can only access data from your own school"` (teachers: own school only; admins any).
 
 ```ts
 interface SchoolResultStats {
@@ -822,7 +837,7 @@ Response `200`: `GradeVakStats[]` (array, one entry per grade, ordered by grade)
 ]
 ```
 
-Errors: `400` invalid `schoolId`.
+Errors: `400` invalid `schoolId` or `level` · `403` `"You can only access data from your own school"` (teachers: own school only; admins any).
 
 ```ts
 interface GradeVakStats {
@@ -923,7 +938,7 @@ interface MLDatasetEntry {
 ```
 
 ### `GET /api/ml-dataset` 🔑 T,A
-Query: `page`, `limit` (default 20), `studentId?`, `gradeId?`, `schoolId?`, `labelSource?` (`simple_score|teacher_validated`), `includedInTraining?` (`true|false`). Response `200`: `Paginated<MLDatasetEntry>`.
+Query: `page`, `limit` (default 20), `studentId?`, `gradeId?`, `schoolId?`, `labelSource?` (`simple_score|teacher_validated`), `includedInTraining?` (`true|false`). Response `200`: `Paginated<MLDatasetEntry>`. Errors: `403` teacher filtering by another school's `schoolId`.
 
 ### `GET /api/ml-dataset/:id` 🔑 T,A
 Path: `id` int. Response `200`: `MLDatasetEntry`. Errors: `404` not found.
@@ -934,22 +949,25 @@ Path: `id` int. Response `200`: `MLDatasetEntry`. Errors: `404` not found.
 
 Public (no auth) — the registration form needs to search/select a school before the user logs in. School data is public MINEDU directory data.
 
+**One row per real school.** MINEDU publishes one row per service (`COD_MOD` = school + level); services sharing the same premises (`CODLOCAL`) and name are merged, so `levels` and `codMods` list all of them. Homonymous schools in different premises stay separate (use `district` to tell them apart).
+
 ```ts
 interface School {
   id: number;
-  codMod: string;        // MINEDU modular code
-  cenEdu: string;        // school name
-  level: string;         // Primaria | Secundaria | ...
-  address: string;
+  institutionKey: string; // stable grouping key, e.g. "LOC-337988-CLARETIANO"
+  cenEdu: string;         // school name
   district: string;
+  address: string;
   businessName: string;
+  levels: string[];       // e.g. ["Primaria", "Secundaria"]
+  codMods: string[];      // MINEDU modular codes of the merged services
   createdAt: string;
   updatedAt: string;
 }
 ```
 
 ### `GET /api/schools` 🔓
-Query: `page`, `limit`, `search?` — `search` is a **case-insensitive partial match on the name (`cenEdu`)**; this is the endpoint the frontend searchbox calls. Ordered by name.
+Query: `page`, `limit` (**capped at 50**), `search?`, `district?` — both are **case-insensitive partial matches** (`search` on the name `cenEdu`, `district` on `district`); this is the endpoint the frontend searchbox calls. Ordered by name, then district.
 Response `200`: `Paginated<School>`.
 ```
 GET /api/schools?search=san%20martin&page=1&limit=10

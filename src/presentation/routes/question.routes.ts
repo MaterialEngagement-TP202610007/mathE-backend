@@ -14,6 +14,8 @@ import { RejectQuestionUseCase } from "../../domain/use-cases/question/reject-qu
 import { DeleteQuestionUseCase } from "../../domain/use-cases/question/delete-question.use-case.js";
 import { QuestionRepositoryImpl } from "../../infrastructure/repositories/question.repository.impl.js";
 import { NotificationRepositoryImpl } from "../../infrastructure/repositories/notification.repository.impl.js";
+import { UserRepositoryImpl } from "../../infrastructure/repositories/user.repository.impl.js";
+import { SchoolAccessPolicy } from "../../domain/policies/school-access.policy.js";
 import { GeminiQuestionGeneratorAdapter } from "../../infrastructure/adapters/gemini-question-generator.adapter.impl.js";
 import { GeminiEmbeddingAdapter } from "../../infrastructure/adapters/gemini-embedding.adapter.impl.js";
 import { GeminiImageGeneratorAdapter } from "../../infrastructure/adapters/gemini-image-generator.adapter.impl.js";
@@ -27,6 +29,8 @@ export class QuestionRoutes {
 
     const questionRepository = new QuestionRepositoryImpl();
     const notificationRepository = new NotificationRepositoryImpl();
+    const userRepository = new UserRepositoryImpl();
+    const schoolAccessPolicy = new SchoolAccessPolicy(userRepository);
     const aiGenerator = new GeminiQuestionGeneratorAdapter();
     const embeddingAdapter = new GeminiEmbeddingAdapter();
     const imageGenerator = new GeminiImageGeneratorAdapter();
@@ -44,14 +48,15 @@ export class QuestionRoutes {
         ),
         notificationRepository,
         questionRepository,
+        userRepository,
         { concurrency: envs.QUESTION_GENERATION_CONCURRENCY },
       ),
       new ListQuestionsUseCase(questionRepository),
       new ValidatedHistoryUseCase(questionRepository),
-      new GetQuestionUseCase(questionRepository),
-      new ApproveQuestionUseCase(questionRepository),
-      new RejectQuestionUseCase(questionRepository),
-      new DeleteQuestionUseCase(questionRepository),
+      new GetQuestionUseCase(questionRepository, schoolAccessPolicy),
+      new ApproveQuestionUseCase(questionRepository, schoolAccessPolicy),
+      new RejectQuestionUseCase(questionRepository, schoolAccessPolicy),
+      new DeleteQuestionUseCase(questionRepository, schoolAccessPolicy),
       sseNotificationService,
     );
 
@@ -67,7 +72,8 @@ export class QuestionRoutes {
      *       Responds 202 immediately and runs the generation pipeline N times in the
      *       background with bounded concurrency (QUESTION_GENERATION_CONCURRENCY).
      *       Each question is embedded (non-fatal on failure), gets an optional image,
-     *       and is persisted with validationStatus=pending. Progress is pushed over SSE
+     *       and is persisted with validationStatus=pending in the attributed teacher's
+     *       school question bank (schoolId). Progress is pushed over SSE
      *       as `notification` events ({ type: "question_generated", questionId, vakStyle }
      *       or { type: "question_failed", vakStyle }). Rate limited per user: 10 requests
      *       every 10 minutes.
@@ -101,7 +107,11 @@ export class QuestionRoutes {
      *       202:
      *         description: Generation started — { message, vakStyle, count }
      *       400:
-     *         description: Validation error (missing/invalid vakStyle or count out of range)
+     *         description: >
+     *           Validation error (missing/invalid vakStyle or count out of range), or
+     *           "Teacher must belong to a school to generate questions" (checked before any AI call)
+     *       404:
+     *         description: 'Admin passed an unknown teacherId — { error: "Teacher not found" }'
      *       429:
      *         description: Too many generation requests — { error }
      */
@@ -211,7 +221,7 @@ export class QuestionRoutes {
      * /api/questions/{id}:
      *   get:
      *     tags: [Questions]
-     *     summary: Get question detail with its options. Admin or Teacher.
+     *     summary: Get question detail with its options. Admin (any) or Teacher (own school's questions).
      *     security: [{ bearerAuth: [] }]
      *     parameters:
      *       - in: path
@@ -224,6 +234,8 @@ export class QuestionRoutes {
      *         description: Question with options array
      *       400:
      *         description: Invalid id
+     *       403:
+     *         description: 'Teacher acting on another school''s question — { error: "Question does not belong to your school" }'
      *       404:
      *         description: Question not found
      */
@@ -238,7 +250,7 @@ export class QuestionRoutes {
      * /api/questions/{id}/approve:
      *   patch:
      *     tags: [Questions]
-     *     summary: Approve a pending question. Admin or Teacher.
+     *     summary: Approve a pending question. Admin (any) or Teacher (own school's questions).
      *     security: [{ bearerAuth: [] }]
      *     parameters:
      *       - in: path
@@ -251,6 +263,8 @@ export class QuestionRoutes {
      *         description: Updated question with validationStatus=approved
      *       400:
      *         description: Invalid id or question is not pending
+     *       403:
+     *         description: 'Teacher acting on another school''s question — { error: "Question does not belong to your school" }'
      *       404:
      *         description: Question not found
      */
@@ -265,7 +279,7 @@ export class QuestionRoutes {
      * /api/questions/{id}/reject:
      *   patch:
      *     tags: [Questions]
-     *     summary: Reject a pending question with a reason. Admin or Teacher.
+     *     summary: Reject a pending question with a reason. Admin (any) or Teacher (own school's questions).
      *     security: [{ bearerAuth: [] }]
      *     parameters:
      *       - in: path
@@ -289,6 +303,8 @@ export class QuestionRoutes {
      *         description: Updated question with validationStatus=rejected
      *       400:
      *         description: Missing rejectionReason or question is not pending
+     *       403:
+     *         description: 'Teacher acting on another school''s question — { error: "Question does not belong to your school" }'
      *       404:
      *         description: Question not found
      */
@@ -303,7 +319,7 @@ export class QuestionRoutes {
      * /api/questions/{id}:
      *   delete:
      *     tags: [Questions]
-     *     summary: Soft-delete a question (sets deletedAt). Admin or Teacher.
+     *     summary: Soft-delete a question (sets deletedAt). Admin (any) or Teacher (own school's questions).
      *     security: [{ bearerAuth: [] }]
      *     parameters:
      *       - in: path
@@ -316,6 +332,8 @@ export class QuestionRoutes {
      *         description: Question deleted (no content)
      *       400:
      *         description: Invalid id
+     *       403:
+     *         description: 'Teacher acting on another school''s question — { error: "Question does not belong to your school" }'
      *       404:
      *         description: Question not found
      */

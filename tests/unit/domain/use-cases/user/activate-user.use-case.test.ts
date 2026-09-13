@@ -2,7 +2,6 @@ import { ActivateUserUseCase } from '../../../../../src/domain/use-cases/user/ac
 import { UserEntity } from '../../../../../src/domain/entities/user.entity.js';
 import { UserRepository } from '../../../../../src/domain/repositories/user.repository.js';
 import { NotificationRepository } from '../../../../../src/domain/repositories/notification.repository.js';
-import { CustomError } from '../../../../../src/domain/error/custom-error.js';
 import { ROLES } from '../../../../../src/domain/constants/roles.constant.js';
 
 function makeUser(overrides: Partial<{
@@ -51,83 +50,69 @@ describe('ActivateUserUseCase', () => {
     useCase = new ActivateUserUseCase(repo, notificationRepo);
   });
 
-  it('throws 404 when user not found', async () => {
-    repo.findById.mockResolvedValueOnce(null);
-    await expect(useCase.execute(99)).rejects.toMatchObject({ statusCode: 404 });
-  });
-
-  it('throws 400 when user is deleted', async () => {
-    repo.findById.mockResolvedValueOnce(makeUser({ deletedAt: new Date() }));
-    await expect(useCase.execute(1)).rejects.toMatchObject({ statusCode: 400 });
-  });
-
-  it('throws 400 when user is already active', async () => {
-    repo.findById.mockResolvedValueOnce(makeUser({ isActive: true }));
-    await expect(useCase.execute(1)).rejects.toMatchObject({ statusCode: 400 });
-  });
-
-  it('throws 403 when teacher tries to activate non-student', async () => {
-    repo.findById.mockResolvedValueOnce(makeUser({ roleId: ROLES.TEACHER }));
-    await expect(useCase.execute(1, ROLES.TEACHER)).rejects.toMatchObject({ statusCode: 403 });
-  });
-
-  it('allows teacher to activate student', async () => {
-    const student = makeUser({ roleId: ROLES.STUDENT });
-    const activated = makeUser({ roleId: ROLES.STUDENT, isActive: true });
-    repo.findById.mockResolvedValueOnce(student);
-    repo.setActive.mockResolvedValueOnce(activated);
-
-    const result = await useCase.execute(1, ROLES.TEACHER);
-
-    expect(result.isActive).toBe(true);
-    expect(repo.setActive).toHaveBeenCalledWith(1, true);
-  });
-
-  it('activates student without caller role restriction', async () => {
-    const student = makeUser({ roleId: ROLES.STUDENT });
-    const activated = makeUser({ isActive: true });
-    repo.findById.mockResolvedValueOnce(student);
-    repo.setActive.mockResolvedValueOnce(activated);
-
-    await useCase.execute(1);
-
-    expect(repo.setActive).toHaveBeenCalledWith(1, true);
-  });
-
-  it('creates notification after activation', async () => {
-    const student = makeUser({ roleId: ROLES.STUDENT });
-    const activated = makeUser({ isActive: true });
-    repo.findById.mockResolvedValueOnce(student);
-    repo.setActive.mockResolvedValueOnce(activated);
-
-    await useCase.execute(1);
-
-    expect(notificationRepo.create).toHaveBeenCalledWith(
-      expect.objectContaining({ studentId: 1, type: 'account_activated' }),
-    );
-  });
-
-  it('sends teacher-specific message when activating a teacher account', async () => {
+  it('admin activates a pending teacher', async () => {
     const teacher = makeUser({ id: 5, roleId: ROLES.TEACHER });
     const activated = makeUser({ id: 5, roleId: ROLES.TEACHER, isActive: true });
     repo.findById.mockResolvedValueOnce(teacher);
     repo.setActive.mockResolvedValueOnce(activated);
 
-    await useCase.execute(5);
+    const result = await useCase.execute(5, ROLES.ADMIN);
 
-    const call = notificationRepo.create.mock.calls[0][0];
-    expect(call.message).toContain('gestionar alumnos');
+    expect(result.isActive).toBe(true);
+    expect(repo.setActive).toHaveBeenCalledWith(5, true);
   });
 
-  it('sends student-specific message when activating a student account', async () => {
-    const student = makeUser({ id: 3, roleId: ROLES.STUDENT });
-    const activated = makeUser({ id: 3, roleId: ROLES.STUDENT, isActive: true });
-    repo.findById.mockResolvedValueOnce(student);
-    repo.setActive.mockResolvedValueOnce(activated);
+  it('creates an account_activated notification with the teacher message', async () => {
+    repo.findById.mockResolvedValueOnce(makeUser({ id: 5, roleId: ROLES.TEACHER }));
+    repo.setActive.mockResolvedValueOnce(makeUser({ id: 5, roleId: ROLES.TEACHER, isActive: true }));
 
-    await useCase.execute(3);
+    await useCase.execute(5, ROLES.ADMIN);
 
-    const call = notificationRepo.create.mock.calls[0][0];
-    expect(call.message).toContain('cuestionario');
+    expect(notificationRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({ studentId: 5, type: 'account_activated' }),
+    );
+    expect(notificationRepo.create.mock.calls[0][0].message).toContain('gestionar alumnos');
+  });
+
+  it.each([ROLES.TEACHER, ROLES.STUDENT, undefined])(
+    'throws 403 when the caller role is %p (only admins can activate)',
+    async (callerRoleId) => {
+      repo.findById.mockResolvedValueOnce(makeUser({ roleId: ROLES.TEACHER }));
+
+      await expect(useCase.execute(1, callerRoleId)).rejects.toMatchObject({ statusCode: 403 });
+      expect(repo.setActive).not.toHaveBeenCalled();
+    },
+  );
+
+  it('throws 404 when user not found', async () => {
+    repo.findById.mockResolvedValueOnce(null);
+    await expect(useCase.execute(99, ROLES.ADMIN)).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it('throws 400 when user is deleted', async () => {
+    repo.findById.mockResolvedValueOnce(makeUser({ roleId: ROLES.TEACHER, deletedAt: new Date() }));
+    await expect(useCase.execute(1, ROLES.ADMIN)).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it.each([
+    ['student', ROLES.STUDENT],
+    ['admin', ROLES.ADMIN],
+  ])('throws 400 when the target is a %s', async (_label, roleId) => {
+    repo.findById.mockResolvedValueOnce(makeUser({ roleId, isActive: true }));
+
+    await expect(useCase.execute(1, ROLES.ADMIN)).rejects.toMatchObject({
+      statusCode: 400,
+      message: 'Only teacher accounts require activation',
+    });
+    expect(repo.setActive).not.toHaveBeenCalled();
+    expect(notificationRepo.create).not.toHaveBeenCalled();
+  });
+
+  it('throws 400 when the teacher is already active', async () => {
+    repo.findById.mockResolvedValueOnce(makeUser({ roleId: ROLES.TEACHER, isActive: true }));
+    await expect(useCase.execute(1, ROLES.ADMIN)).rejects.toMatchObject({
+      statusCode: 400,
+      message: 'User is already active',
+    });
   });
 });

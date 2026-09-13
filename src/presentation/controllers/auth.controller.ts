@@ -65,8 +65,14 @@ export class AuthController {
     if (error) return res.status(400).json({ error });
 
     try {
-      await this.registerUserUseCase.execute(dto!);
-      res.status(201).json({ message: "User created successfully" });
+      const user = await this.registerUserUseCase.execute(dto!);
+      const requiresApproval = !user.isActive;
+      res.status(201).json({
+        message: requiresApproval
+          ? "User created successfully. Your teacher account is pending administrator approval."
+          : "User created successfully",
+        requiresApproval,
+      });
     } catch (err) {
       next(err);
     }

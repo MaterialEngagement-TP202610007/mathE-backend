@@ -13,9 +13,10 @@ export class QuestionRepositoryImpl implements QuestionRepository {
   async findRecentStatementsByVakStyle(
     vakStyle: string,
     limit: number,
+    schoolId: number,
   ): Promise<string[]> {
     const rows = await prisma.question.findMany({
-      where: { vakStyle, deletedAt: null },
+      where: { vakStyle, deletedAt: null, schoolId },
       orderBy: { generationDate: "desc" },
       take: limit,
       select: { statement: true },
@@ -36,6 +37,7 @@ export class QuestionRepositoryImpl implements QuestionRepository {
           validationStatus: data.validationStatus,
           generationDate: data.generationDate,
           teacherId: data.teacherId,
+          schoolId: data.schoolId,
           mediaUrl: data.mediaUrl ?? null,
           options: {
             create: data.options.map((opt) => ({
@@ -64,23 +66,35 @@ export class QuestionRepositoryImpl implements QuestionRepository {
   async findApprovedByStyle(
     vakStyle: string,
     limit: number,
+    schoolId: number,
   ): Promise<ApprovedQuestionSlim[]> {
-    // Fetch up to 3× the needed amount then shuffle — gives random selection
-    // without a DB-specific random order clause.
-    const rows = await prisma.question.findMany({
+    // Uniform random sample over the WHOLE eligible pool: load only candidate
+    // ids (a school bank is small), sample them in memory, then load the picks.
+    const candidates = await prisma.question.findMany({
       where: {
         vakStyle,
         validationStatus: "approved",
         origin: "ai_generated",
         deletedAt: null,
+        schoolId,
       },
-      take: limit * 3,
+      select: { id: true },
+    });
+    if (candidates.length === 0) return [];
+
+    const pickedIds = this.shuffle(candidates.map((c) => c.id)).slice(0, limit);
+    const rows = await prisma.question.findMany({
+      where: { id: { in: pickedIds } },
       include: { options: { where: { deletedAt: null } } },
-      orderBy: { id: "asc" },
     });
 
-    const shuffled = this.shuffle(rows);
-    return shuffled.slice(0, limit).map((q) => ({
+    // Keep the sampled order (findMany with `in` does not preserve it).
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    const picked = pickedIds
+      .map((id) => byId.get(id))
+      .filter((row): row is NonNullable<typeof row> => row !== undefined);
+
+    return picked.map((q) => ({
       id: q.id,
       statement: q.statement,
       contentType: q.contentType,

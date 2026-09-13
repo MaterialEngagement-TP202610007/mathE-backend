@@ -1,16 +1,22 @@
+// One real school. MINEDU publishes one row per service (COD_MOD = school + level);
+// services sharing premises (CODLOCAL) and name (CEN_EDU) are merged into one row.
 model School {
-  id           Int    @id @default(autoincrement())
-  codMod       String @unique @db.VarChar(20)  // COD_MOD — MINEDU modular code
-  cenEdu       String @db.VarChar(250)         // CEN_EDU — name
-  level        String @db.VarChar(50)          // D_NIV_MOD — level (Primaria/Secundaria/...)
-  address      String @db.VarChar(500)         // DIR_CEN
-  district     String @db.VarChar(150)         // D_DIST
-  businessName String @db.VarChar(250)         // RZSOCIAL
+  id             Int      @id @default(autoincrement())
+  institutionKey String   @unique @db.VarChar(150) // Stable grouping key, e.g. LOC-<CODLOCAL>-<NAME> or MOD-<COD_MOD>
+  cenEdu         String   @db.VarChar(250)         // CEN_EDU — name
+  district       String   @db.VarChar(150)         // D_DIST
+  address        String   @db.VarChar(500)         // DIR_CEN
+  businessName   String   @db.VarChar(250)         // RZSOCIAL
+  levels         String[] @default([])             // D_NIV_MOD values offered (Primaria/Secundaria/...)
+  codMods        String[] @default([])             // COD_MOD of every merged MINEDU service
 
   // Audit
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   // Inverse relations
-  users User[]
+  users     User[]
+  questions Question[]
+
+  @@index([cenEdu])
 }

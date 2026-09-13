@@ -31,6 +31,14 @@ export class UpdateUserDto {
       return ["Invalid Phone Number"];
     }
 
+    let parsedSchoolId: number | null | undefined = schoolId;
+    if (schoolId !== undefined && schoolId !== null) {
+      parsedSchoolId = schoolId === "" ? NaN : Number(schoolId);
+      if (!Number.isInteger(parsedSchoolId) || parsedSchoolId <= 0) {
+        return ["Invalid School Id"];
+      }
+    }
+
     const hasAnyField =
       name !== undefined ||
       birthDate !== undefined ||
@@ -49,9 +57,7 @@ export class UpdateUserDto {
         academicGradeId !== undefined && academicGradeId !== null
           ? Number(academicGradeId)
           : academicGradeId,
-        schoolId !== undefined && schoolId !== null
-          ? Number(schoolId)
-          : schoolId,
+        parsedSchoolId,
       ),
     ];
   }

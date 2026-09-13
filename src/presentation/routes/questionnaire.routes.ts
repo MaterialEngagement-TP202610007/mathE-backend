@@ -16,6 +16,7 @@ import { GetAnswerUseCase } from "../../domain/use-cases/answer/get-answer.use-c
 import { QuestionnaireRepositoryImpl } from "../../infrastructure/repositories/questionnaire.repository.impl.js";
 import { AnswerRepositoryImpl } from "../../infrastructure/repositories/answer.repository.impl.js";
 import { QuestionRepositoryImpl } from "../../infrastructure/repositories/question.repository.impl.js";
+import { UserRepositoryImpl } from "../../infrastructure/repositories/user.repository.impl.js";
 import { ResultRepositoryImpl } from "../../infrastructure/repositories/result.repository.impl.js";
 import { MLDatasetRepositoryImpl } from "../../infrastructure/repositories/ml-dataset.repository.impl.js";
 import { MLModelRepositoryImpl } from "../../infrastructure/repositories/ml-model.repository.impl.js";
@@ -29,6 +30,7 @@ export class QuestionnaireRoutes {
 
     const questionnaireRepository = new QuestionnaireRepositoryImpl();
     const questionRepository = new QuestionRepositoryImpl();
+    const userRepository = new UserRepositoryImpl();
     const answerRepository = new AnswerRepositoryImpl();
     const resultRepository = new ResultRepositoryImpl();
     const mlModelRepository = new MLModelRepositoryImpl();
@@ -42,6 +44,7 @@ export class QuestionnaireRoutes {
         questionnaireRepository,
         questionRepository,
         fallbackAdapter,
+        userRepository,
       ),
       new GetQuestionnaireUseCase(questionnaireRepository),
       new ListQuestionnairesUseCase(questionnaireRepository),
@@ -74,9 +77,11 @@ export class QuestionnaireRoutes {
      *     description: >
      *       Creates a questionnaire (status=in_progress) and selects 10 questions
      *       distributed across VAK styles (Visual=4, Auditory=3, Kinesthetic=3).
-     *       Questions are all-or-nothing: if every VAK style has enough approved
-     *       AI-generated DB questions, all 10 come from the DB. Otherwise all 10 come
-     *       from the local fallback bank (usedFallback=true). The two sources are never mixed.
+     *       Questions come from the student's school bank and are all-or-nothing: if every
+     *       VAK style has enough approved AI-generated questions of that school, all 10 are
+     *       sampled at random from it. Otherwise (or when the student has no school) all 10
+     *       come from the local fallback bank (usedFallback=true). The two sources are never
+     *       mixed, and other schools' questions are never used.
      *       The response includes the 10 questions in randomised order. The question's
      *       own vakStyle and each option's vakValue are hidden (id + text only).
      *     security: [{ bearerAuth: [] }]

@@ -35,9 +35,14 @@ export class GenerateQuestionUseCase {
     private readonly config: GenerateQuestionConfig,
   ) {}
 
+  /**
+   * @param schoolId school whose question bank receives the question (the
+   *   generating teacher's school, resolved by the caller).
+   */
   async execute(
     dto: GenerateQuestionDto,
     recentStatements: string[] = [],
+    schoolId: number | null = null,
   ): Promise<QuestionEntity> {
     const { maxAttempts } = this.config;
     const baseDelay = this.config.retryBaseDelayMs ?? DEFAULT_RETRY_BASE_DELAY_MS;
@@ -73,6 +78,7 @@ export class GenerateQuestionUseCase {
         validationStatus: "pending",
         generationDate: new Date(),
         teacherId: dto.teacherId,
+        schoolId,
         options: generated.options,
         embeddingVector: vector,
         embeddingModelVersion: this.embeddingAdapter.modelVersion,

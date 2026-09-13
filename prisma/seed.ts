@@ -2,8 +2,9 @@
  * Prisma seed script — runs automatically on `prisma migrate dev`,
  * `prisma migrate reset`, and manually via `pnpm exec prisma db seed`.
  *
- * Idempotent: each row is upserted by stable id, so re-runs update
- * descriptive fields without creating duplicates.
+ * Idempotent: roles/grades are upserted by stable id and schools by
+ * `institutionKey`, so re-runs update descriptive fields without creating
+ * duplicates.
  *
  * Role ids MUST match `src/domain/constants/roles.constant.ts`.
  */
@@ -11,7 +12,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client.js";
 import { envs } from "../src/config/envs.js";
 import { ROLES } from "../src/domain/constants/roles.constant.js";
-import { SCHOOLS } from "./data/schools.generated.js";
+import { SCHOOLS, SchoolSeed } from "./data/schools.generated.js";
 import { runAdminBootstrap } from "./admin-bootstrap.js";
 
 const adapter = new PrismaPg({ connectionString: envs.DATABASE_URL });
@@ -67,21 +68,67 @@ async function seedAcademicGrades() {
   console.log(`Seeded ${defaultAcademicGrades.length} academic grades.`);
 }
 
-async function seedSchools() {
-  const CHUNK = 1000;
-  let inserted = 0;
+const sameList = (a: string[], b: string[]) =>
+  a.length === b.length && a.every((value, i) => value === b[i]);
 
-  for (let i = 0; i < SCHOOLS.length; i += CHUNK) {
-    const chunk = SCHOOLS.slice(i, i + CHUNK);
+function schoolChanged(current: SchoolSeed, next: SchoolSeed): boolean {
+  return (
+    current.cenEdu !== next.cenEdu ||
+    current.district !== next.district ||
+    current.address !== next.address ||
+    current.businessName !== next.businessName ||
+    !sameList(current.levels, next.levels) ||
+    !sameList(current.codMods, next.codMods)
+  );
+}
+
+/**
+ * Upserts schools by `institutionKey` (one row per real school). Existing rows
+ * are loaded once and compared in memory, so a re-run only inserts new schools
+ * and updates the ones whose aggregated fields changed.
+ */
+async function seedSchools() {
+  const CHUNK = 500;
+
+  const existing = await prisma.school.findMany({
+    select: {
+      institutionKey: true,
+      cenEdu: true,
+      district: true,
+      address: true,
+      businessName: true,
+      levels: true,
+      codMods: true,
+    },
+  });
+  const byKey = new Map(existing.map((s) => [s.institutionKey, s]));
+
+  const toCreate = SCHOOLS.filter((s) => !byKey.has(s.institutionKey));
+  const toUpdate = SCHOOLS.filter((s) => {
+    const current = byKey.get(s.institutionKey);
+    return current !== undefined && schoolChanged(current, s);
+  });
+
+  let inserted = 0;
+  for (let i = 0; i < toCreate.length; i += CHUNK) {
     const res = await prisma.school.createMany({
-      data: chunk,
+      data: toCreate.slice(i, i + CHUNK),
       skipDuplicates: true,
     });
     inserted += res.count;
   }
 
+  for (let i = 0; i < toUpdate.length; i += CHUNK) {
+    await prisma.$transaction(
+      toUpdate.slice(i, i + CHUNK).map(({ institutionKey, ...data }) =>
+        prisma.school.update({ where: { institutionKey }, data }),
+      ),
+    );
+  }
+
   console.log(
-    `Seeded ${inserted}/${SCHOOLS.length} schools (existing rows skipped).`,
+    `Seeded schools: ${inserted} inserted, ${toUpdate.length} updated, ` +
+      `${SCHOOLS.length - toCreate.length - toUpdate.length} unchanged (${SCHOOLS.length} total).`,
   );
 }
 

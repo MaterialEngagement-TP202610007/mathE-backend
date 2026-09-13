@@ -71,11 +71,23 @@ describe('LoginUserUseCase', () => {
     await expect(useCase.execute(validDto!)).rejects.toMatchObject({ statusCode: 401 });
   });
 
-  it('inactive account error message mentions administrator', async () => {
+  it('inactive teacher gets the pending administrator approval message', async () => {
     repo.findByEmail.mockResolvedValueOnce(makeInactiveUser());
     await expect(useCase.execute(validDto!)).rejects.toMatchObject({
-      message: expect.stringContaining('administrator'),
+      message: 'Account is inactive. Your teacher account is pending administrator approval.',
     });
+  });
+
+  it('inactive soft-deleted account keeps the "Account is inactive" prefix without the approval hint', async () => {
+    const deleted = makeInactiveUser();
+    deleted.deletedAt = new Date();
+    repo.findByEmail.mockResolvedValueOnce(deleted);
+
+    const error = await useCase.execute(validDto!).catch((e) => e);
+
+    expect(error.statusCode).toBe(401);
+    expect(error.message.startsWith('Account is inactive')).toBe(true);
+    expect(error.message).not.toContain('pending administrator approval');
   });
 
   it('throws 400 when password is wrong', async () => {

@@ -4,6 +4,8 @@ import { authMiddleware } from "../middlewares/auth.middleware.js";
 import { roleGuard } from "../middlewares/role.middleware.js";
 import { ROLES } from "../../domain/constants/roles.constant.js";
 import { ResultRepositoryImpl } from "../../infrastructure/repositories/result.repository.impl.js";
+import { UserRepositoryImpl } from "../../infrastructure/repositories/user.repository.impl.js";
+import { SchoolAccessPolicy } from "../../domain/policies/school-access.policy.js";
 import { GetResultUseCase } from "../../domain/use-cases/result/get-result.use-case.js";
 import { GetResultByQuestionnaireUseCase } from "../../domain/use-cases/result/get-result-by-questionnaire.use-case.js";
 import { GetStudentResultsUseCase } from "../../domain/use-cases/result/get-student-results.use-case.js";
@@ -19,15 +21,16 @@ export class ResultRoutes {
     const router = Router();
 
     const resultRepository = new ResultRepositoryImpl();
+    const schoolAccessPolicy = new SchoolAccessPolicy(new UserRepositoryImpl());
 
     const controller = new ResultController(
       new GetResultUseCase(resultRepository),
       new GetResultByQuestionnaireUseCase(resultRepository),
       new GetStudentResultsUseCase(resultRepository),
-      new GetAllResultsUseCase(resultRepository),
+      new GetAllResultsUseCase(resultRepository, schoolAccessPolicy),
       new CorrectResultLabelUseCase(resultRepository),
-      new GetSchoolStatsUseCase(resultRepository),
-      new GetStatsByGradeUseCase(resultRepository),
+      new GetSchoolStatsUseCase(resultRepository, schoolAccessPolicy),
+      new GetStatsByGradeUseCase(resultRepository, schoolAccessPolicy),
       new GetUserStatsUseCase(resultRepository),
       new GetUserEvolutionUseCase(resultRepository),
     );
@@ -57,11 +60,13 @@ export class ResultRoutes {
      *       - in: query
      *         name: schoolId
      *         schema: { type: integer }
+     *         description: Teachers may only filter by their own school.
      *       - in: query
      *         name: classifierType
      *         schema: { type: string }
      *     responses:
      *       200: { description: Paginated results }
+     *       403: { description: "Teacher requesting another school — { error: 'You can only access data from your own school' }" }
      */
     router.get(
       "/",
@@ -132,7 +137,7 @@ export class ResultRoutes {
      * /api/results/stats/school/{schoolId}:
      *   get:
      *     tags: [Results]
-     *     summary: School-level result summary. Teacher/Admin only.
+     *     summary: School-level result summary. Admin (any school) or Teacher (own school only).
      *     security: [{ bearerAuth: [] }]
      *     parameters:
      *       - in: path
@@ -142,6 +147,7 @@ export class ResultRoutes {
      *     responses:
      *       200: { description: School stats }
      *       400: { description: Invalid schoolId }
+     *       403: { description: "Teacher requesting another school — { error: 'You can only access data from your own school' }" }
      */
     router.get(
       "/stats/school/:schoolId",
@@ -154,7 +160,7 @@ export class ResultRoutes {
      * /api/results/stats/school/{schoolId}/by-grade:
      *   get:
      *     tags: [Results]
-     *     summary: Average VAK probabilities per academic grade for a school. Teacher/Admin only.
+     *     summary: Average VAK probabilities per academic grade for a school. Admin (any school) or Teacher (own school only).
      *     security: [{ bearerAuth: [] }]
      *     parameters:
      *       - in: path
@@ -168,6 +174,7 @@ export class ResultRoutes {
      *     responses:
      *       200: { description: Array of per-grade VAK stats }
      *       400: { description: Invalid schoolId or level }
+     *       403: { description: "Teacher requesting another school — { error: 'You can only access data from your own school' }" }
      */
     router.get(
       "/stats/school/:schoolId/by-grade",

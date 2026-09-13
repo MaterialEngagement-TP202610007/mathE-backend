@@ -31,12 +31,13 @@ Table User {
 
 Table School {
   id integer [primary key]
-  cod_mod varchar(20) [unique, not null, note: 'COD_MOD - MINEDU modular code']
+  institution_key varchar(150) [unique, not null, note: 'Grouping key: LOC-<CODLOCAL>-<NAME> or MOD-<COD_MOD>']
   cen_edu varchar(250) [not null, note: 'CEN_EDU - name']
-  level varchar(50) [not null, note: 'D_NIV_MOD - Primaria/Secundaria/...']
-  address varchar(500) [not null, note: 'DIR_CEN']
   district varchar(150) [not null, note: 'D_DIST']
+  address varchar(500) [not null, note: 'DIR_CEN']
   business_name varchar(250) [not null, note: 'RZSOCIAL']
+  levels text[] [note: 'D_NIV_MOD values offered (Primaria/Secundaria/...)']
+  cod_mods text[] [note: 'COD_MOD of every merged MINEDU service']
 
   // Audit
   created_at timestamp [not null]
@@ -83,6 +84,7 @@ Table QuestionnaireQuestion {
 Table Question {
   id integer [primary key]
   teacher_id integer [note: 'Pedagogical validator']
+  school_id integer [note: 'Owning school question bank; NULL for fallback_bank']
   statement text [not null]
   content_type varchar(50) [not null, note: "'text' | 'image' | 'audio' | 'interactive'"]
   vak_style varchar(20) [not null, note: "'Visual' | 'Auditory' | 'Kinesthetic'"]
@@ -249,6 +251,7 @@ Table Notification {
 Ref: User.role_id > Roles.id
 Ref: User.academic_grade_id > AcademicGrade.id
 Ref: User.school_id > School.id
+Ref: Question.school_id > School.id
 Ref: Questionnaire.student_id > User.id
 Ref: Question.teacher_id > User.id
 Ref: Option.question_id > Question.id
