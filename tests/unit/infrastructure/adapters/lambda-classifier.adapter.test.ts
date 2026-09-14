@@ -126,4 +126,64 @@ describe('LambdaClassifierAdapterImpl', () => {
       statusCode: 502,
     });
   });
+
+  describe('throttling retries', () => {
+    let sleep: jest.Mock;
+
+    beforeEach(() => {
+      sleep = jest.fn().mockResolvedValue(undefined);
+    });
+
+    const adapter = (random = () => 0) => new LambdaClassifierAdapterImpl({ sleep, random });
+
+    it('retries after a 503 and returns the classification when Lambda recovers', async () => {
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse({ message: 'Service Unavailable' }, 503))
+        .mockResolvedValueOnce(jsonResponse(lambdaBody()));
+
+      const result = await adapter().classify({ features });
+
+      expect(result.predominantStyle).toBe('Kinesthetic');
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(sleep).toHaveBeenCalledTimes(1);
+      expect(sleep).toHaveBeenCalledWith(500);
+    });
+
+    it('gives up after two retries when Lambda keeps throttling', async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ message: 'Too Many Requests' }, 429));
+
+      await expect(adapter().classify({ features })).rejects.toMatchObject({ statusCode: 429 });
+
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(sleep.mock.calls.map(([ms]) => ms)).toEqual([500, 1000]);
+    });
+
+    it('adds up to 250 ms of jitter so concurrent students do not retry in lockstep', async () => {
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse({}, 503))
+        .mockResolvedValueOnce(jsonResponse(lambdaBody()));
+
+      await adapter(() => 0.999).classify({ features });
+
+      expect(sleep).toHaveBeenCalledWith(749);
+    });
+
+    it('does not retry errors that are not throttling', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse({}, 500));
+
+      await expect(adapter().classify({ features })).rejects.toMatchObject({ statusCode: 502 });
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(sleep).not.toHaveBeenCalled();
+    });
+
+    it('does not retry when the request timed out', async () => {
+      fetchMock.mockRejectedValueOnce(Object.assign(new Error('timeout'), { name: 'TimeoutError' }));
+
+      await expect(adapter().classify({ features })).rejects.toMatchObject({ statusCode: 504 });
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(sleep).not.toHaveBeenCalled();
+    });
+  });
 });

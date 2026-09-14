@@ -13,6 +13,20 @@ import {
 
 const SERVICE_NAME = "Lambda";
 
+/** Delays before each retry of a throttled call (API Gateway 503 / Lambda 429). */
+const THROTTLE_RETRY_DELAYS_MS = [500, 1000];
+const MAX_RETRY_JITTER_MS = 250;
+const THROTTLE_STATUSES = new Set([429, 503]);
+
+export interface LambdaClassifierAdapterOptions {
+  sleep?: (ms: number) => Promise<void>;
+  /** Returns a number in [0, 1); used to spread concurrent retries. */
+  random?: () => number;
+}
+
+const defaultSleep = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 type DomainStyle = "Visual" | "Auditory" | "Kinesthetic";
 
 const STYLE_MAP: Record<string, DomainStyle> = {
@@ -46,23 +60,45 @@ function requireNumber(value: unknown, field: string): number {
 }
 
 export class LambdaClassifierAdapterImpl implements LambdaClassifierAdapter {
+  private readonly sleep: (ms: number) => Promise<void>;
+  private readonly random: () => number;
+
+  constructor({ sleep = defaultSleep, random = Math.random }: LambdaClassifierAdapterOptions = {}) {
+    this.sleep = sleep;
+    this.random = random;
+  }
+
   async classify(input: LambdaClassifierInput): Promise<LambdaClassifierOutput> {
     if (!envs.LAMBDA_URL) {
       throw CustomError.serviceUnavailable("Lambda URL not configured");
     }
 
-    const response = await fetchWithTimeout(envs.LAMBDA_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ features: input.features }),
-      timeoutMs: envs.LAMBDA_TIMEOUT_MS,
-      serviceName: SERVICE_NAME,
-    });
+    const body = JSON.stringify({ features: input.features });
+    let response = await this.post(body);
+
+    // Throttled calls are rejected instantly when the account concurrency limit
+    // is reached, so a short retry usually lands on a freed execution slot.
+    // Timeouts and other errors are not retried: they fall back right away.
+    for (const delayMs of THROTTLE_RETRY_DELAYS_MS) {
+      if (!THROTTLE_STATUSES.has(response.status)) break;
+      await this.sleep(delayMs + Math.floor(this.random() * MAX_RETRY_JITTER_MS));
+      response = await this.post(body);
+    }
 
     if (!response.ok) throw upstreamStatusError(response, SERVICE_NAME);
 
     const raw = await readJson<any>(response, SERVICE_NAME);
     return this.toOutput(raw);
+  }
+
+  private post(body: string): Promise<Response> {
+    return fetchWithTimeout(envs.LAMBDA_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+      timeoutMs: envs.LAMBDA_TIMEOUT_MS,
+      serviceName: SERVICE_NAME,
+    });
   }
 
   /** Validates the raw payload so any malformed response triggers the fallback. */
