@@ -24,3 +24,5 @@ src/generated/
 
 # Source CSV for school seed (parsed offline into schools.generated.ts)
 prisma/data/schools.csv
+# CSV exports of study data — never commit student data
+mathe-export-*/
