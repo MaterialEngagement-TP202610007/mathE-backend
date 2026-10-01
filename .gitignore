@@ -26,3 +26,6 @@ src/generated/
 prisma/data/schools.csv
 # CSV exports of study data — never commit student data
 mathe-export-*/
+mathe-export-*.zip
+# Database dumps contain student data
+*.dump
