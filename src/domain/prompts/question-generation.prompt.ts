@@ -1,3 +1,5 @@
+import type { ItemValidatorCatalog } from "../interfaces/item-validation/index.js";
+
 const TOPICS = [
   "un experimento de ciencias",
   "una tarea de historia del Perú",
@@ -22,34 +24,91 @@ const VAK_DISTRIBUTION: Record<string, string> = {
   Kinesthetic: "2 Kinestésicas (K), 1 Visual (V), 1 Auditiva (A)",
 };
 
+const DEFAULT_MAX_WORDS = 30;
+const MAX_MARKERS_PER_STYLE = 20;
+const MAX_FEEDBACK_MESSAGES = 8;
+const GENERIC_VERBS = ["ver", "tocar", "hacer"];
+
+export interface QuestionPromptOptions {
+  /** Blocking messages of the previous rejected attempt, to be corrected. */
+  feedback?: string[];
+  /** Active MVI catalog; its markers and word cap shape the prompt. */
+  catalog?: ItemValidatorCatalog | null;
+}
+
 export function buildQuestionGenerationPrompt(
   vakStyle: string,
   recentStatements: string[] = [],
+  options: QuestionPromptOptions = {},
 ): string {
   const topic = TOPICS[Math.floor(Math.random() * TOPICS.length)];
   const seed = Math.floor(Math.random() * 9999);
   const distribution = VAK_DISTRIBUTION[vakStyle] ?? "2 V, 1 A, 1 K";
+  const catalog = options.catalog ?? null;
+  const maxWords = catalog?.maxWords ?? DEFAULT_MAX_WORDS;
 
   const avoidBlock =
     recentStatements.length > 0
       ? `\nEvita generar una situación similar a cualquiera de estas (ya existen en el banco):\n${recentStatements.map((s) => `- "${s}"`).join("\n")}\n`
       : "";
 
-  return `Eres un experto en estilos de aprendizaje VAK, especializado en educación para niños y adolescentes de primaria y secundaria de Perú.
+  const feedback = [...new Set(options.feedback ?? [])].slice(0, MAX_FEEDBACK_MESSAGES);
+  const feedbackBlock =
+    feedback.length > 0
+      ? `\nTu intento anterior fue rechazado por estas razones; corrígelas:\n${feedback.map((m) => `- ${m}`).join("\n")}\n`
+      : "";
 
-Tu tarea es generar UNA situación hipotética COMPLETAMENTE NUEVA Y ÚNICA sobre: "${topic}" (semilla de variación: ${seed}). La situación usa frases como "imagina que...", "si tuvieras que...", "supón que..." y el alumno debe elegir cómo actuaría. Responde siempre en español castellano peruano.
-${avoidBlock}
+  return `Eres un experto en estilos de aprendizaje VAK, especializado en educación para estudiantes de 6to de primaria y 1ro de secundaria de Perú (11 a 12 años).
+
+Tu tarea es generar UNA pregunta COMPLETAMENTE NUEVA Y ÚNICA sobre: "${topic}" (semilla de variación: ${seed}). El alumno debe elegir cómo actuaría o qué le ayudaría más. Responde siempre en español castellano peruano.
+${avoidBlock}${feedbackBlock}
 Estilo predominante: ${vakStyle}.
 Distribución obligatoria: ${distribution}.
 
-Reglas:
-- La situación debe ser DISTINTA a cualquier pregunta típica sobre estilos de aprendizaje; usa el tema indicado como contexto concreto.
-- Las 4 opciones deben sonar igual de válidas, ninguna debe parecer "la más correcta".
-- Redacta las opciones en primera persona ("me quedaría más claro si...", "lo entendería mejor...").
-- Evita palabras que delaten el estilo: "ver", "escuchar", "tocar", "leer", "dibujar".
-- Lenguaje cercano y simple, como hablaría un alumno de colegio peruano.
+Reglas del enunciado:
+- Una pregunta corta y directa, de máximo ${maxWords} palabras. Puede incluir una breve situación escolar cotidiana siempre que respete ese límite.
+- Debe ser DISTINTA a cualquier pregunta típica sobre estilos de aprendizaje; usa el tema indicado como contexto concreto.
+
+Reglas de las opciones:
+- Exactamente 4 opciones que suenen igual de válidas; ninguna debe parecer "la más correcta".
+- Redáctalas en primera persona.
+- Longitud parecida: entre 4 y 8 palabras cada una.
+- Todas deben empezar con el mismo tipo de palabra: un verbo en infinitivo.
+- Sin negaciones: no uses "no", "nunca", "tampoco".
+- Palabras comunes, simples y cotidianas que conozca un niño de 11 a 12 años.
+${styleRules(catalog)}
 - No menciones los estilos VAK en ninguna parte del texto.
 
 Responde ÚNICAMENTE con este JSON sin texto adicional:
 {"statement":"...","options":[{"text":"...","vak_value":"V|A|K"}]}`;
+}
+
+function styleRules(catalog: ItemValidatorCatalog | null): string {
+  const markers = catalog?.markers;
+  const hasMarkers =
+    !!markers && (["V", "A", "K"] as const).some((v) => markers[v]?.length > 0);
+
+  if (!catalog || !markers || !hasMarkers) {
+    return `- Evita los verbos genéricos ${quoteList(GENERIC_VERBS)}; usa acciones concretas y observables propias de cada estilo (visual: mirar un mapa, un esquema o colores; auditivo: escuchar, explicar en voz alta o conversar; kinestésico: armar, construir o moverse).`;
+  }
+
+  const all = new Set(
+    (["V", "A", "K"] as const).flatMap((v) =>
+      (markers[v] ?? []).map((w) => w.toLowerCase()),
+    ),
+  );
+  const banned = GENERIC_VERBS.filter((w) => !all.has(w));
+  const perStyle = (["V", "A", "K"] as const)
+    .map((v) => `  ${v}: ${(markers[v] ?? []).slice(0, MAX_MARKERS_PER_STYLE).join(", ")}`)
+    .join("\n");
+  const ban =
+    banned.length > 0
+      ? `\n- Evita los verbos genéricos ${quoteList(banned)}; usa acciones concretas y observables.`
+      : "";
+
+  return `- CADA opción debe incluir al menos una palabra concreta de la lista de SU propio estilo:\n${perStyle}${ban}`;
+}
+
+function quoteList(words: string[]): string {
+  return words.map((w) => `"${w}"`).join(", ");
 }

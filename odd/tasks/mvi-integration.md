@@ -26,7 +26,7 @@ Out of scope: `/banco/verificar`, `/catalogo/verificar`, frontend UI.
 ## Tasks
 - [x] T1 — Config, domain port, MVI adapter
 - [x] T2 — Persistence (schema, migration, entity, repository)
-- [ ] T3 — Hybrid prompt
+- [x] T3 — Hybrid prompt
 - [ ] T4 — Validation loop in generation + bulk bank/wake-up + DI
 - [ ] T5 — Approve-over-MVI + revalidate endpoint
 - [ ] T6 — CSV export + docs
@@ -57,5 +57,10 @@ Out of scope: `/banco/verificar`, `/catalogo/verificar`, frontend UI.
 - Migration `20261002062016_add_mvi_validation_to_question`: additive ALTER TABLE "Question" ADD COLUMN x5 (approvedOverMvi BOOLEAN NOT NULL DEFAULT false, mviCatalogVersion VARCHAR(20), mviResult JSONB, mviStatus VARCHAR(20), mviValidatedAt TIMESTAMP(3)). Applied to local dev DB without reset.
 - Commit: `feat(question): persist MVI validation diagnosis` (hash = the commit containing this line)
 
+### T3
+- RED: `pnpm test -- tests/unit/domain/prompts/question-generation.prompt.test.ts`: suite failed to compile (TS2554: builder accepted 1-2 args, got 3).
+- GREEN: same command: 21 passed. `pnpm exec tsc --noEmit`: clean. `pnpm test`: 57 suites, 471 tests passed.
+- Commit: `feat(question): align generation prompt with MVI catalog` (hash = the commit containing this line)
+
 ## Next step
-T3.
+T4.
