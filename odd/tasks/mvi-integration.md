@@ -29,7 +29,7 @@ Out of scope: `/banco/verificar`, `/catalogo/verificar`, frontend UI.
 - [x] T3 — Hybrid prompt
 - [x] T4 — Validation loop in generation + bulk bank/wake-up + DI
 - [x] T5 — Approve-over-MVI + revalidate endpoint
-- [ ] T6 — CSV export + docs
+- [x] T6 — CSV export + docs
 
 ## Acceptance criteria
 - Generated questions persist `mviStatus` in {passed, failed, unavailable, skipped} with diagnosis when available.
@@ -75,16 +75,27 @@ Out of scope: `/banco/verificar`, `/catalogo/verificar`, frontend UI.
 - Route `POST /api/questions/:id/validate` (role guard + `questionValidationRateLimiter` 30/10min, reuses the generation `itemValidator`, null when MVI disabled). No per-limiter tests exist in `rate-limit.middleware.test.ts`, so none added.
 - Commit: `feat(question): add MVI revalidation endpoint and approval override flag` (hash = the commit containing this line)
 
+### T6
+- Non-code task (script + docs): no RED/GREEN applicable. Checks: `sh -n scripts/export-csv.sh`: ok (no syntax errors; query has no single quotes). `pnpm exec tsc --noEmit` and `pnpm test` unchanged from T5 (59 suites, 507 tests passed).
+- `scripts/export-csv.sh`: `preguntas` now exports `mviStatus`, `approvedOverMvi`, `mviCatalogVersion`, `mviValidatedAt`.
+- `docs/INTEGRATION_MVI_MATHE.md`: added section 12 (implementation status), marked implemented items; `docs/FRONTEND_INTEGRATION.md`: Question shape, endpoint row and "MVI diagnosis on questions (teacher/admin)" section.
+- Commit: `docs(mvi): document MVI integration status and frontend fields` (hash = the commit containing this line)
+
 ## Delivery
 - Strategy: `ask-on-risk` -> chain strategy `feature-branch-chain` (user choice 2026-10-02).
 - Slices:
   - S1 = T1-T2 (02b2ced, 771d3da); native review approved and acknowledged, lineage `review-5c6b19e72be37b16`.
-  - S2 = T3-T4 (e2dcf46 + T4 commit).
-  - S3 = T5-T6 (pending).
+  - S2 = T3-T4 (e2dcf46 + 3a165dd); native review granted, approved and acknowledged, lineage `review-675cbe4e92fcb53b`.
+  - S3 = T5-T6 (ac96c58 + T6 commit); pending native review by parent.
 
 ## RDD per task
 - T1-T2: granted / approved.
-- T3-T4: not yet assessed (slice S2 pending native review by parent).
+- T3-T4 (S2): granted / approved and acknowledged, lineage `review-675cbe4e92fcb53b`. One informational WARNING follow-up (see Follow-ups).
+- T5-T6 (S3): pending native review by parent.
+
+## Follow-ups
+- S2 WARNING `R3-bulk-context-unguarded`: bulk `loadValidationContext` (wakeUp/getCatalog/findBankStatements) is not guarded; a bank query failure fails the whole batch.
+- S1 suggestion (informational) `R3-001`: adapter lines 255-270.
 
 ## Next step
-T5.
+Local smoke test (needs `MVI_TOKEN` in `.env`).

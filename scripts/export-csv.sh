@@ -92,7 +92,8 @@ ORDER BY u.id'
 run_copy "preguntas" '
 SELECT q.id, q."teacherId", t.name AS teacher_name, q."schoolId", s."cenEdu" AS school,
        q.statement, q."vakStyle", q.origin, q."validationStatus", q."rejectionReason",
-       q."mediaUrl", q."generationDate"
+       q."mediaUrl", q."generationDate",
+       q."mviStatus", q."approvedOverMvi", q."mviCatalogVersion", q."mviValidatedAt"
 FROM "Question" q
 LEFT JOIN "User" t ON t.id = q."teacherId"
 LEFT JOIN "School" s ON s.id = q."schoolId"

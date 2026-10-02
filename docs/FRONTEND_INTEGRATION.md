@@ -251,6 +251,21 @@ interface Question {
     id: number; questionId: number; text: string; vakValue: "V" | "A" | "K";
     createdAt: string; updatedAt: string; deletedAt: string | null;
   }[];
+  schoolId: number | null;
+  // MVI diagnosis (teacher/admin only, see "MVI diagnosis on questions")
+  mviStatus: "passed" | "failed" | "unavailable" | "skipped" | null;
+  mviResult: {
+    approved: boolean;
+    violations: {
+      ruleId: string; message: string;
+      measuredValue: unknown; threshold: unknown;
+      severity: "blocking" | "warning";
+    }[];
+    attempts: number;                      // generation attempts used (1 after a manual revalidation)
+  } | null;
+  mviCatalogVersion: string | null;
+  mviValidatedAt: string | null;           // ISO date
+  approvedOverMvi: boolean;                // approved despite mviStatus "failed"
 }
 
 interface Notification {
@@ -327,6 +342,7 @@ Email / password / roleId are **not** editable here. `schoolId` must be an exist
 | GET | `/:id` | — | `Question` with options |
 | PATCH | `/:id/approve` | — | `Question` (status=approved) |
 | PATCH | `/:id/reject` | `{ rejectionReason }` | `Question` (status=rejected) |
+| POST | `/:id/validate` | — | `Question` with a fresh MVI diagnosis |
 | DELETE | `/:id` | — | `204` (soft delete) |
 
 - `vakStyle` ∈ `"Visual" | "Auditory" | "Kinesthetic"`. `teacherId` defaults to the authenticated user (admins only may override it).
@@ -334,6 +350,26 @@ Email / password / roleId are **not** editable here. `schoolId` must be an exist
 - `/:id`, `/:id/approve`, `/:id/reject`, `DELETE /:id`: teachers only for questions of **their own school** → otherwise `403 "Question does not belong to your school"`. Admins: any question. `Question` responses now include `schoolId: number | null`.
 - `status` filter ∈ `pending | approved | rejected` (omit for all).
 - Generation can return `502` (Gemini failed) or `503` (couldn't produce a unique, non-redundant question after max attempts). Show a retry affordance. **Generation is slow** (AI + embedding round-trips) — show a spinner and allow ~10–30s.
+
+#### MVI diagnosis on questions (teacher/admin)
+
+Every question returned by `/api/questions/*` carries the diagnosis of MVI (the external item validator) next to the usual fields. Students **never** receive these fields: `PublicQuestionView` is unchanged.
+
+| Field | Meaning |
+|-------|---------|
+| `mviStatus` | `passed` (no blocking violation), `failed` (blocking violations remain after all attempts), `unavailable` (MVI did not answer at generation time), `skipped` (integration off), `null` (never validated, e.g. older questions) |
+| `mviResult` | `{ approved, violations[], attempts }`. Each violation is `{ ruleId, message, measuredValue, threshold, severity: "blocking" \| "warning" }`. Warnings do not fail a question |
+| `mviCatalogVersion` | Rule catalog version used for the diagnosis |
+| `mviValidatedAt` | When the diagnosis was made |
+| `approvedOverMvi` | `true` when a teacher approved the question while `mviStatus` was `failed` (set by `PATCH /:id/approve`) |
+
+- **Approval is never blocked by MVI.** `PATCH /:id/approve` works on a `failed` question and just sets `approvedOverMvi: true`.
+- **`POST /api/questions/:id/validate`** re-runs MVI (use it for `unavailable` questions or after a catalog change). It works for any `validationStatus`, overwrites the `mvi*` fields, and never changes `validationStatus` or `approvedOverMvi`. Same school scope as the other `/:id` routes. Errors: `400 "MVI integration is disabled"`, `404`, `403`, `429` (30 requests / 10 min per user), `502` (invalid MVI answer), `503` (MVI unreachable, may be a cold start: allow a retry), `504` (MVI timeout).
+- **UI suggestions:**
+  - A badge per question in the pending list (`passed` green, `failed` red, `unavailable` grey with a "Validate" action, `skipped`/`null` none).
+  - A violations panel on the review screen, blocking violations first, showing `message` (it names the failing rule and word).
+  - An extra confirmation when approving a `failed` question ("MVI found blocking issues, approve anyway?").
+  - Prefill the rejection reason with the blocking `message`s so the teacher can edit it.
 
 ### Questionnaires — `/api/questionnaires` (all 🔑)
 | Method | Path | Roles | Body | Returns |
