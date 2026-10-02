@@ -36,7 +36,7 @@ describe('QuestionController.generate', () => {
     const unused = {} as never;
     controller = new QuestionController(
       bulk as unknown as BulkGenerateQuestionsUseCase,
-      unused, unused, unused, unused, unused, unused,
+      unused, unused, unused, unused, unused, unused, unused,
       sse as unknown as SseNotificationService,
     );
   });
@@ -172,13 +172,14 @@ describe('QuestionController school-scoped question actions', () => {
       approve: { execute: jest.fn().mockResolvedValue(question) },
       reject: { execute: jest.fn().mockResolvedValue(question) },
       remove: { execute: jest.fn().mockResolvedValue(undefined) },
+      revalidate: { execute: jest.fn().mockResolvedValue(question) },
     };
     const res = makeRes();
     res.send = jest.fn().mockReturnValue(res);
     const unused = {} as never;
     const controller = new QuestionController(
       unused, unused, unused,
-      useCases.get as never, useCases.approve as never, useCases.reject as never, useCases.remove as never,
+      useCases.get as never, useCases.approve as never, useCases.reject as never, useCases.remove as never, useCases.revalidate as never,
       unused,
     );
     return { controller, useCases, res };
@@ -208,6 +209,32 @@ describe('QuestionController school-scoped question actions', () => {
     const { controller, useCases, res } = makeController();
     await controller.softDelete(teacherReq(), res, jest.fn());
     expect(useCases.remove.execute).toHaveBeenCalledWith(5, requester);
+  });
+
+  it('validate passes the authenticated requester and returns the updated question', async () => {
+    const { controller, useCases, res } = makeController();
+    await controller.validate(teacherReq(), res, jest.fn());
+    expect(useCases.revalidate.execute).toHaveBeenCalledWith(5, requester);
+    expect(res.json).toHaveBeenCalledWith(question);
+  });
+
+  it('validate responds 400 for a non numeric id without calling the use case', async () => {
+    const { controller, useCases, res } = makeController();
+    await controller.validate(teacherReq({ params: { id: 'abc' } }), res, jest.fn());
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({ error: 'Invalid question id' });
+    expect(useCases.revalidate.execute).not.toHaveBeenCalled();
+  });
+
+  it('validate forwards MVI errors to the error handler', async () => {
+    const { controller, useCases, res } = makeController();
+    const unavailable = CustomError.serviceUnavailable('MVI unreachable');
+    useCases.revalidate.execute.mockRejectedValueOnce(unavailable);
+    const next = jest.fn();
+
+    await controller.validate(teacherReq(), res, next);
+
+    expect(next).toHaveBeenCalledWith(unavailable);
   });
 
   it('forwards a 403 from the use case to the error handler', async () => {

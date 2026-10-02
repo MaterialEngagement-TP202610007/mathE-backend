@@ -97,6 +97,25 @@ describe('QuestionRepositoryImpl.findApprovedByStyle', () => {
     expect(question.options[0]).toEqual({ id: 10, text: 'opt' });
   });
 
+  it('never exposes MVI diagnosis fields even when the row carries them', async () => {
+    const withMvi = (id: number) => ({
+      ...dbQuestion(id),
+      mviStatus: 'failed',
+      mviResult: { approved: false, violations: [], attempts: 3 },
+      mviCatalogVersion: 'v1.2',
+      mviValidatedAt: new Date(),
+      approvedOverMvi: true,
+    });
+    mocked.question.findMany
+      .mockResolvedValueOnce([{ id: 1 }])
+      .mockImplementationOnce(async ({ where }) => where.id.in.map(withMvi));
+
+    const [question] = await new QuestionRepositoryImpl().findApprovedByStyle('Visual', 1, 7);
+
+    expect(Object.keys(question).filter((k) => k.startsWith('mvi') || k === 'approvedOverMvi')).toEqual([]);
+    expect(Object.keys(question).sort()).toEqual(['contentType', 'id', 'mediaUrl', 'options', 'statement']);
+  });
+
   it('does not load questions when the school has no candidates', async () => {
     mocked.question.findMany.mockResolvedValueOnce([]);
 

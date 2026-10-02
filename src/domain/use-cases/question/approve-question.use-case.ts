@@ -19,6 +19,7 @@ export class ApproveQuestionUseCase {
         `Question is already ${question.validationStatus}`,
       );
 
-    return this.questionRepository.approve(id);
+    // Approval is never blocked by MVI; a failed diagnosis is only flagged.
+    return this.questionRepository.approve(id, question.mviStatus === "failed");
   }
 }

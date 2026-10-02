@@ -78,3 +78,10 @@ export const questionGenerationRateLimiter = createRateLimiter({
   keyGenerator: userOrIpKey,
   message: "Too many question generation requests, please try again in 10 minutes",
 });
+
+export const questionValidationRateLimiter = createRateLimiter({
+  windowMs: TEN_MINUTES,
+  limit: 30,
+  keyGenerator: userOrIpKey,
+  message: "Too many question validation requests, please try again in 10 minutes",
+});

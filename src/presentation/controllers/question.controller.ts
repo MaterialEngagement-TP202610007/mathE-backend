@@ -15,6 +15,7 @@ import { GetQuestionUseCase } from "../../domain/use-cases/question/get-question
 import { ApproveQuestionUseCase } from "../../domain/use-cases/question/approve-question.use-case.js";
 import { RejectQuestionUseCase } from "../../domain/use-cases/question/reject-question.use-case.js";
 import { DeleteQuestionUseCase } from "../../domain/use-cases/question/delete-question.use-case.js";
+import { RevalidateQuestionUseCase } from "../../domain/use-cases/question/revalidate-question.use-case.js";
 import { SseNotificationService } from "../../infrastructure/services/sse-notification.service.js";
 import { toRequester } from "../mappers/requester.mapper.js";
 
@@ -27,6 +28,7 @@ export class QuestionController {
     private readonly approveQuestionUseCase: ApproveQuestionUseCase,
     private readonly rejectQuestionUseCase: RejectQuestionUseCase,
     private readonly deleteQuestionUseCase: DeleteQuestionUseCase,
+    private readonly revalidateQuestionUseCase: RevalidateQuestionUseCase,
     private readonly sseService: SseNotificationService,
   ) {}
 
@@ -179,6 +181,21 @@ export class QuestionController {
       const question = await this.rejectQuestionUseCase.execute(
         id,
         dto!,
+        toRequester(req),
+      );
+      res.json(question);
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  validate = async (req: Request, res: Response, next: NextFunction) => {
+    const id = Number(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid question id" });
+
+    try {
+      const question = await this.revalidateQuestionUseCase.execute(
+        id,
         toRequester(req),
       );
       res.json(question);

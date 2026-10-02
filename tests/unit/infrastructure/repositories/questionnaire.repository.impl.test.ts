@@ -25,6 +25,12 @@ const dbQuestion = {
   mediaUrl: null,
   vakStyle: 'Visual',
   options: dbOptions,
+  // Teacher-only MVI diagnosis stored on the row; must never reach students.
+  mviStatus: 'failed',
+  mviResult: { approved: false, violations: [], attempts: 3 },
+  mviCatalogVersion: 'v1.2',
+  mviValidatedAt: new Date(),
+  approvedOverMvi: true,
 };
 
 const questionnaireRow = {
@@ -41,6 +47,7 @@ function expectNoVakLeak(questions: Array<{ options: object[] }>) {
   expect(questions.length).toBeGreaterThan(0);
   for (const q of questions) {
     expect(q).not.toHaveProperty('vakStyle');
+    expect(Object.keys(q).filter((k) => k.startsWith('mvi') || k === 'approvedOverMvi')).toEqual([]);
     for (const option of q.options) {
       expect(option).not.toHaveProperty('vakValue');
       expect(Object.keys(option).sort()).toEqual(['id', 'text']);

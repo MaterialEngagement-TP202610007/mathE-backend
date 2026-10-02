@@ -2,7 +2,10 @@ import { Router } from "express";
 import { QuestionController } from "../controllers/question.controller.js";
 import { authMiddleware } from "../middlewares/auth.middleware.js";
 import { roleGuard } from "../middlewares/role.middleware.js";
-import { questionGenerationRateLimiter } from "../middlewares/rate-limit.middleware.js";
+import {
+  questionGenerationRateLimiter,
+  questionValidationRateLimiter,
+} from "../middlewares/rate-limit.middleware.js";
 import { ROLES } from "../../domain/constants/roles.constant.js";
 import { GenerateQuestionUseCase } from "../../domain/use-cases/question/generate-question.use-case.js";
 import { BulkGenerateQuestionsUseCase } from "../../domain/use-cases/question/bulk-generate-questions.use-case.js";
@@ -12,6 +15,7 @@ import { GetQuestionUseCase } from "../../domain/use-cases/question/get-question
 import { ApproveQuestionUseCase } from "../../domain/use-cases/question/approve-question.use-case.js";
 import { RejectQuestionUseCase } from "../../domain/use-cases/question/reject-question.use-case.js";
 import { DeleteQuestionUseCase } from "../../domain/use-cases/question/delete-question.use-case.js";
+import { RevalidateQuestionUseCase } from "../../domain/use-cases/question/revalidate-question.use-case.js";
 import { QuestionRepositoryImpl } from "../../infrastructure/repositories/question.repository.impl.js";
 import { NotificationRepositoryImpl } from "../../infrastructure/repositories/notification.repository.impl.js";
 import { UserRepositoryImpl } from "../../infrastructure/repositories/user.repository.impl.js";
@@ -63,6 +67,11 @@ export class QuestionRoutes {
       new ApproveQuestionUseCase(questionRepository, schoolAccessPolicy),
       new RejectQuestionUseCase(questionRepository, schoolAccessPolicy),
       new DeleteQuestionUseCase(questionRepository, schoolAccessPolicy),
+      new RevalidateQuestionUseCase(
+        questionRepository,
+        schoolAccessPolicy,
+        itemValidator,
+      ),
       sseNotificationService,
     );
 
@@ -168,7 +177,10 @@ export class QuestionRoutes {
      *         schema: { type: integer, default: 10 }
      *     responses:
      *       200:
-     *         description: Paginated list of questions
+     *         description: >
+     *           Paginated list of questions. Each question includes the MVI diagnosis
+     *           (teacher/admin only): mviStatus (passed|failed|unavailable|skipped|null),
+     *           mviResult, mviCatalogVersion, mviValidatedAt and approvedOverMvi.
      *       400:
      *         description: Validation error (invalid status, vakStyle, date, or pagination params)
      */
@@ -212,7 +224,9 @@ export class QuestionRoutes {
      *         schema: { type: integer, default: 10 }
      *     responses:
      *       200:
-     *         description: Paginated list of approved and rejected questions
+     *         description: >
+     *           Paginated list of approved and rejected questions, with the MVI fields
+     *           (mviStatus, mviResult, mviCatalogVersion, mviValidatedAt, approvedOverMvi).
      *       400:
      *         description: Validation error (invalid vakStyle, date, or pagination params)
      */
@@ -237,7 +251,9 @@ export class QuestionRoutes {
      *         description: Question id.
      *     responses:
      *       200:
-     *         description: Question with options array
+     *         description: >
+     *           Question with options array and the MVI diagnosis (teacher/admin only):
+     *           mviStatus, mviResult, mviCatalogVersion, mviValidatedAt, approvedOverMvi.
      *       400:
      *         description: Invalid id
      *       403:
@@ -266,7 +282,9 @@ export class QuestionRoutes {
      *         description: Question id.
      *     responses:
      *       200:
-     *         description: Updated question with validationStatus=approved
+     *         description: >
+     *           Updated question with validationStatus=approved. approvedOverMvi is true when
+     *           the question was approved despite mviStatus=failed (approval is never blocked by MVI).
      *       400:
      *         description: Invalid id or question is not pending
      *       403:
@@ -318,6 +336,52 @@ export class QuestionRoutes {
       "/:id/reject",
       roleGuard(ROLES.ADMIN, ROLES.TEACHER),
       controller.reject,
+    );
+
+    /**
+     * @openapi
+     * /api/questions/{id}/validate:
+     *   post:
+     *     tags: [Questions]
+     *     summary: Re-run MVI validation for a question. Admin (any) or Teacher (own school's questions).
+     *     description: >
+     *       Sends the question to MVI again and overwrites mviStatus, mviResult,
+     *       mviCatalogVersion and mviValidatedAt (attempts is reset to 1). Works for any
+     *       validationStatus, e.g. to validate a question saved as unavailable or after a
+     *       catalog change; it never changes validationStatus or approvedOverMvi.
+     *       Rate limited per user: 30 requests every 10 minutes.
+     *     security: [{ bearerAuth: [] }]
+     *     parameters:
+     *       - in: path
+     *         name: id
+     *         required: true
+     *         schema: { type: integer }
+     *         description: Question id.
+     *     responses:
+     *       200:
+     *         description: >
+     *           Updated question including the MVI fields (mviStatus passed|failed,
+     *           mviResult { approved, violations, attempts }, mviCatalogVersion, mviValidatedAt)
+     *       400:
+     *         description: 'Invalid id, or MVI integration disabled — { error: "MVI integration is disabled" }'
+     *       403:
+     *         description: 'Teacher acting on another school''s question — { error: "Question does not belong to your school" }'
+     *       404:
+     *         description: Question not found
+     *       429:
+     *         description: Too many validation requests — { error }
+     *       502:
+     *         description: MVI answered with an invalid payload or no result
+     *       503:
+     *         description: MVI unreachable
+     *       504:
+     *         description: MVI timed out
+     */
+    router.post(
+      "/:id/validate",
+      roleGuard(ROLES.ADMIN, ROLES.TEACHER),
+      questionValidationRateLimiter,
+      controller.validate,
     );
 
     /**

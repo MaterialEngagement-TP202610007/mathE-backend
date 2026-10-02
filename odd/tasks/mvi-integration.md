@@ -28,7 +28,7 @@ Out of scope: `/banco/verificar`, `/catalogo/verificar`, frontend UI.
 - [x] T2 — Persistence (schema, migration, entity, repository)
 - [x] T3 — Hybrid prompt
 - [x] T4 — Validation loop in generation + bulk bank/wake-up + DI
-- [ ] T5 — Approve-over-MVI + revalidate endpoint
+- [x] T5 — Approve-over-MVI + revalidate endpoint
 - [ ] T6 — CSV export + docs
 
 ## Acceptance criteria
@@ -67,6 +67,13 @@ Out of scope: `/banco/verificar`, `/catalogo/verificar`, frontend UI.
 - GREEN: same commands: 28 and 18 passed. `pnpm exec tsc --noEmit`: clean. `pnpm test`: 57 suites, 488 tests passed.
 - DI: `question.routes.ts` builds `MviItemValidatorAdapterImpl` only when `MVI_MODE !== "off" && MVI_URL`; passes `mviMode` + validator to both use cases.
 - Commit: `feat(question): validate generated questions with MVI before saving` (hash = the commit containing this line)
+
+### T5
+- RED: `pnpm test -- tests/unit/domain/use-cases/question/approve-question tests/unit/domain/use-cases/question/revalidate`: 2 suites failed (approve: 5 assertions on `approve(id, flag)` failed; revalidate: module not found). Controller suite failed to compile (TS2339 `validate` missing).
+- GREEN: same command: 2 suites, 15 passed. `pnpm exec tsc --noEmit`: clean. `pnpm test`: 59 suites, 507 tests passed.
+- Student leak regression tests (questionnaire + `findApprovedByStyle` views with MVI fields on the row) passed immediately: existing allow-lists already strip them, so no RED was possible; they are guards.
+- Route `POST /api/questions/:id/validate` (role guard + `questionValidationRateLimiter` 30/10min, reuses the generation `itemValidator`, null when MVI disabled). No per-limiter tests exist in `rate-limit.middleware.test.ts`, so none added.
+- Commit: `feat(question): add MVI revalidation endpoint and approval override flag` (hash = the commit containing this line)
 
 ## Delivery
 - Strategy: `ask-on-risk` -> chain strategy `feature-branch-chain` (user choice 2026-10-02).
