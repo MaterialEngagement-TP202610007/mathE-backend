@@ -105,16 +105,28 @@ Out of scope: `/banco/verificar`, `/catalogo/verificar`, frontend UI.
 - Slices:
   - S1 = T1-T2 (02b2ced, 771d3da); native review approved and acknowledged, lineage `review-5c6b19e72be37b16`.
   - S2 = T3-T4 (e2dcf46 + 3a165dd); native review granted, approved and acknowledged, lineage `review-675cbe4e92fcb53b`.
-  - S3 = T5-T6 (ac96c58 + T6 commit); pending native review by parent.
+  - S3 = T5-T6 (ac96c58, e5cbf35); native review (4 lenses) granted, approved and acknowledged, lineage `review-44ffa8b7ad3e1a96`.
+  - S4 = T7-T8 (b2eb492, e69fed4) + this doc update; native review pending.
 
 ## RDD per task
 - T1-T2: granted / approved.
 - T3-T4 (S2): granted / approved and acknowledged, lineage `review-675cbe4e92fcb53b`. One informational WARNING follow-up (see Follow-ups).
-- T5-T6 (S3): pending native review by parent.
+- T5-T6 (S3): granted / approved and acknowledged (2 informational suggestions, see Follow-ups).
+- T7: assessed medium, `under_budget` (pending in slice S4).
+- T8: reviewed together with T7 as slice S4.
 
 ## Follow-ups
 - S2 WARNING `R3-bulk-context-unguarded`: bulk `loadValidationContext` (wakeUp/getCatalog/findBankStatements) is not guarded; a bank query failure fails the whole batch.
 - S1 suggestion (informational) `R3-001`: adapter lines 255-270.
+- S3 suggestions (informational) `R2-001` revalidate-question.use-case.ts:62, `R2-002` rate-limit.middleware.ts:84.
+- R3 pass rate (see Smoke test 3): needs a catalog/research decision on the MVI side, not a backend change.
+
+### Smoke test 3
+- 3 Visual questions after T8, all `failed` (advisory) by R3 `vocabulario-nivel` with 3-5 OOV words each; one also failed R2 `legibilidad-nivel` (63.34 < 70). Recurrent OOV words are common Spanish ("muy", "clara(s)", "debemos", "elaborar", "dibujar", "planear"): the level-6 vocabulary (1149 surface forms, derived from 44 items) is stricter than what an LLM can follow reliably.
+- HTTP checks passed: `POST /api/questions/:id/validate` (200, diagnosis refreshed), approving a `failed` question sets `approvedOverMvi = true`, student gets 403 on validate, student questionnaire payload has no `mvi*`/`approvedOverMvi`/`vakValue`.
+
+## Status
+Integration complete on localhost in `advisory` mode. Open decision (MVI side): widen the level-6 vocabulary / accept inflected forms, or lower R3 to `advertencia` for the pilot, before considering `gate`.
 
 ## Next step
-Smoke test 3 after T8.
+User decision on R3 vocabulary policy; then push and open the chained PRs (feature-branch-chain).
