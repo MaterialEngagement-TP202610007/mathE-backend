@@ -1,4 +1,5 @@
 import type { ItemValidatorCatalog } from "../interfaces/item-validation/index.js";
+import type { GeneratedQuestion } from "../interfaces/question/index.js";
 
 const TOPICS = [
   "un experimento de ciencias",
@@ -27,6 +28,8 @@ const VAK_DISTRIBUTION: Record<string, string> = {
 const DEFAULT_MAX_WORDS = 30;
 const MAX_MARKERS_PER_STYLE = 20;
 const MAX_FEEDBACK_MESSAGES = 8;
+const JSON_OUTPUT_INSTRUCTION = `Responde ÚNICAMENTE con este JSON sin texto adicional:
+{"statement":"...","options":[{"text":"...","vak_value":"V|A|K"}]}`;
 const GENERIC_VERBS = ["ver", "tocar", "hacer"];
 
 export interface QuestionPromptOptions {
@@ -58,8 +61,6 @@ export function buildQuestionGenerationPrompt(
       ? `\nTu intento anterior fue rechazado por estas razones; corrígelas:\n${feedback.map((m) => `- ${m}`).join("\n")}\n`
       : "";
 
-  const vocabularyBlock = vocabularyRules(catalog);
-
   return `Eres un experto en estilos de aprendizaje VAK, especializado en educación para estudiantes de 6to de primaria y 1ro de secundaria de Perú (11 a 12 años).
 
 Tu tarea es generar UNA pregunta COMPLETAMENTE NUEVA Y ÚNICA sobre: "${topic}" (semilla de variación: ${seed}). El alumno debe elegir cómo actuaría o qué le ayudaría más. Responde siempre en español castellano peruano.
@@ -72,17 +73,68 @@ Reglas del enunciado:
 - Debe ser DISTINTA a cualquier pregunta típica sobre estilos de aprendizaje; usa el tema indicado como contexto concreto.
 
 Reglas de las opciones:
-- Exactamente 4 opciones que suenen igual de válidas; ninguna debe parecer "la más correcta".
+${optionRules(catalog)}
+- No menciones los estilos VAK en ninguna parte del texto.
+
+${JSON_OUTPUT_INSTRUCTION}`;
+}
+
+/**
+ * Asks the model to fix a rejected attempt in place: same situation and
+ * options, changing only what the rejection reasons require.
+ */
+export function buildQuestionRevisionPrompt(
+  vakStyle: string,
+  previous: GeneratedQuestion,
+  feedback: string[],
+  options: { catalog?: ItemValidatorCatalog | null } = {},
+): string {
+  const catalog = options.catalog ?? null;
+  const maxWords = catalog?.maxWords ?? DEFAULT_MAX_WORDS;
+  const reasons = [...new Set(feedback)].slice(0, MAX_FEEDBACK_MESSAGES);
+  const previousJson = JSON.stringify({
+    statement: previous.statement,
+    options: previous.options.map((o) => ({ text: o.text, vak_value: o.vakValue })),
+  });
+
+  return `Eres un experto en estilos de aprendizaje VAK, especializado en educación para estudiantes de 6to de primaria y 1ro de secundaria de Perú (11 a 12 años).
+
+Tu tarea es CORREGIR una pregunta que fue rechazada por un validador, sin cambiar su idea. Responde siempre en español castellano peruano.
+
+Estilo predominante: ${vakStyle}.
+
+Pregunta rechazada:
+${previousJson}
+
+Razones del rechazo:
+${reasons.map((m) => `- ${m}`).join("\n")}
+
+Cómo corregirla:
+- Conserva la misma situación y el mismo sentido del enunciado.
+- Conserva las mismas 4 opciones, en el mismo orden y con el mismo vak_value cada una.
+- Cambia SOLO lo necesario para resolver las razones del rechazo; deja igual todo lo que ya estaba bien.
+${revisionVocabularyStep(catalog)}
+Reglas que se siguen cumpliendo:
+- Enunciado corto y directo, de máximo ${maxWords} palabras.
+${optionRules(catalog)}
+- No menciones los estilos VAK en ninguna parte del texto.
+
+${JSON_OUTPUT_INSTRUCTION}`;
+}
+
+function revisionVocabularyStep(catalog: ItemValidatorCatalog | null): string {
+  if ((catalog?.vocabulary ?? []).length === 0) return "";
+  return "- Si una razón señala palabras fuera del vocabulario, reemplaza cada una por una palabra del vocabulario permitido o reformula esa frase usando solo palabras permitidas.\n";
+}
+
+function optionRules(catalog: ItemValidatorCatalog | null): string {
+  return `- Exactamente 4 opciones que suenen igual de válidas; ninguna debe parecer "la más correcta".
 - Redáctalas en primera persona.
 - Longitud parecida: entre 4 y 8 palabras cada una.
 - Todas deben empezar con el mismo tipo de palabra: un verbo en infinitivo.
 - Sin negaciones: no uses "no", "nunca", "tampoco".
 - Palabras comunes, simples y cotidianas que conozca un niño de 11 a 12 años.
-${styleRules(catalog)}${vocabularyBlock}
-- No menciones los estilos VAK en ninguna parte del texto.
-
-Responde ÚNICAMENTE con este JSON sin texto adicional:
-{"statement":"...","options":[{"text":"...","vak_value":"V|A|K"}]}`;
+${styleRules(catalog)}${vocabularyRules(catalog)}`;
 }
 
 function vocabularyRules(catalog: ItemValidatorCatalog | null): string {

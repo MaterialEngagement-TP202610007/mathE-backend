@@ -1,5 +1,5 @@
 import type { ItemValidatorCatalog } from '../../../../src/domain/interfaces/item-validation/index.js';
-import { buildQuestionGenerationPrompt } from '../../../../src/domain/prompts/question-generation.prompt.js';
+import { buildQuestionGenerationPrompt, buildQuestionRevisionPrompt } from '../../../../src/domain/prompts/question-generation.prompt.js';
 
 describe('buildQuestionGenerationPrompt', () => {
   it('returns a non-empty string', () => {
@@ -202,6 +202,77 @@ describe('buildQuestionGenerationPrompt', () => {
       expect(result).toContain('problema7');
       expect(result).not.toContain('problema8');
     });
+  });
+});
+
+describe('buildQuestionRevisionPrompt', () => {
+  const previous = {
+    statement: 'Preparas una exposición con tu grupo',
+    options: [
+      { text: 'dibujar un mapa con colores', vakValue: 'V' as const },
+      { text: 'conversar con mis amigos', vakValue: 'A' as const },
+      { text: 'armar una maqueta', vakValue: 'K' as const },
+      { text: 'mirar un esquema', vakValue: 'V' as const },
+    ],
+  };
+  const vocabulary = ['mapa', 'colores', 'ver', 'conversar', 'armar'];
+  const catalog = makeCatalog({
+    maxWords: 22,
+    markers: { V: ['mapa'], A: ['conversar'], K: ['armar'] },
+    vocabulary,
+    functionWords: ['el', 'de'],
+  });
+
+  it('shows the previous attempt as JSON', () => {
+    const result = buildQuestionRevisionPrompt('Visual', previous, ['palabra fuera de nivel: dibujar']);
+    expect(result).toContain(
+      '{"statement":"Preparas una exposición con tu grupo","options":[{"text":"dibujar un mapa con colores","vak_value":"V"}',
+    );
+    expect(result).toContain('{"text":"mirar un esquema","vak_value":"V"}]}');
+  });
+
+  it('lists deduplicated reasons capped to 8', () => {
+    const feedback = ['razón uno', 'razón uno', ...Array.from({ length: 10 }, (_, i) => `problema${i}`)];
+    const result = buildQuestionRevisionPrompt('Visual', previous, feedback);
+    expect(result.split('- razón uno').length - 1).toBe(1);
+    expect(result).toContain('problema6');
+    expect(result).not.toContain('problema7');
+  });
+
+  it('asks to keep the same 4 options in order with the same vak values', () => {
+    const result = buildQuestionRevisionPrompt('Visual', previous, ['x']);
+    expect(result).toContain('mismas 4 opciones');
+    expect(result).toContain('mismo orden');
+    expect(result).toContain('mismo vak_value');
+    expect(result).toContain('SOLO');
+  });
+
+  it('keeps the shared rules and the JSON output format', () => {
+    const result = buildQuestionRevisionPrompt('Visual', previous, ['x']);
+    expect(result).toContain('máximo 30 palabras');
+    expect(result).toContain('entre 4 y 8 palabras');
+    expect(result).toContain('"no", "nunca", "tampoco"');
+    expect(result).toContain('Responde ÚNICAMENTE con este JSON');
+  });
+
+  it('is not a fresh generation prompt', () => {
+    const result = buildQuestionRevisionPrompt('Visual', previous, ['x']);
+    expect(result).not.toContain('semilla de variación');
+    expect(result).not.toContain('COMPLETAMENTE NUEVA');
+  });
+
+  it('includes the word cap, markers and vocabulary sections when the catalog has them', () => {
+    const result = buildQuestionRevisionPrompt('Visual', previous, ['x'], { catalog });
+    expect(result).toContain('máximo 22 palabras');
+    expect(result).toContain('V: mapa');
+    expect(result).toContain(vocabulary.join(', '));
+    expect(result).toContain('palabras funcionales');
+    expect(result).toContain('reemplaza');
+  });
+
+  it('omits the vocabulary section without a vocabulary', () => {
+    const result = buildQuestionRevisionPrompt('Visual', previous, ['x'], { catalog: makeCatalog() });
+    expect(result).not.toContain('vocabulario permitido');
   });
 });
 

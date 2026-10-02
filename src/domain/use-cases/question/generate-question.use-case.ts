@@ -9,7 +9,10 @@ import { GenerateQuestionDto } from "../../dtos/question/generate-question.dto.j
 import { QuestionEntity } from "../../entities/question.entity.js";
 import { GeneratedQuestion } from "../../interfaces/question/index.js";
 import { VAK_VALUES } from "../../constants/vak.constant.js";
-import { buildQuestionGenerationPrompt } from "../../prompts/question-generation.prompt.js";
+import {
+  buildQuestionGenerationPrompt,
+  buildQuestionRevisionPrompt,
+} from "../../prompts/question-generation.prompt.js";
 import { ItemValidatorAdapter } from "../../adapters/item-validator.adapter.js";
 import type {
   ItemValidationBatch,
@@ -93,14 +96,21 @@ export class GenerateQuestionUseCase {
     const mviMode = this.config.mviMode ?? "off";
     const validator = mviMode === "off" ? null : this.itemValidator;
 
-    let feedback: string[] = [];
+    // Last attempt that reached MVI and was rejected: the next attempt revises it in place.
+    let lastRejected: { generated: GeneratedQuestion; messages: string[] } | null = null;
     let best: RejectedAttempt | null = null;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      const prompt = buildQuestionGenerationPrompt(dto.vakStyle, recentStatements, {
-        feedback,
-        catalog: validation.catalog,
-      });
+      const prompt = lastRejected
+        ? buildQuestionRevisionPrompt(
+            dto.vakStyle,
+            lastRejected.generated,
+            lastRejected.messages,
+            { catalog: validation.catalog },
+          )
+        : buildQuestionGenerationPrompt(dto.vakStyle, recentStatements, {
+            catalog: validation.catalog,
+          });
 
       let generated: GeneratedQuestion;
       try {
@@ -120,6 +130,7 @@ export class GenerateQuestionUseCase {
       }
 
       if (!this.isValid(generated)) continue;
+      if (lastRejected && !sameVakValues(lastRejected.generated, generated)) continue;
 
       if (!validator) {
         return this.save(dto, schoolId, generated, {
@@ -177,7 +188,7 @@ export class GenerateQuestionUseCase {
           catalogVersion: batch.catalogVersion,
         };
       }
-      feedback = blockingMessages;
+      lastRejected = { generated, messages: blockingMessages };
     }
 
     if (best) {
@@ -265,6 +276,11 @@ export class GenerateQuestionUseCase {
     const present = new Set(q.options.map((o) => o.vakValue));
     return VAK_VALUES.every((v) => present.has(v));
   }
+}
+
+/** A revision must keep each option's VAK label at its original position. */
+function sameVakValues(previous: GeneratedQuestion, revised: GeneratedQuestion): boolean {
+  return previous.options.every((o, i) => revised.options[i]?.vakValue === o.vakValue);
 }
 
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47];

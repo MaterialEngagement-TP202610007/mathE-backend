@@ -402,6 +402,68 @@ describe('GenerateQuestionUseCase', () => {
       expect(imageGenerator.generateImage).toHaveBeenCalledTimes(1);
     });
 
+    it('revises the rejected attempt in place instead of generating a fresh prompt', async () => {
+      aiGenerator.generateQuestion
+        .mockResolvedValueOnce(generated('primero'))
+        .mockResolvedValueOnce(generated('segundo'));
+      validator.validate
+        .mockResolvedValueOnce(batch(false, [blocking('palabra fuera de nivel: dibujaría')]))
+        .mockResolvedValueOnce(batch(true));
+
+      await build('advisory').execute(visualDto!);
+
+      const first = aiGenerator.generateQuestion.mock.calls[0][0];
+      const second = aiGenerator.generateQuestion.mock.calls[1][0];
+      expect(first).toContain('semilla de variación');
+      expect(second).not.toContain('semilla de variación');
+      expect(second).toContain('"statement":"primero"');
+      expect(second).toContain('palabra fuera de nivel: dibujaría');
+      expect(second).toContain('mismas 4 opciones');
+    });
+
+    it('treats a revision that changes an option vakValue as invalid and revises the rejected attempt again', async () => {
+      const swapped = {
+        statement: 'cambiado',
+        options: validGenerated.options.map((o, i) => (i === 0 ? { ...o, vakValue: 'K' as const } : o)),
+      };
+      aiGenerator.generateQuestion
+        .mockResolvedValueOnce(generated('primero'))
+        .mockResolvedValueOnce(swapped)
+        .mockResolvedValueOnce(generated('tercero'));
+      validator.validate
+        .mockResolvedValueOnce(batch(false, [blocking('razon')]))
+        .mockResolvedValueOnce(batch(true));
+
+      await build('advisory').execute(visualDto!);
+
+      expect(validator.validate).toHaveBeenCalledTimes(2);
+      expect(validator.validate.mock.calls[1][0][0].statement).toBe('tercero');
+      const third = aiGenerator.generateQuestion.mock.calls[2][0];
+      expect(third).toContain('"statement":"primero"');
+      expect(third).not.toContain('cambiado');
+      expect(repo.createWithOptionsAndEmbedding.mock.calls[0][0].statement).toBe('tercero');
+    });
+
+    it('revises the rejected attempt after an AI error', async () => {
+      jest.spyOn(console, 'error').mockImplementation(() => {});
+      aiGenerator.generateQuestion
+        .mockResolvedValueOnce(generated('primero'))
+        .mockRejectedValueOnce(new Error('boom'))
+        .mockResolvedValueOnce(generated('tercero'));
+      validator.validate
+        .mockResolvedValueOnce(batch(false, [blocking('razon')]))
+        .mockResolvedValueOnce(batch(true));
+      useCase = new GenerateQuestionUseCase(
+        repo, aiGenerator, embeddingAdapter, imageGenerator, imageStorage,
+        { maxAttempts: 3, mviMode: 'advisory', now: () => NOW, sleep: jest.fn().mockResolvedValue(undefined) },
+        validator,
+      );
+
+      await useCase.execute(visualDto!);
+
+      expect(aiGenerator.generateQuestion.mock.calls[2][0]).toContain('"statement":"primero"');
+    });
+
     it('advisory: saves the attempt with the fewest blocking violations as failed, embedding and imaging only it', async () => {
       aiGenerator.generateQuestion
         .mockResolvedValueOnce(generated('uno'))

@@ -31,6 +31,7 @@ Out of scope: `/banco/verificar`, `/catalogo/verificar`, frontend UI.
 - [x] T5 — Approve-over-MVI + revalidate endpoint
 - [x] T6 — CSV export + docs
 - [x] T7 — Allowed vocabulary in prompt (from smoke-test finding: only R3 blocked)
+- [x] T8 — Revise rejected attempt in place (smoke test 2 finding)
 
 ## Acceptance criteria
 - Generated questions persist `mviStatus` in {passed, failed, unavailable, skipped} with diagnosis when available.
@@ -44,7 +45,7 @@ Out of scope: `/banco/verificar`, `/catalogo/verificar`, frontend UI.
 ## Route per task
 | Task | Route | Trigger evidence |
 |---|---|---|
-| T1–T7 | delegated direct (one writer) | 2+ non-trivial files per task |
+| T1–T8 | delegated direct (one writer) | 2+ non-trivial files per task |
 
 ## Progress / evidence
 ### T1
@@ -90,6 +91,15 @@ Out of scope: `/banco/verificar`, `/catalogo/verificar`, frontend UI.
 - GREEN: same command: 2 suites, 56 passed. `pnpm exec tsc --noEmit`: clean. Full `pnpm test`: 59 suites, 518 tests passed.
 - `ItemValidatorCatalog` gains `vocabulary` and `functionWords`; adapter reads `niveles[nivel].vocabulario` and `reglas[vocabulario-nivel].parametros.palabrasFuncionales` (defensive, deduped). Prompt adds a vocabulary section (full lists, comma-separated) and intersects markers with the vocabulary (original list kept when the intersection is empty).
 
+### Smoke test 2
+- 3 Visual questions, all `failed` only by R3 `vocabulario-nivel` with 2-6 out-of-vocabulary words each (down from 6-9 in smoke test 1). Root cause: each retry built a brand-new prompt (new random topic + seed), so MVI feedback was applied to a different question instead of fixing the rejected one.
+
+### T8
+- RED: `pnpm test -- tests/unit/domain/prompts/question-generation.prompt.test.ts tests/unit/domain/use-cases/question/generate-question.use-case.test.ts`: prompt suite failed to compile (TS2724: no export `buildQuestionRevisionPrompt`); 3 new use-case tests failed (retry still used a fresh prompt).
+- GREEN: same command passes. `pnpm exec tsc --noEmit`: clean. Full `pnpm test`: 59 suites, 528 tests passed.
+- `buildQuestionRevisionPrompt(vakStyle, previous, feedback, { catalog })` shares option/marker/vocabulary/JSON sections with the generation prompt. The use case revises the last MVI-rejected attempt (same 4 options, order and `vakValue`s); a revision with different `vakValue`s or failing `isValid` is skipped and the same rejected attempt is revised again. Fresh prompt only for the first attempt or when nothing was rejected yet.
+- Commit: `fix(question): revise MVI-rejected attempts instead of regenerating` (hash = the commit containing this line)
+
 ## Delivery
 - Strategy: `ask-on-risk` -> chain strategy `feature-branch-chain` (user choice 2026-10-02).
 - Slices:
@@ -107,4 +117,4 @@ Out of scope: `/banco/verificar`, `/catalogo/verificar`, frontend UI.
 - S1 suggestion (informational) `R3-001`: adapter lines 255-270.
 
 ## Next step
-Smoke test 2 after T7.
+Smoke test 3 after T8.
