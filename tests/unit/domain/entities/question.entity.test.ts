@@ -70,4 +70,33 @@ describe('QuestionEntity.fromObject', () => {
     const entity = QuestionEntity.fromObject(base);
     expect(entity.mediaUrl).toBeNull();
   });
+
+  it('defaults the MVI fields when absent', () => {
+    const entity = QuestionEntity.fromObject(base);
+    expect(entity.mviStatus).toBeNull();
+    expect(entity.mviResult).toBeNull();
+    expect(entity.mviCatalogVersion).toBeNull();
+    expect(entity.mviValidatedAt).toBeNull();
+    expect(entity.approvedOverMvi).toBe(false);
+  });
+
+  it('maps the MVI fields when present', () => {
+    const validatedAt = new Date('2026-10-02T10:00:00Z');
+    const mviResult = { approved: false, violations: [], attempts: 2 };
+
+    const entity = QuestionEntity.fromObject({
+      ...base,
+      mviStatus: 'failed',
+      mviResult,
+      mviCatalogVersion: '0.2.0',
+      mviValidatedAt: validatedAt.toISOString(),
+      approvedOverMvi: true,
+    });
+
+    expect(entity.mviStatus).toBe('failed');
+    expect(entity.mviResult).toEqual(mviResult);
+    expect(entity.mviCatalogVersion).toBe('0.2.0');
+    expect(entity.mviValidatedAt).toEqual(validatedAt);
+    expect(entity.approvedOverMvi).toBe(true);
+  });
 });

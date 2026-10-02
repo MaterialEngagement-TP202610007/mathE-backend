@@ -39,6 +39,8 @@ function makeRepo(question: QuestionEntity | null): jest.Mocked<QuestionReposito
     approve: jest.fn().mockResolvedValue(question),
     reject: jest.fn().mockResolvedValue(question),
     softDelete: jest.fn().mockResolvedValue(undefined),
+    findBankStatements: jest.fn(),
+    updateMviValidation: jest.fn(),
   } as unknown as jest.Mocked<QuestionRepository>;
 }
 

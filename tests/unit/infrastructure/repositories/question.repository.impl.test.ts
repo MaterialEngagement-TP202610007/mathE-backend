@@ -1,15 +1,21 @@
 jest.mock('../../../../src/config/database/index.js', () => ({
   prisma: {
-    question: { findMany: jest.fn(), create: jest.fn() },
+    question: { findMany: jest.fn(), create: jest.fn(), update: jest.fn() },
     $transaction: jest.fn(),
   },
 }));
 
+// The generated client uses import.meta, which Jest cannot load.
+jest.mock('../../../../src/generated/prisma/client.js', () => ({
+  Prisma: { DbNull: Symbol('DbNull') },
+}));
+
 import { prisma } from '../../../../src/config/database/index.js';
+import { Prisma } from '../../../../src/generated/prisma/client.js';
 import { QuestionRepositoryImpl } from '../../../../src/infrastructure/repositories/question.repository.impl.js';
 
 const mocked = prisma as unknown as {
-  question: { findMany: jest.Mock; create: jest.Mock };
+  question: { findMany: jest.Mock; create: jest.Mock; update: jest.Mock };
   $transaction: jest.Mock;
 };
 
@@ -129,5 +135,127 @@ describe('QuestionRepositoryImpl school-scoped writes and reads', () => {
 
     expect(mocked.question.create.mock.calls[0][0].data.schoolId).toBe(7);
     expect(entity.schoolId).toBe(7);
+  });
+});
+
+describe('QuestionRepositoryImpl MVI persistence', () => {
+  afterEach(() => {
+    mocked.question.findMany.mockReset();
+    mocked.question.create.mockReset();
+    mocked.question.update.mockReset();
+    mocked.$transaction.mockReset();
+  });
+
+  const createData = {
+    statement: 'Q5', vakStyle: 'Visual', contentType: 'text', origin: 'ai_generated',
+    validationStatus: 'pending', generationDate: new Date(), teacherId: 2, schoolId: 7,
+    options: [], embeddingVector: null, embeddingModelVersion: 'v1',
+  };
+
+  it('persists the MVI diagnosis of a generated question', async () => {
+    mocked.question.create.mockResolvedValueOnce({ ...dbQuestion(5), mviStatus: 'failed' });
+    mocked.$transaction.mockImplementationOnce(async (fn) => fn(mocked));
+    const validatedAt = new Date();
+    const mviResult = { approved: false, violations: [], attempts: 3 };
+
+    await new QuestionRepositoryImpl().createWithOptionsAndEmbedding({
+      ...createData,
+      mviStatus: 'failed',
+      mviResult,
+      mviCatalogVersion: '0.2.0',
+      mviValidatedAt: validatedAt,
+    });
+
+    const data = mocked.question.create.mock.calls[0][0].data;
+    expect(data.mviStatus).toBe('failed');
+    expect(data.mviResult).toEqual(mviResult);
+    expect(data.mviCatalogVersion).toBe('0.2.0');
+    expect(data.mviValidatedAt).toBe(validatedAt);
+  });
+
+  it('stores nulls (never a JSON null) when there is no MVI diagnosis', async () => {
+    mocked.question.create.mockResolvedValueOnce(dbQuestion(5));
+    mocked.$transaction.mockImplementationOnce(async (fn) => fn(mocked));
+
+    await new QuestionRepositoryImpl().createWithOptionsAndEmbedding(createData);
+
+    const data = mocked.question.create.mock.calls[0][0].data;
+    expect(data.mviStatus).toBeNull();
+    expect(data.mviCatalogVersion).toBeNull();
+    expect(data.mviValidatedAt).toBeNull();
+    expect(data.mviResult).toBe(Prisma.DbNull);
+  });
+
+  it('lists approved and pending statements of the school in id order', async () => {
+    mocked.question.findMany.mockResolvedValueOnce([{ statement: 'A' }, { statement: 'B' }]);
+
+    await expect(new QuestionRepositoryImpl().findBankStatements(7)).resolves.toEqual(['A', 'B']);
+
+    expect(mocked.question.findMany.mock.calls[0][0]).toEqual({
+      where: {
+        schoolId: 7,
+        deletedAt: null,
+        validationStatus: { in: ['approved', 'pending'] },
+      },
+      orderBy: { id: 'asc' },
+      select: { statement: true },
+    });
+  });
+
+  it('excludes a question from the bank statements when excludeId is given', async () => {
+    mocked.question.findMany.mockResolvedValueOnce([]);
+
+    await new QuestionRepositoryImpl().findBankStatements(7, 12);
+
+    expect(mocked.question.findMany.mock.calls[0][0].where).toEqual({
+      schoolId: 7,
+      deletedAt: null,
+      validationStatus: { in: ['approved', 'pending'] },
+      id: { not: 12 },
+    });
+  });
+
+  it('updates the MVI diagnosis and returns the entity with options', async () => {
+    const validatedAt = new Date();
+    const mviResult = { approved: true, violations: [], attempts: 1 };
+    mocked.question.update.mockResolvedValueOnce({
+      ...dbQuestion(5), mviStatus: 'passed', mviResult, mviCatalogVersion: '0.2.0', mviValidatedAt: validatedAt,
+    });
+
+    const entity = await new QuestionRepositoryImpl().updateMviValidation(5, {
+      mviStatus: 'passed', mviResult, mviCatalogVersion: '0.2.0', mviValidatedAt: validatedAt,
+    });
+
+    expect(mocked.question.update).toHaveBeenCalledWith({
+      where: { id: 5 },
+      data: { mviStatus: 'passed', mviResult, mviCatalogVersion: '0.2.0', mviValidatedAt: validatedAt },
+      include: { options: true },
+    });
+    expect(entity.mviStatus).toBe('passed');
+    expect(entity.options).toHaveLength(1);
+  });
+
+  it('approve defaults approvedOverMvi to false', async () => {
+    mocked.question.update.mockResolvedValueOnce(dbQuestion(5));
+
+    await new QuestionRepositoryImpl().approve(5);
+
+    expect(mocked.question.update).toHaveBeenCalledWith({
+      where: { id: 5 },
+      data: { validationStatus: 'approved', approvedOverMvi: false },
+      include: { options: true },
+    });
+  });
+
+  it('approve records approvedOverMvi when overriding an MVI failure', async () => {
+    mocked.question.update.mockResolvedValueOnce({ ...dbQuestion(5), approvedOverMvi: true });
+
+    const entity = await new QuestionRepositoryImpl().approve(5, true);
+
+    expect(mocked.question.update.mock.calls[0][0].data).toEqual({
+      validationStatus: 'approved',
+      approvedOverMvi: true,
+    });
+    expect(entity.approvedOverMvi).toBe(true);
   });
 });

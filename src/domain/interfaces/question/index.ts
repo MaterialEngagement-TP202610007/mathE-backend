@@ -1,4 +1,5 @@
 import { VakValue } from "../../constants/vak.constant.js";
+import { MviStatus, MviValidationRecord } from "../item-validation/index.js";
 
 /** A single option as produced by the AI generator (PASO 1). */
 export interface GeneratedOption {
@@ -37,4 +38,16 @@ export interface CreateQuestionData {
   embeddingVector: number[] | null;
   embeddingModelVersion: string;
   mediaUrl?: string | null;
+  mviStatus?: MviStatus | null;
+  mviResult?: MviValidationRecord | null;
+  mviCatalogVersion?: string | null;
+  mviValidatedAt?: Date | null;
+}
+
+/** MVI diagnosis written back to an existing question (manual revalidation). */
+export interface UpdateMviValidationData {
+  mviStatus: MviStatus;
+  mviResult: MviValidationRecord | null;
+  mviCatalogVersion: string | null;
+  mviValidatedAt: Date;
 }

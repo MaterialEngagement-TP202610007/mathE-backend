@@ -1,11 +1,15 @@
 import { prisma } from "../../config/database/index.js";
+import { Prisma } from "../../generated/prisma/client.js";
 import {
   QuestionRepository,
   ApprovedQuestionSlim,
   QuestionFilters,
 } from "../../domain/repositories/question.repository.js";
 import { QuestionEntity } from "../../domain/entities/question.entity.js";
-import { CreateQuestionData } from "../../domain/interfaces/question/index.js";
+import {
+  CreateQuestionData,
+  UpdateMviValidationData,
+} from "../../domain/interfaces/question/index.js";
 import { PaginationDto } from "../../domain/dtos/shared/pagination.dto.js";
 import { PaginatedResult } from "../../domain/interfaces/shared/paginated-result.interface.js";
 
@@ -19,6 +23,23 @@ export class QuestionRepositoryImpl implements QuestionRepository {
       where: { vakStyle, deletedAt: null, schoolId },
       orderBy: { generationDate: "desc" },
       take: limit,
+      select: { statement: true },
+    });
+    return rows.map((r) => r.statement);
+  }
+
+  async findBankStatements(
+    schoolId: number,
+    excludeId?: number,
+  ): Promise<string[]> {
+    const rows = await prisma.question.findMany({
+      where: {
+        schoolId,
+        deletedAt: null,
+        validationStatus: { in: ["approved", "pending"] },
+        ...(excludeId !== undefined ? { id: { not: excludeId } } : {}),
+      },
+      orderBy: { id: "asc" },
       select: { statement: true },
     });
     return rows.map((r) => r.statement);
@@ -39,6 +60,10 @@ export class QuestionRepositoryImpl implements QuestionRepository {
           teacherId: data.teacherId,
           schoolId: data.schoolId,
           mediaUrl: data.mediaUrl ?? null,
+          mviStatus: data.mviStatus ?? null,
+          mviResult: this.toJson(data.mviResult),
+          mviCatalogVersion: data.mviCatalogVersion ?? null,
+          mviValidatedAt: data.mviValidatedAt ?? null,
           options: {
             create: data.options.map((opt) => ({
               text: opt.text,
@@ -183,10 +208,31 @@ export class QuestionRepositoryImpl implements QuestionRepository {
     return question ? QuestionEntity.fromObject(question) : null;
   }
 
-  async approve(id: number): Promise<QuestionEntity> {
+  async approve(
+    id: number,
+    approvedOverMvi = false,
+  ): Promise<QuestionEntity> {
     const question = await prisma.question.update({
       where: { id },
-      data: { validationStatus: "approved" },
+      data: { validationStatus: "approved", approvedOverMvi },
+      include: { options: true },
+    });
+
+    return QuestionEntity.fromObject(question);
+  }
+
+  async updateMviValidation(
+    id: number,
+    data: UpdateMviValidationData,
+  ): Promise<QuestionEntity> {
+    const question = await prisma.question.update({
+      where: { id },
+      data: {
+        mviStatus: data.mviStatus,
+        mviResult: this.toJson(data.mviResult),
+        mviCatalogVersion: data.mviCatalogVersion,
+        mviValidatedAt: data.mviValidatedAt,
+      },
       include: { options: true },
     });
 
@@ -208,6 +254,11 @@ export class QuestionRepositoryImpl implements QuestionRepository {
       where: { id },
       data: { deletedAt: new Date() },
     });
+  }
+
+  /** A JSON column needs `DbNull` to store SQL NULL; a plain null is rejected. */
+  private toJson(value: object | null | undefined) {
+    return value ? (value as Prisma.InputJsonValue) : Prisma.DbNull;
   }
 
   private shuffle<T>(arr: T[]): T[] {

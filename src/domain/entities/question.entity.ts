@@ -1,5 +1,6 @@
 import { CustomError } from "../error/custom-error.js";
 import { OptionEntity } from "./option.entity.js";
+import { MviValidationRecord } from "../interfaces/item-validation/index.js";
 
 export class QuestionEntity {
   constructor(
@@ -19,6 +20,13 @@ export class QuestionEntity {
     public options: OptionEntity[],
     /** Owning school's question bank; null for fallback-bank questions. */
     public schoolId: number | null = null,
+    /** 'passed' | 'failed' | 'unavailable' | 'skipped'; null = never validated. */
+    public mviStatus: string | null = null,
+    public mviResult: MviValidationRecord | null = null,
+    public mviCatalogVersion: string | null = null,
+    public mviValidatedAt: Date | null = null,
+    /** True when a teacher approved the question despite a failed MVI diagnosis. */
+    public approvedOverMvi: boolean = false,
   ) {}
 
   static fromObject(object: { [key: string]: any }): QuestionEntity {
@@ -38,6 +46,11 @@ export class QuestionEntity {
       deletedAt,
       options,
       schoolId,
+      mviStatus,
+      mviResult,
+      mviCatalogVersion,
+      mviValidatedAt,
+      approvedOverMvi,
     } = object;
 
     if (!id) throw CustomError.badRequest("Missing Question Id");
@@ -62,6 +75,11 @@ export class QuestionEntity {
         ? options.map((opt) => OptionEntity.fromObject(opt))
         : [],
       schoolId ?? null,
+      mviStatus ?? null,
+      mviResult ?? null,
+      mviCatalogVersion ?? null,
+      mviValidatedAt ? new Date(mviValidatedAt) : null,
+      approvedOverMvi ?? false,
     );
   }
 }

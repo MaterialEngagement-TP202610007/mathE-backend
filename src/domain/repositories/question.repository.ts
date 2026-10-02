@@ -1,5 +1,8 @@
 import { QuestionEntity } from "../entities/question.entity.js";
-import { CreateQuestionData } from "../interfaces/question/index.js";
+import {
+  CreateQuestionData,
+  UpdateMviValidationData,
+} from "../interfaces/question/index.js";
 import { PaginationDto } from "../dtos/shared/pagination.dto.js";
 import { PaginatedResult } from "../interfaces/shared/paginated-result.interface.js";
 
@@ -24,6 +27,15 @@ export abstract class QuestionRepository {
     vakStyle: string,
     limit: number,
     schoolId: number,
+  ): Promise<string[]>;
+
+  /**
+   * Statements of a school's approved and pending questions, used as the
+   * duplicate bank for MVI. `excludeId` leaves out the question being revalidated.
+   */
+  abstract findBankStatements(
+    schoolId: number,
+    excludeId?: number,
   ): Promise<string[]>;
 
   abstract createWithOptionsAndEmbedding(
@@ -56,7 +68,16 @@ export abstract class QuestionRepository {
 
   abstract findById(id: number): Promise<QuestionEntity | null>;
 
-  abstract approve(id: number): Promise<QuestionEntity>;
+  /** `approvedOverMvi` flags an approval given despite a failed MVI diagnosis. */
+  abstract approve(
+    id: number,
+    approvedOverMvi?: boolean,
+  ): Promise<QuestionEntity>;
+
+  abstract updateMviValidation(
+    id: number,
+    data: UpdateMviValidationData,
+  ): Promise<QuestionEntity>;
 
   abstract reject(
     id: number,

@@ -25,7 +25,7 @@ Out of scope: `/banco/verificar`, `/catalogo/verificar`, frontend UI.
 
 ## Tasks
 - [x] T1 — Config, domain port, MVI adapter
-- [ ] T2 — Persistence (schema, migration, entity, repository)
+- [x] T2 — Persistence (schema, migration, entity, repository)
 - [ ] T3 — Hybrid prompt
 - [ ] T4 — Validation loop in generation + bulk bank/wake-up + DI
 - [ ] T5 — Approve-over-MVI + revalidate endpoint
@@ -49,7 +49,13 @@ Out of scope: `/banco/verificar`, `/catalogo/verificar`, frontend UI.
 ### T1
 - RED: `pnpm test -- tests/unit/infrastructure/adapters/mvi-item-validator.adapter.test.ts`: suite failed (adapter module not found, TS2307).
 - GREEN: same command: 24 passed. `pnpm exec tsc --noEmit`: clean. `pnpm test`: 57 suites, 449 tests passed.
-- Commit: T1_HASH
+- Commit: 02b2ced
+
+### T2
+- RED: `pnpm test -- tests/unit/domain/entities/question.entity.test.ts tests/unit/infrastructure/repositories/question.repository.impl.test.ts`: both suites failed to compile (missing `mviStatus`/`approvedOverMvi` on entity, `findBankStatements`, `updateMviValidation`, `approve` 2nd arg, `CreateQuestionData.mviStatus`).
+- GREEN: same command: 24 passed. `pnpm exec tsc --noEmit`: clean. `pnpm test`: 57 suites, 458 tests passed.
+- Migration `20261002062016_add_mvi_validation_to_question`: additive ALTER TABLE "Question" ADD COLUMN x5 (approvedOverMvi BOOLEAN NOT NULL DEFAULT false, mviCatalogVersion VARCHAR(20), mviResult JSONB, mviStatus VARCHAR(20), mviValidatedAt TIMESTAMP(3)). Applied to local dev DB without reset.
+- Commit: `feat(question): persist MVI validation diagnosis` (hash = the commit containing this line)
 
 ## Next step
-T2.
+T3.

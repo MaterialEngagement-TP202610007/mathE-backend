@@ -11,6 +11,13 @@ model Question {
   rejectionReason  String?  @db.Text
   generationDate   DateTime
 
+  // MVI item validation (teacher-facing diagnosis, never exposed to students)
+  mviStatus         String?   @db.VarChar(20) // 'passed' | 'failed' | 'unavailable' | 'skipped'; NULL = never validated
+  mviResult         Json? // { approved, violations[], attempts }
+  mviCatalogVersion String?   @db.VarChar(20)
+  mviValidatedAt    DateTime?
+  approvedOverMvi   Boolean   @default(false) // teacher approved despite a failed MVI diagnosis
+
   // Audit
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
