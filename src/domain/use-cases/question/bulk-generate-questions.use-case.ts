@@ -3,12 +3,19 @@ import { QuestionRepository } from "../../repositories/question.repository.js";
 import { NotificationRepository } from "../../repositories/notification.repository.js";
 import { UserRepository } from "../../repositories/user.repository.js";
 import { GenerateQuestionDto } from "../../dtos/question/generate-question.dto.js";
-import { GenerateQuestionUseCase } from "./generate-question.use-case.js";
+import { ItemValidatorAdapter } from "../../adapters/item-validator.adapter.js";
+import type { MviMode } from "../../interfaces/item-validation/index.js";
+import {
+  GenerateQuestionUseCase,
+  GenerationValidationContext,
+} from "./generate-question.use-case.js";
 import { CustomError } from "../../error/custom-error.js";
 
 export interface BulkGenerateQuestionsConfig {
   /** Maximum number of generations running at the same time. */
   concurrency: number;
+  /** How MVI validation applies to the batch (default "off"). */
+  mviMode?: MviMode;
 }
 
 /** Resolved before generation starts (and before any AI call). */
@@ -24,6 +31,7 @@ export class BulkGenerateQuestionsUseCase {
     private readonly questionRepository: QuestionRepository,
     private readonly userRepository: UserRepository,
     private readonly config: BulkGenerateQuestionsConfig = { concurrency: 2 },
+    private readonly itemValidator: ItemValidatorAdapter | null = null,
   ) {}
 
   /**
@@ -66,10 +74,17 @@ export class BulkGenerateQuestionsUseCase {
       schoolId,
     );
 
+    const validation = await this.loadValidationContext(schoolId);
+
     const generateOne = () =>
       this.generateQuestionUseCase
-        .execute(dto, recentStatements, schoolId)
-        .then((q) => { onProgress?.onGenerated(q); return q; })
+        .execute(dto, recentStatements, schoolId, validation)
+        .then((q) => {
+          // R8 within the batch: later items must not repeat this statement.
+          validation?.bank.push(q.statement);
+          onProgress?.onGenerated(q);
+          return q;
+        })
         .catch((err) => { onProgress?.onFailed(); throw err; });
 
     const results = await runWithConcurrency(
@@ -95,6 +110,20 @@ export class BulkGenerateQuestionsUseCase {
     });
 
     return questions;
+  }
+
+  /** Once per batch: wake the validator, load its catalog and the school bank. */
+  private async loadValidationContext(
+    schoolId: number,
+  ): Promise<GenerationValidationContext | undefined> {
+    const validator = this.itemValidator;
+    if ((this.config.mviMode ?? "off") === "off" || !validator) return undefined;
+
+    const awake = await validator.wakeUp();
+    if (!awake) console.warn("[mvi] wake-up did not get an answer");
+    const catalog = await validator.getCatalog();
+    const bank = [...(await this.questionRepository.findBankStatements(schoolId))];
+    return { bank, catalog };
   }
 }
 

@@ -6,6 +6,8 @@ import { QuestionRepository } from '../../../../../src/domain/repositories/quest
 import { NotificationRepository } from '../../../../../src/domain/repositories/notification.repository.js';
 import { UserRepository } from '../../../../../src/domain/repositories/user.repository.js';
 import { UserEntity } from '../../../../../src/domain/entities/user.entity.js';
+import { ItemValidatorAdapter } from '../../../../../src/domain/adapters/item-validator.adapter.js';
+import type { ItemValidatorCatalog, MviMode } from '../../../../../src/domain/interfaces/item-validation/index.js';
 import { CustomError } from '../../../../../src/domain/error/custom-error.js';
 import { ROLES } from '../../../../../src/domain/constants/roles.constant.js';
 
@@ -254,5 +256,86 @@ describe('BulkGenerateQuestionsUseCase', () => {
         message: expect.stringContaining('2'),
       }),
     );
+  });
+
+  describe('MVI context', () => {
+    const catalog: ItemValidatorCatalog = {
+      version: 'v1', maxWords: 20, markers: { V: ['mapa'], A: ['conversar'], K: ['armar'] },
+    };
+    let validator: jest.Mocked<ItemValidatorAdapter>;
+
+    function build(mode: MviMode | undefined, withValidator = true) {
+      return new BulkGenerateQuestionsUseCase(
+        generateUseCase as unknown as GenerateQuestionUseCase,
+        notificationRepo,
+        questionRepo,
+        userRepo,
+        { concurrency: 1, mviMode: mode },
+        withValidator ? validator : undefined,
+      );
+    }
+
+    beforeEach(() => {
+      validator = {
+        validate: jest.fn(),
+        wakeUp: jest.fn().mockResolvedValue(true),
+        getCatalog: jest.fn().mockResolvedValue(catalog),
+      } as unknown as jest.Mocked<ItemValidatorAdapter>;
+      questionRepo.findBankStatements.mockResolvedValue(['existente']);
+    });
+
+    it('wakes up, loads the catalog and the school bank once per batch', async () => {
+      generateUseCase.execute.mockImplementation(async () => makeEntity(1));
+
+      await build('advisory').execute(visualDto!, 3, 5);
+
+      expect(validator.wakeUp).toHaveBeenCalledTimes(1);
+      expect(validator.getCatalog).toHaveBeenCalledTimes(1);
+      expect(questionRepo.findBankStatements).toHaveBeenCalledTimes(1);
+      expect(questionRepo.findBankStatements).toHaveBeenCalledWith(TEACHER_SCHOOL_ID);
+      for (const call of generateUseCase.execute.mock.calls) {
+        expect(call[3]?.catalog).toBe(catalog);
+      }
+    });
+
+    it('does not touch MVI when the mode is off or the validator is missing', async () => {
+      generateUseCase.execute.mockImplementation(async () => makeEntity(1));
+
+      await build('off').execute(visualDto!, 1, 5);
+      await build(undefined).execute(visualDto!, 1, 5);
+      await build('advisory', false).execute(visualDto!, 1, 5);
+
+      expect(validator.wakeUp).not.toHaveBeenCalled();
+      expect(validator.getCatalog).not.toHaveBeenCalled();
+      expect(questionRepo.findBankStatements).not.toHaveBeenCalled();
+      for (const call of generateUseCase.execute.mock.calls) {
+        expect(call[3]).toBeUndefined();
+      }
+    });
+
+    it('feeds each generated statement into the bank for the next item', async () => {
+      const seen: string[][] = [];
+      generateUseCase.execute.mockImplementation(async (_dto, _recent, _school, validation) => {
+        seen.push([...(validation?.bank ?? [])]);
+        return makeEntity(seen.length);
+      });
+
+      await build('advisory').execute(visualDto!, 3, 5);
+
+      expect(seen).toEqual([
+        ['existente'],
+        ['existente', 'Pregunta 1'],
+        ['existente', 'Pregunta 1', 'Pregunta 2'],
+      ]);
+    });
+
+    it('still generates when wake-up reports the validator as down', async () => {
+      validator.wakeUp.mockResolvedValue(false);
+      generateUseCase.execute.mockResolvedValue(makeEntity(1));
+
+      const result = await build('advisory').execute(visualDto!, 1, 5);
+
+      expect(result).toHaveLength(1);
+    });
   });
 });

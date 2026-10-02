@@ -21,13 +21,13 @@ Out of scope: `/banco/verificar`, `/catalogo/verificar`, frontend UI.
 - MVI fields never exposed to students. Token never logged nor sent to frontend.
 - TDD: strict, enabled (source: user global config). Runner: `pnpm test -- <path>` (Jest 30 + ts-jest).
 - RDD: on (default). Per work-unit commit assessment.
-- Delivery strategy: ask-on-risk (default).
+- Delivery strategy: ask-on-risk (default) -> chain strategy `feature-branch-chain` (see Delivery).
 
 ## Tasks
 - [x] T1 — Config, domain port, MVI adapter
 - [x] T2 — Persistence (schema, migration, entity, repository)
 - [x] T3 — Hybrid prompt
-- [ ] T4 — Validation loop in generation + bulk bank/wake-up + DI
+- [x] T4 — Validation loop in generation + bulk bank/wake-up + DI
 - [ ] T5 — Approve-over-MVI + revalidate endpoint
 - [ ] T6 — CSV export + docs
 
@@ -60,7 +60,24 @@ Out of scope: `/banco/verificar`, `/catalogo/verificar`, frontend UI.
 ### T3
 - RED: `pnpm test -- tests/unit/domain/prompts/question-generation.prompt.test.ts`: suite failed to compile (TS2554: builder accepted 1-2 args, got 3).
 - GREEN: same command: 21 passed. `pnpm exec tsc --noEmit`: clean. `pnpm test`: 57 suites, 471 tests passed.
-- Commit: `feat(question): align generation prompt with MVI catalog` (hash = the commit containing this line)
+- Commit: e2dcf46 `feat(question): align generation prompt with MVI catalog`
+
+### T4
+- RED: `pnpm test -- tests/unit/domain/use-cases/question/generate-question.use-case.test.ts` and `.../bulk-generate-questions.use-case.test.ts`: both suites failed to compile (TS2554 extra ctor arg; missing `mviMode`/`now` config).
+- GREEN: same commands: 28 and 18 passed. `pnpm exec tsc --noEmit`: clean. `pnpm test`: 57 suites, 488 tests passed.
+- DI: `question.routes.ts` builds `MviItemValidatorAdapterImpl` only when `MVI_MODE !== "off" && MVI_URL`; passes `mviMode` + validator to both use cases.
+- Commit: `feat(question): validate generated questions with MVI before saving` (hash = the commit containing this line)
+
+## Delivery
+- Strategy: `ask-on-risk` -> chain strategy `feature-branch-chain` (user choice 2026-10-02).
+- Slices:
+  - S1 = T1-T2 (02b2ced, 771d3da); native review approved and acknowledged, lineage `review-5c6b19e72be37b16`.
+  - S2 = T3-T4 (e2dcf46 + T4 commit).
+  - S3 = T5-T6 (pending).
+
+## RDD per task
+- T1-T2: granted / approved.
+- T3-T4: not yet assessed (slice S2 pending native review by parent).
 
 ## Next step
-T4.
+T5.

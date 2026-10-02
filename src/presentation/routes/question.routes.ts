@@ -20,6 +20,7 @@ import { GeminiQuestionGeneratorAdapter } from "../../infrastructure/adapters/ge
 import { GeminiEmbeddingAdapter } from "../../infrastructure/adapters/gemini-embedding.adapter.impl.js";
 import { GeminiImageGeneratorAdapter } from "../../infrastructure/adapters/gemini-image-generator.adapter.impl.js";
 import { S3ImageStorageAdapter } from "../../infrastructure/adapters/s3-image-storage.adapter.impl.js";
+import { MviItemValidatorAdapterImpl } from "../../infrastructure/adapters/mvi-item-validator.adapter.impl.js";
 import { sseNotificationService } from "../../infrastructure/services/sse-notification.service.js";
 import { envs } from "../../config/envs.js";
 
@@ -35,6 +36,9 @@ export class QuestionRoutes {
     const embeddingAdapter = new GeminiEmbeddingAdapter();
     const imageGenerator = new GeminiImageGeneratorAdapter();
     const imageStorage = new S3ImageStorageAdapter();
+    const mviEnabled = envs.MVI_MODE !== "off" && !!envs.MVI_URL;
+    const itemValidator = mviEnabled ? new MviItemValidatorAdapterImpl() : null;
+    const mviMode = mviEnabled ? envs.MVI_MODE : "off";
 
     const controller = new QuestionController(
       new BulkGenerateQuestionsUseCase(
@@ -44,12 +48,14 @@ export class QuestionRoutes {
           embeddingAdapter,
           imageGenerator,
           imageStorage,
-          { maxAttempts: envs.QUESTION_MAX_GENERATION_ATTEMPTS },
+          { maxAttempts: envs.QUESTION_MAX_GENERATION_ATTEMPTS, mviMode },
+          itemValidator,
         ),
         notificationRepository,
         questionRepository,
         userRepository,
-        { concurrency: envs.QUESTION_GENERATION_CONCURRENCY },
+        { concurrency: envs.QUESTION_GENERATION_CONCURRENCY, mviMode },
+        itemValidator,
       ),
       new ListQuestionsUseCase(questionRepository),
       new ValidatedHistoryUseCase(questionRepository),

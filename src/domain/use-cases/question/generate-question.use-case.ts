@@ -10,6 +10,15 @@ import { QuestionEntity } from "../../entities/question.entity.js";
 import { GeneratedQuestion } from "../../interfaces/question/index.js";
 import { VAK_VALUES } from "../../constants/vak.constant.js";
 import { buildQuestionGenerationPrompt } from "../../prompts/question-generation.prompt.js";
+import { ItemValidatorAdapter } from "../../adapters/item-validator.adapter.js";
+import type {
+  ItemValidationBatch,
+  ItemValidatorCatalog,
+  ItemViolation,
+  MviMode,
+  MviStatus,
+  MviValidationRecord,
+} from "../../interfaces/item-validation/index.js";
 import { buildQuestionImagePrompt } from "../../prompts/question-image.prompt.js";
 
 export interface GenerateQuestionConfig {
@@ -18,9 +27,40 @@ export interface GenerateQuestionConfig {
   retryBaseDelayMs?: number;
   /** Injectable delay — lets tests skip real waiting. */
   sleep?: (ms: number) => Promise<void>;
+  /** How MVI validation applies to generated questions (default "off"). */
+  mviMode?: MviMode;
+  /** Injectable clock for `mviValidatedAt` — lets tests pin the timestamp. */
+  now?: () => Date;
+}
+
+/** Inputs for MVI validation, resolved once per batch by the caller. */
+export interface GenerationValidationContext {
+  /** Statements already stored (duplicate detection). */
+  bank: string[];
+  catalog: ItemValidatorCatalog | null;
+}
+
+interface MviOutcome {
+  mviStatus: MviStatus;
+  mviResult: MviValidationRecord | null;
+  mviCatalogVersion: string | null;
+  mviValidatedAt: Date | null;
+}
+
+interface RejectedAttempt {
+  generated: GeneratedQuestion;
+  violations: ItemViolation[];
+  blockingCount: number;
+  catalogVersion: string;
 }
 
 const DEFAULT_RETRY_BASE_DELAY_MS = 1000;
+
+const NOT_VALIDATED: Omit<MviOutcome, "mviStatus"> = {
+  mviResult: null,
+  mviCatalogVersion: null,
+  mviValidatedAt: null,
+};
 
 const defaultSleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -33,30 +73,44 @@ export class GenerateQuestionUseCase {
     private readonly imageGenerator: AIImageGeneratorAdapter,
     private readonly imageStorage: ImageStorageAdapter,
     private readonly config: GenerateQuestionConfig,
+    private readonly itemValidator: ItemValidatorAdapter | null = null,
   ) {}
 
   /**
    * @param schoolId school whose question bank receives the question (the
    *   generating teacher's school, resolved by the caller).
+   * @param validation MVI inputs; ignored when MVI is off or not configured.
    */
   async execute(
     dto: GenerateQuestionDto,
     recentStatements: string[] = [],
     schoolId: number | null = null,
+    validation: GenerationValidationContext = { bank: [], catalog: null },
   ): Promise<QuestionEntity> {
     const { maxAttempts } = this.config;
     const baseDelay = this.config.retryBaseDelayMs ?? DEFAULT_RETRY_BASE_DELAY_MS;
     const sleep = this.config.sleep ?? defaultSleep;
+    const mviMode = this.config.mviMode ?? "off";
+    const validator = mviMode === "off" ? null : this.itemValidator;
+
+    let feedback: string[] = [];
+    let best: RejectedAttempt | null = null;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      const prompt = buildQuestionGenerationPrompt(dto.vakStyle, recentStatements);
+      const prompt = buildQuestionGenerationPrompt(dto.vakStyle, recentStatements, {
+        feedback,
+        catalog: validation.catalog,
+      });
 
       let generated: GeneratedQuestion;
       try {
         generated = await this.aiGenerator.generateQuestion(prompt);
       } catch (err) {
         // Transient AI failures (429 / 5xx / timeout): back off and retry.
-        if (attempt === maxAttempts) throw err;
+        if (attempt === maxAttempts) {
+          if (best) break;
+          throw err;
+        }
         console.error(
           `[question] AI generation attempt ${attempt} failed:`,
           errorMessage(err),
@@ -67,28 +121,113 @@ export class GenerateQuestionUseCase {
 
       if (!this.isValid(generated)) continue;
 
-      const vector = await this.embedOrNull(generated.statement);
-      const mediaUrl = await this.generateAndUploadImage(generated.statement);
+      if (!validator) {
+        return this.save(dto, schoolId, generated, {
+          mviStatus: "skipped",
+          ...NOT_VALIDATED,
+        });
+      }
 
-      return this.questionRepository.createWithOptionsAndEmbedding({
-        statement: generated.statement,
-        vakStyle: dto.vakStyle,
-        contentType: "text",
-        origin: "ai_generated",
-        validationStatus: "pending",
-        generationDate: new Date(),
-        teacherId: dto.teacherId,
-        schoolId,
-        options: generated.options,
-        embeddingVector: vector,
-        embeddingModelVersion: this.embeddingAdapter.modelVersion,
-        mediaUrl,
+      let batch: ItemValidationBatch;
+      try {
+        batch = await validator.validate(
+          [
+            {
+              statement: generated.statement,
+              vakStyle: dto.vakStyle,
+              options: generated.options,
+            },
+          ],
+          validation.bank,
+        );
+      } catch (err) {
+        console.warn("[mvi] validation unavailable:", errorMessage(err));
+        return this.save(dto, schoolId, generated, {
+          mviStatus: "unavailable",
+          ...NOT_VALIDATED,
+        });
+      }
+
+      const result = batch.results[0];
+      if (!result) {
+        console.warn("[mvi] validation returned no result");
+        return this.save(dto, schoolId, generated, {
+          mviStatus: "unavailable",
+          ...NOT_VALIDATED,
+        });
+      }
+
+      if (result.approved) {
+        return this.save(dto, schoolId, generated, {
+          mviStatus: "passed",
+          mviResult: { approved: true, violations: result.violations, attempts: attempt },
+          mviCatalogVersion: batch.catalogVersion,
+          mviValidatedAt: this.now(),
+        });
+      }
+
+      const blockingMessages = result.violations
+        .filter((v) => v.severity === "blocking")
+        .map((v) => v.message);
+      if (!best || blockingMessages.length < best.blockingCount) {
+        best = {
+          generated,
+          violations: result.violations,
+          blockingCount: blockingMessages.length,
+          catalogVersion: batch.catalogVersion,
+        };
+      }
+      feedback = blockingMessages;
+    }
+
+    if (best) {
+      if (mviMode === "gate") {
+        throw CustomError.serviceUnavailable(
+          `Generated ${dto.vakStyle} question did not pass MVI after ${maxAttempts} attempts`,
+        );
+      }
+      return this.save(dto, schoolId, best.generated, {
+        mviStatus: "failed",
+        mviResult: { approved: false, violations: best.violations, attempts: maxAttempts },
+        mviCatalogVersion: best.catalogVersion,
+        mviValidatedAt: this.now(),
       });
     }
 
     throw CustomError.serviceUnavailable(
       `Could not generate a valid ${dto.vakStyle} question after ${maxAttempts} attempts`,
     );
+  }
+
+  private now(): Date {
+    return (this.config.now ?? (() => new Date()))();
+  }
+
+  /** Embedding and image are produced only for the attempt that is persisted. */
+  private async save(
+    dto: GenerateQuestionDto,
+    schoolId: number | null,
+    generated: GeneratedQuestion,
+    mvi: MviOutcome,
+  ): Promise<QuestionEntity> {
+    const vector = await this.embedOrNull(generated.statement);
+    const mediaUrl = await this.generateAndUploadImage(generated.statement);
+
+    return this.questionRepository.createWithOptionsAndEmbedding({
+      statement: generated.statement,
+      vakStyle: dto.vakStyle,
+      contentType: "text",
+      origin: "ai_generated",
+      validationStatus: "pending",
+      generationDate: new Date(),
+      teacherId: dto.teacherId,
+      schoolId,
+      options: generated.options,
+      embeddingVector: vector,
+      embeddingModelVersion: this.embeddingAdapter.modelVersion,
+      mediaUrl,
+      ...mvi,
+    });
   }
 
   /** Embeddings are auxiliary — a failure must not discard a valid question. */
