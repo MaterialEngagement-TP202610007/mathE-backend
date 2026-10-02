@@ -119,8 +119,14 @@ Set these in **Render → your service → Environment**.
 | `GEMINI_CHAT_TIMEOUT_MS` | `30000` | |
 | `GEMINI_EMBEDDING_TIMEOUT_MS` | `15000` | |
 | `GEMINI_IMAGE_TIMEOUT_MS` | `60000` | |
+| `MVI_TIMEOUT_MS` | `15000` | MVI `/validar` and `/reglas` calls |
+| `MVI_WAKEUP_TIMEOUT_MS` | `60000` | MVI `/salud` wake-up (cold start) |
 | `AWS_REGION` | `us-east-1` | if bucket is in a different region |
 | `LAMBDA_URL` | `` (empty) | when Lambda integration is active |
+| `MVI_URL` | `` (empty) | when the MVI item validator is active (empty disables it) |
+| `MVI_TOKEN` | `` (empty) | Bearer token for MVI; never logged |
+| `MVI_MODE` | `advisory` | `off` skips validation, `gate` drops questions that fail MVI |
+| `MVI_NIVEL` | `6` | school level sent to MVI |
 | `RUN_SEED` | `false` | set `true` to run `prisma db seed` on boot (failure does not block startup) |
 
 ### Admin bootstrap (needed once — public registration can never create admins)

@@ -78,4 +78,19 @@ export const envs = {
 
   // ML / Lambda
   LAMBDA_URL: envVar.get("LAMBDA_URL").default("").asString(),
+
+  // MVI item validator (optional: empty MVI_URL disables it)
+  MVI_URL: envVar.get("MVI_URL").default("").asString(),
+  MVI_TOKEN: envVar.get("MVI_TOKEN").default("").asString(),
+  MVI_TIMEOUT_MS: envVar.get("MVI_TIMEOUT_MS").default("15000").asIntPositive(),
+  // Wake-up tolerates a cold start of the hosting platform.
+  MVI_WAKEUP_TIMEOUT_MS: envVar
+    .get("MVI_WAKEUP_TIMEOUT_MS")
+    .default("60000")
+    .asIntPositive(),
+  MVI_MODE: envVar
+    .get("MVI_MODE")
+    .default("advisory")
+    .asEnum(["off", "advisory", "gate"]),
+  MVI_NIVEL: envVar.get("MVI_NIVEL").default("6").asIntPositive(),
 };
