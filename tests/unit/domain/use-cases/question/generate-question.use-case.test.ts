@@ -364,7 +364,7 @@ describe('GenerateQuestionUseCase', () => {
       aiGenerator.generateQuestion.mockResolvedValueOnce(validGenerated);
       validator.validate.mockResolvedValueOnce(batch(true));
       const catalog: ItemValidatorCatalog = {
-        version: 'v1.2', maxWords: 17, markers: { V: ['mapa'], A: ['conversar'], K: ['armar'] },
+        version: 'v1.2', maxWords: 17, markers: { V: ['mapa'], A: ['conversar'], K: ['armar'] }, vocabulary: [], functionWords: [],
       };
 
       await build('advisory').execute(visualDto!, [], 4, { bank: ['existente 1', 'existente 2'], catalog });

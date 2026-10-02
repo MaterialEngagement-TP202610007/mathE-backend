@@ -111,6 +111,67 @@ describe('buildQuestionGenerationPrompt', () => {
     });
   });
 
+  describe('with catalog vocabulary', () => {
+    const vocabulary = ['mapa', 'colores', 'ver', 'conversar', 'armar', 'niño', 'escuela'];
+    const functionWords = ['el', 'de', 'con'];
+    const catalog = makeCatalog({
+      markers: { V: ['mapa', 'dibujar'], A: ['conversar'], K: ['construir', 'cartulina'] },
+      vocabulary,
+      functionWords,
+    });
+
+    it('adds the vocabulary section with every word on one comma-separated line', () => {
+      const result = buildQuestionGenerationPrompt('Visual', [], { catalog });
+      expect(result).toContain('vocabulario permitido');
+      expect(result).toContain(vocabulary.join(', '));
+      expect(result).toContain('mismas tildes');
+      expect(result).toContain('palabras funcionales');
+      expect(result).toContain(functionWords.join(', '));
+      expect(result).toContain('no inventes nombres propios');
+    });
+
+    it('includes every word of a full-size vocabulary without truncation', () => {
+      const big = Array.from({ length: 1200 }, (_, i) => `palabra${i}`);
+      const result = buildQuestionGenerationPrompt('Visual', [], {
+        catalog: makeCatalog({ vocabulary: big }),
+      });
+      expect(result).toContain('palabra0,');
+      expect(result).toContain('palabra1199');
+      expect(result).toContain(big.join(', '));
+    });
+
+    it('omits the function words line when there are none', () => {
+      const result = buildQuestionGenerationPrompt('Visual', [], {
+        catalog: makeCatalog({ vocabulary, functionWords: [] }),
+      });
+      expect(result).toContain('vocabulario permitido');
+      expect(result).not.toContain('palabras funcionales');
+    });
+
+    it('keeps only markers that belong to the vocabulary', () => {
+      const result = buildQuestionGenerationPrompt('Visual', [], { catalog });
+      expect(result).toContain('V: mapa\n');
+      expect(result).not.toContain('dibujar');
+      expect(result).toContain('A: conversar');
+    });
+
+    it('keeps the original marker list when the intersection is empty', () => {
+      const result = buildQuestionGenerationPrompt('Visual', [], { catalog });
+      expect(result).toContain('K: construir, cartulina');
+    });
+
+    it('states that marker words must belong to the vocabulary', () => {
+      const result = buildQuestionGenerationPrompt('Visual', [], { catalog });
+      expect(result).toContain('también deben pertenecer al vocabulario permitido');
+    });
+
+    it('does not add the section when the vocabulary is empty', () => {
+      const result = buildQuestionGenerationPrompt('Visual', [], { catalog: makeCatalog() });
+      expect(result).not.toContain('vocabulario permitido');
+      expect(result).not.toContain('pertenecer al vocabulario');
+    });
+  });
+
   describe('without catalog', () => {
     it.each([undefined, null])('bans generic verbs and asks for concrete actions (%s)', (catalog) => {
       const result = buildQuestionGenerationPrompt('Visual', [], { catalog });
@@ -145,5 +206,5 @@ describe('buildQuestionGenerationPrompt', () => {
 });
 
 function makeCatalog(overrides: Partial<ItemValidatorCatalog> = {}): ItemValidatorCatalog {
-  return { version: 'v1', maxWords: 30, markers: { V: ['mapa'], A: ['conversar'], K: ['armar'] }, ...overrides };
+  return { version: 'v1', maxWords: 30, markers: { V: ['mapa'], A: ['conversar'], K: ['armar'] }, vocabulary: [], functionWords: [], ...overrides };
 }

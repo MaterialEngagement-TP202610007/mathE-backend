@@ -359,6 +359,8 @@ describe('MviItemValidatorAdapterImpl', () => {
           A: ['escuchar', 'repetir', 'decir'],
           K: ['armar'],
         },
+        vocabulary: [],
+        functionWords: [],
       });
       const [url, init] = fetchMock.mock.calls[0];
       expect(url).toBe('http://mvi.example.com/reglas');
@@ -381,7 +383,46 @@ describe('MviItemValidatorAdapterImpl', () => {
         version: '0.3.0',
         maxWords: 28,
         markers: { V: ['ver'], A: [], K: [] },
+        vocabulary: [],
+        functionWords: [],
       });
+    });
+
+    it('parses the level vocabulary and the function words defensively', async () => {
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse({
+          version: '0.2.0',
+          marcadores: {},
+          niveles: [
+            { nivel: 5, vocabulario: ['otro'] },
+            { nivel: 6, vocabulario: ['casa', 'niño', 7, null, 'casa', 'árbol'] },
+          ],
+          reglas: [
+            { id: 'longitud-enunciado', umbral: 30 },
+            { id: 'vocabulario-nivel', parametros: { palabrasFuncionales: ['el', 'de', 'el', 3, 'y'] } },
+          ],
+        }),
+      );
+
+      const catalog = await makeAdapter().adapter.getCatalog();
+
+      expect(catalog?.vocabulary).toEqual(['casa', 'niño', 'árbol']);
+      expect(catalog?.functionWords).toEqual(['el', 'de', 'y']);
+    });
+
+    it.each([
+      ['non-array values', { nivel: 6, vocabulario: 'casa' }, { id: 'vocabulario-nivel', parametros: { palabrasFuncionales: 'el' } }],
+      ['missing fields', { nivel: 6 }, { id: 'vocabulario-nivel' }],
+      ['malformed parametros', { nivel: 6 }, { id: 'vocabulario-nivel', parametros: 5 }],
+    ])('returns empty lists for %s', async (_label, level, rule) => {
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse({ version: '0.2.0', marcadores: {}, niveles: [level], reglas: [rule] }),
+      );
+
+      const catalog = await makeAdapter().adapter.getCatalog();
+
+      expect(catalog?.vocabulary).toEqual([]);
+      expect(catalog?.functionWords).toEqual([]);
     });
 
     it('sets maxWords to null when nothing numeric is found', async () => {

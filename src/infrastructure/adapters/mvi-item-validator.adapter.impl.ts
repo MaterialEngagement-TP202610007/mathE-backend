@@ -62,6 +62,7 @@ const LEVEL_MAX_WORDS_FIELDS = [
 ];
 
 const STATEMENT_LENGTH_RULE_ID = "longitud-enunciado";
+const VOCABULARY_RULE_ID = "vocabulario-nivel";
 
 function invalidResponse(detail: string): CustomError {
   return CustomError.badGateway(`MVI returned an invalid response: ${detail}`);
@@ -102,17 +103,42 @@ function finiteNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+function findLevelEntry(raw: any, level: number): Record<string, unknown> | null {
+  if (!Array.isArray(raw.niveles)) return null;
+  const entry = raw.niveles.find(
+    (n: unknown) =>
+      isRecord(n) && (String(n.nivel) === String(level) || String(n.id) === String(level)),
+  );
+  return isRecord(entry) ? entry : null;
+}
+
+/** Non-empty strings of an array, deduplicated preserving order; [] for non-arrays. */
+function stringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [
+    ...new Set(
+      value.filter((v): v is string => typeof v === "string" && v.trim() !== ""),
+    ),
+  ];
+}
+
+function parseVocabulary(raw: any, level: number): string[] {
+  return stringList(findLevelEntry(raw, level)?.vocabulario);
+}
+
+function parseFunctionWords(raw: any): string[] {
+  if (!Array.isArray(raw.reglas)) return [];
+  const rule = raw.reglas.find((r: unknown) => isRecord(r) && r.id === VOCABULARY_RULE_ID);
+  if (!isRecord(rule) || !isRecord(rule.parametros)) return [];
+  return stringList(rule.parametros.palabrasFuncionales);
+}
+
 function parseMaxWords(raw: any, level: number): number | null {
-  if (Array.isArray(raw.niveles)) {
-    const entry = raw.niveles.find(
-      (n: unknown) =>
-        isRecord(n) && (String(n.nivel) === String(level) || String(n.id) === String(level)),
-    );
-    if (isRecord(entry)) {
-      for (const field of LEVEL_MAX_WORDS_FIELDS) {
-        const value = finiteNumber(entry[field]);
-        if (value !== null) return value;
-      }
+  const entry = findLevelEntry(raw, level);
+  if (entry) {
+    for (const field of LEVEL_MAX_WORDS_FIELDS) {
+      const value = finiteNumber(entry[field]);
+      if (value !== null) return value;
     }
   }
 
@@ -216,6 +242,8 @@ export class MviItemValidatorAdapterImpl implements ItemValidatorAdapter {
         version: raw.version,
         maxWords: parseMaxWords(raw, envs.MVI_NIVEL),
         markers: parseMarkers(raw.marcadores),
+        vocabulary: parseVocabulary(raw, envs.MVI_NIVEL),
+        functionWords: parseFunctionWords(raw),
       };
       this.cachedCatalog = { catalog, expiresAt: this.now() + CATALOG_TTL_MS };
       return catalog;

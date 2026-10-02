@@ -58,6 +58,8 @@ export function buildQuestionGenerationPrompt(
       ? `\nTu intento anterior fue rechazado por estas razones; corrígelas:\n${feedback.map((m) => `- ${m}`).join("\n")}\n`
       : "";
 
+  const vocabularyBlock = vocabularyRules(catalog);
+
   return `Eres un experto en estilos de aprendizaje VAK, especializado en educación para estudiantes de 6to de primaria y 1ro de secundaria de Perú (11 a 12 años).
 
 Tu tarea es generar UNA pregunta COMPLETAMENTE NUEVA Y ÚNICA sobre: "${topic}" (semilla de variación: ${seed}). El alumno debe elegir cómo actuaría o qué le ayudaría más. Responde siempre en español castellano peruano.
@@ -76,15 +78,30 @@ Reglas de las opciones:
 - Todas deben empezar con el mismo tipo de palabra: un verbo en infinitivo.
 - Sin negaciones: no uses "no", "nunca", "tampoco".
 - Palabras comunes, simples y cotidianas que conozca un niño de 11 a 12 años.
-${styleRules(catalog)}
+${styleRules(catalog)}${vocabularyBlock}
 - No menciones los estilos VAK en ninguna parte del texto.
 
 Responde ÚNICAMENTE con este JSON sin texto adicional:
 {"statement":"...","options":[{"text":"...","vak_value":"V|A|K"}]}`;
 }
 
+function vocabularyRules(catalog: ItemValidatorCatalog | null): string {
+  const vocabulary = catalog?.vocabulary ?? [];
+  if (vocabulary.length === 0) return "";
+
+  const functionWords = catalog?.functionWords ?? [];
+  const functionLine =
+    functionWords.length > 0
+      ? `\n- También puedes usar estas palabras funcionales (artículos, preposiciones, conjunciones, pronombres): ${functionWords.join(", ")}`
+      : "";
+
+  return `
+- VOCABULARIO: TODA palabra de contenido del enunciado Y de las opciones debe estar en esta lista de vocabulario permitido (usa las formas exactas tal como aparecen, con las mismas tildes): ${vocabulary.join(", ")}${functionLine}
+- Si necesitas una palabra que no está en la lista, reformula la idea con palabras de la lista; no inventes nombres propios ni términos técnicos.`;
+}
+
 function styleRules(catalog: ItemValidatorCatalog | null): string {
-  const markers = catalog?.markers;
+  const markers = catalog ? vocabularyMarkers(catalog) : undefined;
   const hasMarkers =
     !!markers && (["V", "A", "K"] as const).some((v) => markers[v]?.length > 0);
 
@@ -106,7 +123,30 @@ function styleRules(catalog: ItemValidatorCatalog | null): string {
       ? `\n- Evita los verbos genéricos ${quoteList(banned)}; usa acciones concretas y observables.`
       : "";
 
-  return `- CADA opción debe incluir al menos una palabra concreta de la lista de SU propio estilo:\n${perStyle}${ban}`;
+  const vocabNote =
+    (catalog.vocabulary ?? []).length > 0
+      ? "\n- Las palabras marcadoras que uses también deben pertenecer al vocabulario permitido."
+      : "";
+
+  return `- CADA opción debe incluir al menos una palabra concreta de la lista de SU propio estilo:\n${perStyle}${ban}${vocabNote}`;
+}
+
+/** Restricts each style's markers to the vocabulary; keeps the original list when none survive. */
+function vocabularyMarkers(
+  catalog: ItemValidatorCatalog,
+): ItemValidatorCatalog["markers"] {
+  const allowed = new Set((catalog.vocabulary ?? []).map((w) => w.toLowerCase()));
+  if (allowed.size === 0) return catalog.markers;
+
+  const restrict = (list: string[] = []) => {
+    const kept = list.filter((w) => allowed.has(w.toLowerCase()));
+    return kept.length > 0 ? kept : list;
+  };
+  return {
+    V: restrict(catalog.markers.V),
+    A: restrict(catalog.markers.A),
+    K: restrict(catalog.markers.K),
+  };
 }
 
 function quoteList(words: string[]): string {

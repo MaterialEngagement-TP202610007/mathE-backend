@@ -40,6 +40,10 @@ export interface ItemValidatorCatalog {
   /** Maximum statement length in words for the configured level, if known. */
   maxWords: number | null;
   markers: Record<VakValue, string[]>;
+  /** Content words allowed at the configured level; empty when unknown. */
+  vocabulary: string[];
+  /** Function words (articles, prepositions...) always allowed; empty when unknown. */
+  functionWords: string[];
 }
 
 /** Diagnosis stored with a question (`Question.mviResult`). */

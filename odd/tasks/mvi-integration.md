@@ -30,6 +30,7 @@ Out of scope: `/banco/verificar`, `/catalogo/verificar`, frontend UI.
 - [x] T4 — Validation loop in generation + bulk bank/wake-up + DI
 - [x] T5 — Approve-over-MVI + revalidate endpoint
 - [x] T6 — CSV export + docs
+- [x] T7 — Allowed vocabulary in prompt (from smoke-test finding: only R3 blocked)
 
 ## Acceptance criteria
 - Generated questions persist `mviStatus` in {passed, failed, unavailable, skipped} with diagnosis when available.
@@ -43,7 +44,7 @@ Out of scope: `/banco/verificar`, `/catalogo/verificar`, frontend UI.
 ## Route per task
 | Task | Route | Trigger evidence |
 |---|---|---|
-| T1–T6 | delegated direct (one writer) | 2+ non-trivial files per task |
+| T1–T7 | delegated direct (one writer) | 2+ non-trivial files per task |
 
 ## Progress / evidence
 ### T1
@@ -81,6 +82,14 @@ Out of scope: `/banco/verificar`, `/catalogo/verificar`, frontend UI.
 - `docs/INTEGRATION_MVI_MATHE.md`: added section 12 (implementation status), marked implemented items; `docs/FRONTEND_INTEGRATION.md`: Question shape, endpoint row and "MVI diagnosis on questions (teacher/admin)" section.
 - Commit: `docs(mvi): document MVI integration status and frontend fields` (hash = the commit containing this line)
 
+### Smoke test 1
+- 3 Visual questions generated via HTTP, all saved as `failed` (advisory) with only `vocabulario-nivel` (R3) blocking; R1, R9 and composition passed. Catalog 0.2.0, maxWords 30, markers V34/A45/K46 parsed from the real /reglas.
+
+### T7
+- RED: `pnpm test -- tests/unit/infrastructure/adapters/mvi-item-validator.adapter.test.ts tests/unit/domain/prompts/question-generation.prompt.test.ts`: both suites failed to compile (TS2339/TS2353: `vocabulary`/`functionWords` missing on `ItemValidatorCatalog`).
+- GREEN: same command: 2 suites, 56 passed. `pnpm exec tsc --noEmit`: clean. Full `pnpm test`: 59 suites, 518 tests passed.
+- `ItemValidatorCatalog` gains `vocabulary` and `functionWords`; adapter reads `niveles[nivel].vocabulario` and `reglas[vocabulario-nivel].parametros.palabrasFuncionales` (defensive, deduped). Prompt adds a vocabulary section (full lists, comma-separated) and intersects markers with the vocabulary (original list kept when the intersection is empty).
+
 ## Delivery
 - Strategy: `ask-on-risk` -> chain strategy `feature-branch-chain` (user choice 2026-10-02).
 - Slices:
@@ -98,4 +107,4 @@ Out of scope: `/banco/verificar`, `/catalogo/verificar`, frontend UI.
 - S1 suggestion (informational) `R3-001`: adapter lines 255-270.
 
 ## Next step
-Local smoke test (needs `MVI_TOKEN` in `.env`).
+Smoke test 2 after T7.
