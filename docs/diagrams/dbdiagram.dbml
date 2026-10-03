@@ -16,7 +16,7 @@ Table User {
   name varchar(250) [not null]
   birth_date date [not null, note: 'Backend calculates exact age in real-time for ML']
   phone_number varchar(20)
-  is_active boolean [not null, default: false]
+  is_active boolean [not null, default: true]
 
   // Relations (FK)
   role_id integer
@@ -36,12 +36,16 @@ Table School {
   district varchar(150) [not null, note: 'D_DIST']
   address varchar(500) [not null, note: 'DIR_CEN']
   business_name varchar(250) [not null, note: 'RZSOCIAL']
-  levels text[] [note: 'D_NIV_MOD values offered (Primaria/Secundaria/...)']
-  cod_mods text[] [note: 'COD_MOD of every merged MINEDU service']
+  levels text[] [not null, default: '{}', note: 'D_NIV_MOD values offered (Primaria/Secundaria/...)']
+  cod_mods text[] [not null, default: '{}', note: 'COD_MOD of every merged MINEDU service']
 
   // Audit
   created_at timestamp [not null]
   updated_at timestamp [not null]
+
+  indexes {
+    cen_edu
+  }
 }
 
 Table AcademicGrade {
@@ -79,6 +83,11 @@ Table QuestionnaireQuestion {
 
   // Audit
   created_at timestamp [not null]
+
+  indexes {
+    (questionnaire_id, question_id) [unique]
+    (questionnaire_id, order) [unique]
+  }
 }
 
 Table Question {
@@ -94,10 +103,21 @@ Table Question {
   rejection_reason text
   generation_date timestamp [not null]
 
+  // MVI item validation (external rule engine) — teacher-facing diagnosis, never exposed to students
+  mvi_status varchar(20) [note: "'passed' | 'failed' | 'unavailable' | 'skipped'. NULL = never validated"]
+  mvi_result jsonb [note: "Validation payload: { approved, violations: [{ ruleId, message, measuredValue, threshold, severity: 'blocking' | 'warning' }], attempts }"]
+  mvi_catalog_version varchar(20) [note: 'Version of the MVI rule catalog used for the validation']
+  mvi_validated_at timestamp [note: 'When the MVI validation last ran']
+  approved_over_mvi boolean [not null, default: false, note: 'true when the teacher approved despite MVI blocking violations']
+
   // Audit
   created_at timestamp [not null]
   updated_at timestamp [not null]
   deleted_at timestamp
+
+  indexes {
+    (school_id, validation_status, origin, vak_style)
+  }
 }
 
 Table Option {
@@ -141,7 +161,7 @@ Table Result {
   visual_probability float [note: 'Confidence 0-100']
   auditory_probability float [note: 'Confidence 0-100']
   kinesthetic_probability float [note: 'Confidence 0-100']
-  predominant_confidence float [note: 'Max probability — mirrors confianza_predominante from Lambda']
+  predominant_confidence float [note: 'Max probability — redundant but useful for frontend']
   profile_type varchar(20) [note: "'clear' | 'tendency' | 'mixed'"]
   is_mixed_profile boolean [not null, default: false]
   classifier_type varchar(50) [note: "'xgboost' | 'simple_score'"]
@@ -251,7 +271,7 @@ Table Notification {
 Ref: User.role_id > Roles.id
 Ref: User.academic_grade_id > AcademicGrade.id
 Ref: User.school_id > School.id
-Ref: Question.school_id > School.id
+Ref: Question.school_id > School.id [delete: set null]
 Ref: Questionnaire.student_id > User.id
 Ref: Question.teacher_id > User.id
 Ref: Option.question_id > Question.id
