@@ -137,8 +137,16 @@ Out of scope: `/banco/verificar`, `/catalogo/verificar`, frontend UI.
 - 3 Visual questions after T8, all `failed` (advisory) by R3 `vocabulario-nivel` with 3-5 OOV words each; one also failed R2 `legibilidad-nivel` (63.34 < 70). Recurrent OOV words are common Spanish ("muy", "clara(s)", "debemos", "elaborar", "dibujar", "planear"): the level-6 vocabulary (1149 surface forms, derived from 44 items) is stricter than what an LLM can follow reliably.
 - HTTP checks passed: `POST /api/questions/:id/validate` (200, diagnosis refreshed), approving a `failed` question sets `approvedOverMvi = true`, student gets 403 on validate, student questionnaire payload has no `mvi*`/`approvedOverMvi`/`vakValue`.
 
+### Revalidation against MVI 0.4.0
+- `POST /api/questions/:id/validate` on #29-#37: 8/9 `passed` (R3 only as warning, 1-5 OOV), #37 still `failed` by R2 `legibilidad-nivel` (63.34 < 70).
+
+### Smoke test 4 (MVI 0.4.0, after T9)
+- 3 questions per style via HTTP: **8/9 `passed`** (Visual 2/3, Auditory 3/3, Kinesthetic 3/3), 1-3 attempts each. The only `failed` (#38) had 9 OOV words (> tolerance 5), saved as `failed` in advisory.
+- Remaining OOV words seen as warnings (input for future MVI vocabulary work): dibujar (x3), mostrar (x2), trabajar, juego/juega, campo, deporte, consejos, curso, pintar.
+- T9 assessed medium, `under_budget` (pending in slice).
+
 ## Status
-Integration complete on localhost in `advisory` mode. MVI side addressed the R3 decision in catalog 0.4.0 (wider inflected vocabulary + two-band R3); re-measure the pass rate before considering `gate`.
+Integration complete on localhost in `advisory` mode with MVI catalog 0.4.0: 8/9 generated questions pass. Ready for deployment (backend env vars + migration + merge), pending user decisions.
 
 ## Next step
-Smoke test 4 against MVI 0.4.0.
+Deployment: set `MVI_URL`/`MVI_TOKEN`/`MVI_MODE=advisory` on the production backend, merge `feat/mvi-integration` into the release branch (start.sh runs `prisma migrate deploy`), confirm production MVI reports catalog 0.4.0.
