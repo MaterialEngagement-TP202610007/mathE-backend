@@ -1,5 +1,5 @@
 import type { ItemValidatorCatalog } from '../../../../src/domain/interfaces/item-validation/index.js';
-import { buildQuestionGenerationPrompt, buildQuestionRevisionPrompt } from '../../../../src/domain/prompts/question-generation.prompt.js';
+import { buildQuestionGenerationPrompt, buildQuestionRevisionPrompt, MAX_PROMPT_VOCABULARY_WORDS } from '../../../../src/domain/prompts/question-generation.prompt.js';
 
 describe('buildQuestionGenerationPrompt', () => {
   it('returns a non-empty string', () => {
@@ -172,6 +172,53 @@ describe('buildQuestionGenerationPrompt', () => {
     });
   });
 
+  describe('with a vocabulary above the prompt cap', () => {
+    const large = Array.from({ length: MAX_PROMPT_VOCABULARY_WORDS + 1 }, (_, i) => `palabra${i}`);
+    const catalog = makeCatalog({
+      markers: { V: ['mapa', 'dibujar'], A: ['conversar'], K: ['construir', 'cartulina'] },
+      vocabulary: large,
+      functionWords: ['el', 'de', 'con'],
+    });
+
+    it('exposes a cap of 2000 words', () => {
+      expect(MAX_PROMPT_VOCABULARY_WORDS).toBe(2000);
+    });
+
+    it('still renders the list at exactly the cap', () => {
+      const atCap = Array.from({ length: MAX_PROMPT_VOCABULARY_WORDS }, (_, i) => `palabra${i}`);
+      const result = buildQuestionGenerationPrompt('Visual', [], { catalog: makeCatalog({ vocabulary: atCap }) });
+      expect(result).toContain('vocabulario permitido');
+      expect(result).toContain(atCap.join(', '));
+    });
+
+    it('renders neither the vocabulary nor the function words', () => {
+      const result = buildQuestionGenerationPrompt('Visual', [], { catalog });
+      expect(result).not.toContain('vocabulario permitido');
+      expect(result).not.toContain('palabras funcionales');
+      expect(result).not.toContain('palabra0');
+      expect(result).not.toContain('palabra2000');
+    });
+
+    it('asks for common simple words suited to 6to de primaria', () => {
+      const result = buildQuestionGenerationPrompt('Visual', [], { catalog });
+      expect(result).toContain('6to de primaria');
+      expect(result).toContain('términos técnicos');
+      expect(result).toContain('nombres propios');
+    });
+
+    it('uses the capped marker list without intersecting it with the vocabulary', () => {
+      const result = buildQuestionGenerationPrompt('Visual', [], { catalog });
+      expect(result).toContain('V: mapa, dibujar');
+      expect(result).toContain('K: construir, cartulina');
+      expect(result).not.toContain('pertenecer al vocabulario');
+    });
+
+    it('keeps the prompt small', () => {
+      const result = buildQuestionGenerationPrompt('Visual', [], { catalog });
+      expect(result.length).toBeLessThan(6000);
+    });
+  });
+
   describe('without catalog', () => {
     it.each([undefined, null])('bans generic verbs and asks for concrete actions (%s)', (catalog) => {
       const result = buildQuestionGenerationPrompt('Visual', [], { catalog });
@@ -273,6 +320,41 @@ describe('buildQuestionRevisionPrompt', () => {
   it('omits the vocabulary section without a vocabulary', () => {
     const result = buildQuestionRevisionPrompt('Visual', previous, ['x'], { catalog: makeCatalog() });
     expect(result).not.toContain('vocabulario permitido');
+  });
+
+  describe('with a vocabulary above the prompt cap', () => {
+    const large = Array.from({ length: MAX_PROMPT_VOCABULARY_WORDS + 1 }, (_, i) => `palabra${i}`);
+    const bigCatalog = makeCatalog({
+      markers: { V: ['mapa', 'dibujar'], A: ['conversar'], K: ['armar'] },
+      vocabulary: large,
+      functionWords: ['el', 'de'],
+    });
+
+    it('renders no vocabulary list and no function words', () => {
+      const result = buildQuestionRevisionPrompt('Visual', previous, ['x'], { catalog: bigCatalog });
+      expect(result).not.toContain('vocabulario permitido');
+      expect(result).not.toContain('palabras funcionales');
+      expect(result).not.toContain('palabra0');
+      expect(result).not.toContain('pertenecer al vocabulario');
+      expect(result).toContain('V: mapa, dibujar');
+    });
+
+    it('asks to replace the words listed in the reasons with simpler common words', () => {
+      const result = buildQuestionRevisionPrompt('Visual', previous, ['x'], { catalog: bigCatalog });
+      expect(result).toContain('razones del rechazo');
+      expect(result).toContain('palabras más simples y comunes');
+      expect(result).not.toContain('vocabulario permitido');
+    });
+
+    it('asks for common simple words suited to 6to de primaria', () => {
+      const result = buildQuestionRevisionPrompt('Visual', previous, ['x'], { catalog: bigCatalog });
+      expect(result).toContain('6to de primaria');
+    });
+
+    it('keeps the prompt small', () => {
+      const result = buildQuestionRevisionPrompt('Visual', previous, ['x'], { catalog: bigCatalog });
+      expect(result.length).toBeLessThan(6000);
+    });
   });
 });
 

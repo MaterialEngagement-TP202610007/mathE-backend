@@ -28,6 +28,8 @@ const VAK_DISTRIBUTION: Record<string, string> = {
 const DEFAULT_MAX_WORDS = 30;
 const MAX_MARKERS_PER_STYLE = 20;
 const MAX_FEEDBACK_MESSAGES = 8;
+/** Above this size the vocabulary is not rendered in the prompt (cost and latency). */
+export const MAX_PROMPT_VOCABULARY_WORDS = 2000;
 const JSON_OUTPUT_INSTRUCTION = `Responde ÚNICAMENTE con este JSON sin texto adicional:
 {"statement":"...","options":[{"text":"...","vak_value":"V|A|K"}]}`;
 const GENERIC_VERBS = ["ver", "tocar", "hacer"];
@@ -122,8 +124,25 @@ ${optionRules(catalog)}
 ${JSON_OUTPUT_INSTRUCTION}`;
 }
 
+function vocabularySize(catalog: ItemValidatorCatalog | null): number {
+  return catalog?.vocabulary?.length ?? 0;
+}
+
+/** True when the full vocabulary list is small enough to be rendered in the prompt. */
+function rendersVocabulary(catalog: ItemValidatorCatalog | null): boolean {
+  const size = vocabularySize(catalog);
+  return size > 0 && size <= MAX_PROMPT_VOCABULARY_WORDS;
+}
+
+function isLargeVocabulary(catalog: ItemValidatorCatalog | null): boolean {
+  return vocabularySize(catalog) > MAX_PROMPT_VOCABULARY_WORDS;
+}
+
 function revisionVocabularyStep(catalog: ItemValidatorCatalog | null): string {
-  if ((catalog?.vocabulary ?? []).length === 0) return "";
+  if (isLargeVocabulary(catalog)) {
+    return "- Si una razón señala palabras fuera de nivel, reemplaza cada palabra que aparece en las razones del rechazo por palabras más simples y comunes que conozca un alumno de 6to de primaria.\n";
+  }
+  if (!rendersVocabulary(catalog)) return "";
   return "- Si una razón señala palabras fuera del vocabulario, reemplaza cada una por una palabra del vocabulario permitido o reformula esa frase usando solo palabras permitidas.\n";
 }
 
@@ -138,6 +157,9 @@ ${styleRules(catalog)}${vocabularyRules(catalog)}`;
 }
 
 function vocabularyRules(catalog: ItemValidatorCatalog | null): string {
+  if (isLargeVocabulary(catalog)) {
+    return "\n- Usa solo palabras comunes y simples que conozca un alumno de 6to de primaria; evita términos técnicos, palabras poco comunes y nombres propios.";
+  }
   const vocabulary = catalog?.vocabulary ?? [];
   if (vocabulary.length === 0) return "";
 
@@ -153,7 +175,11 @@ function vocabularyRules(catalog: ItemValidatorCatalog | null): string {
 }
 
 function styleRules(catalog: ItemValidatorCatalog | null): string {
-  const markers = catalog ? vocabularyMarkers(catalog) : undefined;
+  const markers = catalog
+    ? rendersVocabulary(catalog)
+      ? vocabularyMarkers(catalog)
+      : catalog.markers
+    : undefined;
   const hasMarkers =
     !!markers && (["V", "A", "K"] as const).some((v) => markers[v]?.length > 0);
 
@@ -176,7 +202,7 @@ function styleRules(catalog: ItemValidatorCatalog | null): string {
       : "";
 
   const vocabNote =
-    (catalog.vocabulary ?? []).length > 0
+    rendersVocabulary(catalog)
       ? "\n- Las palabras marcadoras que uses también deben pertenecer al vocabulario permitido."
       : "";
 
