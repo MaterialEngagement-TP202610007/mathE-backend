@@ -170,7 +170,21 @@ export class ResultRoutes {
      *         schema: { type: string, format: date }
      *         description: HU-51. Include results dated on or before this ISO date/timestamp (a date-only value covers the whole day, UTC).
      *     responses:
-     *       200: { description: "School stats for the period (zero counts and null averages when the range has no data)" }
+     *       200:
+     *         description: "School stats for the period (zero counts and null averages when the range has no data)"
+     *         content:
+     *           application/json:
+     *             schema:
+     *               type: object
+     *               properties:
+     *                 schoolId: { type: integer }
+     *                 evaluatedStudents: { type: integer }
+     *                 mostCommonStyle: { type: string, nullable: true }
+     *                 avgPredominantConfidence: { type: number, nullable: true }
+     *                 startedQuestionnaires: { type: integer, description: "HU-50. Questionnaires started in the period (any status)" }
+     *                 completedQuestionnaires: { type: integer, description: "HU-50. Started questionnaires that were completed" }
+     *                 completionRate: { type: number, nullable: true, description: "HU-50. completed / started (0..1); null when nothing was started" }
+     *                 avgResponseTimeSeconds: { type: number, nullable: true, description: "HU-50. Mean seconds per question over completed questionnaires (ML dataset avgQuestionTime); null when none completed" }
      *       400: { description: "Invalid schoolId, period, from/to, or from > to" }
      *       403: { description: "Teacher requesting another school — { error: 'You can only access data from your own school' }" }
      */

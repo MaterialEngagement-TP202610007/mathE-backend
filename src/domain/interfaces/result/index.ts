@@ -93,6 +93,20 @@ export interface SchoolResultStats {
   evaluatedStudents: number;
   mostCommonStyle: string | null;
   avgPredominantConfidence: number | null;
+  /**
+   * HU-50: questionnaires of the school's students whose `startTime` falls in
+   * the period, whatever their status (in_progress, completed, abandoned).
+   */
+  startedQuestionnaires: number;
+  /** HU-50: the started questionnaires that reached `completed`. */
+  completedQuestionnaires: number;
+  /** HU-50: completed ÷ started (0..1); null when nothing was started. */
+  completionRate: number | null;
+  /**
+   * HU-50: mean seconds per question over the completed questionnaires, from
+   * the ML dataset `avgQuestionTime` stored at completion; null when none.
+   */
+  avgResponseTimeSeconds: number | null;
 }
 
 /** Students per predominant VAK style. */

@@ -558,6 +558,23 @@ Returns `Paginated<Result>`. Invalid date strings return `400 { "error": "Invali
 
 `GET /stats/school/:schoolId` and `GET /stats/school/:schoolId/by-grade`: teachers only for their own school → otherwise `403 { "error": "You can only access data from your own school" }`; admins any school.
 
+#### `GET /stats/school/:schoolId` — response (HU-50)
+```ts
+interface SchoolResultStats {
+  schoolId: number;
+  evaluatedStudents: number;               // students with a result in the period
+  mostCommonStyle: string | null;
+  avgPredominantConfidence: number | null;
+  startedQuestionnaires: number;           // new: started in the period, any status
+  completedQuestionnaires: number;         // new: of those, completed
+  completionRate: number | null;           // new: completed / started, 0..1 (null when started = 0)
+  avgResponseTimeSeconds: number | null;   // new: mean seconds per question (null when completed = 0)
+}
+```
+- Questionnaires are scoped to the school's students and matched by `startTime` in the HU-51 period; `in_progress` and `abandoned` ones count as started but not completed.
+- `avgResponseTimeSeconds` is the average of the ML dataset `avgQuestionTime` stored when each questionnaire is completed (mean of the answers' `questionTimeSeconds`).
+- **HU-50 S2:** when `completedQuestionnaires === 0` show "Datos insuficientes" instead of the cards (`avgResponseTimeSeconds` is `null`; `completionRate` is `0` if some were started, `null` if none).
+
 #### `GET /stats/school/:schoolId/by-grade` — response (HU-48)
 ```ts
 interface GradeVakStats {

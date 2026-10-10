@@ -210,6 +210,10 @@ export class ResultRepositoryImpl implements ResultRepository {
         evaluatedStudents: 0,
         mostCommonStyle: null,
         avgPredominantConfidence: null,
+        startedQuestionnaires: 0,
+        completedQuestionnaires: 0,
+        completionRate: null,
+        avgResponseTimeSeconds: null,
       };
     }
 
@@ -220,7 +224,29 @@ export class ResultRepositoryImpl implements ResultRepository {
       ...resultDateWhere(period),
     };
 
-    const [distinctStudents, styleGroups, agg] = await Promise.all([
+    // HU-50: questionnaires are scoped by when they were started.
+    const startedWhere = {
+      deletedAt: null,
+      studentId: { in: studentIds },
+      ...(period.from || period.to
+        ? {
+            startTime: {
+              ...(period.from && { gte: period.from }),
+              ...(period.to && { lte: period.to }),
+            },
+          }
+        : {}),
+    };
+    const completedWhere = { ...startedWhere, status: "completed" };
+
+    const [
+      distinctStudents,
+      styleGroups,
+      agg,
+      startedQuestionnaires,
+      completedQuestionnaires,
+      timing,
+    ] = await Promise.all([
       prisma.result.findMany({
         where: baseWhere,
         select: { studentId: true },
@@ -236,6 +262,12 @@ export class ResultRepositoryImpl implements ResultRepository {
         where: baseWhere,
         _avg: { predominantConfidence: true },
       }),
+      prisma.questionnaire.count({ where: startedWhere }),
+      prisma.questionnaire.count({ where: completedWhere }),
+      prisma.mLDataset.aggregate({
+        where: { questionnaire: completedWhere },
+        _avg: { avgQuestionTime: true },
+      }),
     ]);
 
     return {
@@ -243,6 +275,14 @@ export class ResultRepositoryImpl implements ResultRepository {
       evaluatedStudents: distinctStudents.length,
       mostCommonStyle: styleGroups[0]?.predominantStyle ?? null,
       avgPredominantConfidence: agg._avg.predominantConfidence,
+      startedQuestionnaires,
+      completedQuestionnaires,
+      completionRate:
+        startedQuestionnaires > 0
+          ? completedQuestionnaires / startedQuestionnaires
+          : null,
+      avgResponseTimeSeconds:
+        completedQuestionnaires > 0 ? timing._avg.avgQuestionTime : null,
     };
   }
 

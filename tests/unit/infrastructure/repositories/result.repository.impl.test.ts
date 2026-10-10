@@ -7,6 +7,8 @@ jest.mock('../../../../src/config/database/index.js', () => ({
       aggregate: jest.fn().mockResolvedValue({ _avg: {} }),
     },
     user: { findMany: jest.fn().mockResolvedValue([]) },
+    questionnaire: { count: jest.fn().mockResolvedValue(0) },
+    mLDataset: { aggregate: jest.fn().mockResolvedValue({ _avg: { avgQuestionTime: null } }) },
     academicGrade: { findMany: jest.fn().mockResolvedValue([]) },
   },
 }));
@@ -21,6 +23,8 @@ const groupBy = prisma.result.groupBy as unknown as jest.Mock;
 const aggregate = prisma.result.aggregate as unknown as jest.Mock;
 const userFindMany = prisma.user.findMany as unknown as jest.Mock;
 const gradeFindMany = prisma.academicGrade.findMany as unknown as jest.Mock;
+const questionnaireCount = prisma.questionnaire.count as unknown as jest.Mock;
+const datasetAggregate = prisma.mLDataset.aggregate as unknown as jest.Mock;
 
 const from = new Date('2026-09-01T00:00:00.000Z');
 const to = new Date('2026-09-30T23:59:59.999Z');
@@ -191,6 +195,92 @@ describe('ResultRepositoryImpl filters', () => {
       expect(grade.evaluatedStudents).toBe(0);
       expect(grade.styleCounts).toEqual({ Visual: 0, Auditory: 0, Kinesthetic: 0 });
       expect(grade.avgVisualProbability).toBeNull();
+    });
+  });
+
+  describe('getSchoolStats questionnaire stats (HU-50)', () => {
+    beforeEach(() => {
+      findMany.mockReset().mockResolvedValue([{ studentId: 1 }]);
+      groupBy.mockReset().mockResolvedValue([{ predominantStyle: 'Visual' }]);
+      aggregate.mockReset().mockResolvedValue({ _avg: { predominantConfidence: 70 } });
+      userFindMany.mockReset().mockResolvedValue([{ id: 1 }, { id: 2 }]);
+      questionnaireCount.mockReset().mockImplementation(({ where }: { where: { status?: string } }) =>
+        Promise.resolve(where.status === 'completed' ? 3 : 4),
+      );
+      datasetAggregate.mockReset().mockResolvedValue({ _avg: { avgQuestionTime: 12.5 } });
+    });
+
+    it('adds average response time and completion rate for questionnaires started in the period', async () => {
+      const stats = await new ResultRepositoryImpl().getSchoolStats(8, { from, to });
+
+      expect(stats).toEqual({
+        schoolId: 8,
+        evaluatedStudents: 1,
+        mostCommonStyle: 'Visual',
+        avgPredominantConfidence: 70,
+        startedQuestionnaires: 4,
+        completedQuestionnaires: 3,
+        completionRate: 0.75,
+        avgResponseTimeSeconds: 12.5,
+      });
+      const startedWhere = {
+        deletedAt: null,
+        studentId: { in: [1, 2] },
+        startTime: { gte: from, lte: to },
+      };
+      expect(questionnaireCount).toHaveBeenCalledWith({ where: startedWhere });
+      expect(questionnaireCount).toHaveBeenCalledWith({ where: { ...startedWhere, status: 'completed' } });
+      expect(datasetAggregate).toHaveBeenCalledWith({
+        where: { questionnaire: { ...startedWhere, status: 'completed' } },
+        _avg: { avgQuestionTime: true },
+      });
+    });
+
+    it('returns null averages when no questionnaire was completed', async () => {
+      questionnaireCount.mockImplementation(({ where }: { where: { status?: string } }) =>
+        Promise.resolve(where.status === 'completed' ? 0 : 2),
+      );
+      datasetAggregate.mockResolvedValue({ _avg: { avgQuestionTime: null } });
+
+      const stats = await new ResultRepositoryImpl().getSchoolStats(8);
+
+      expect(stats.completedQuestionnaires).toBe(0);
+      expect(stats.startedQuestionnaires).toBe(2);
+      expect(stats.completionRate).toBe(0);
+      expect(stats.avgResponseTimeSeconds).toBeNull();
+      expect(questionnaireCount.mock.calls[0][0].where).not.toHaveProperty('startTime');
+    });
+
+    it('returns zero counts and null rates when nothing was started', async () => {
+      questionnaireCount.mockResolvedValue(0);
+      datasetAggregate.mockResolvedValue({ _avg: { avgQuestionTime: null } });
+
+      const stats = await new ResultRepositoryImpl().getSchoolStats(8, { from, to });
+
+      expect(stats).toMatchObject({
+        startedQuestionnaires: 0,
+        completedQuestionnaires: 0,
+        completionRate: null,
+        avgResponseTimeSeconds: null,
+      });
+    });
+
+    it('returns the empty shape for a school without students', async () => {
+      userFindMany.mockResolvedValue([]);
+
+      const stats = await new ResultRepositoryImpl().getSchoolStats(8);
+
+      expect(stats).toEqual({
+        schoolId: 8,
+        evaluatedStudents: 0,
+        mostCommonStyle: null,
+        avgPredominantConfidence: null,
+        startedQuestionnaires: 0,
+        completedQuestionnaires: 0,
+        completionRate: null,
+        avgResponseTimeSeconds: null,
+      });
+      expect(questionnaireCount).not.toHaveBeenCalled();
     });
   });
 });
