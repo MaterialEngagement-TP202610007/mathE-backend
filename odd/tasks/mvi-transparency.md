@@ -89,5 +89,7 @@ mviResult: {
   - Fix and three minor recommendations sent to session `mathe-frontend-d6`, which will open its PR once its checks pass.
 - Backend PR opened: https://github.com/MaterialEngagement-TP202610007/mathE-backend/pull/1 (feat/mvi-transparency → release).
 
+- Frontend fixes in aab1bfa verified from the backend side: tsc OK and the real-data integration check passes. Frontend PR: https://github.com/MaterialEngagement-TP202610007/mathE-frontend/pull/3 (6 commits, depends on backend #1).
+
 ## Next step
-Frontend session fixes the checklist source and opens its PR into `release`. The user merges both PRs (backend first; Render deploy).
+The user merges backend PR #1 first (Render deploy), then frontend PR #3. Pending: a visual browser check against the deployed backend.
