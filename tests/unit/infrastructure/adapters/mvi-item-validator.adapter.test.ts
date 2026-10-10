@@ -361,6 +361,7 @@ describe('MviItemValidatorAdapterImpl', () => {
         },
         vocabulary: [],
         functionWords: [],
+        rules: [{ id: 'longitud-enunciado', description: '', threshold: null, severity: 'blocking' }],
       });
       const [url, init] = fetchMock.mock.calls[0];
       expect(url).toBe('http://mvi.example.com/reglas');
@@ -385,7 +386,45 @@ describe('MviItemValidatorAdapterImpl', () => {
         markers: { V: ['ver'], A: [], K: [] },
         vocabulary: [],
         functionWords: [],
+        rules: [{ id: 'longitud-enunciado', description: '', threshold: 28, severity: 'blocking' }],
       });
+    });
+
+    it('parses the rule snapshot defensively, skipping entries without a string id', async () => {
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse({
+          version: '0.4.0',
+          marcadores: {},
+          niveles: [],
+          reglas: [
+            { id: 'longitud-enunciado', descripcion: 'Statement length', umbral: 30, severidad: 'bloqueante' },
+            { id: 'marcador-vak', descripcion: 'VAK marker present', severidad: 'advertencia' },
+            { id: 'opciones-distintas', umbral: '4', severidad: 'desconocida' },
+            { descripcion: 'no id' },
+            { id: 7, descripcion: 'numeric id' },
+            'not an object',
+            null,
+          ],
+        }),
+      );
+
+      const catalog = await makeAdapter().adapter.getCatalog();
+
+      expect(catalog?.rules).toEqual([
+        { id: 'longitud-enunciado', description: 'Statement length', threshold: 30, severity: 'blocking' },
+        { id: 'marcador-vak', description: 'VAK marker present', threshold: null, severity: 'warning' },
+        { id: 'opciones-distintas', description: '', threshold: null, severity: 'blocking' },
+      ]);
+    });
+
+    it('returns an empty rule snapshot when reglas is not an array', async () => {
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse({ version: '0.4.0', marcadores: {}, niveles: [], reglas: 'none' }),
+      );
+
+      const catalog = await makeAdapter().adapter.getCatalog();
+
+      expect(catalog?.rules).toEqual([]);
     });
 
     it('parses the level vocabulary and the function words defensively', async () => {

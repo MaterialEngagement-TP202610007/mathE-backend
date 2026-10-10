@@ -44,6 +44,32 @@ export interface ItemValidatorCatalog {
   vocabulary: string[];
   /** Function words (articles, prepositions...) always allowed; empty when unknown. */
   functionWords: string[];
+  /** Snapshot of the catalog rules (`/reglas`); empty when unknown. */
+  rules: MviRuleSnapshot[];
+}
+
+/** One catalog rule as shown to teachers. */
+export interface MviRuleSnapshot {
+  id: string;
+  description: string;
+  /** Numeric threshold, or null when the rule has none or it is not numeric. */
+  threshold: number | null;
+  severity: ItemViolationSeverity;
+}
+
+export type MviAttemptKind = "generation" | "revision" | "revalidation";
+
+/** One MVI `/validar` call recorded in the question's diagnosis trace. */
+export interface MviAttemptRecord {
+  /** 1-based position in the history. */
+  attempt: number;
+  kind: MviAttemptKind;
+  statement: string;
+  options: { text: string; vakValue: VakValue }[];
+  approved: boolean;
+  violations: ItemViolation[];
+  /** ISO timestamp of the validation. */
+  validatedAt: string;
 }
 
 /** Diagnosis stored with a question (`Question.mviResult`). */
@@ -51,4 +77,8 @@ export interface MviValidationRecord {
   approved: boolean;
   violations: ItemViolation[];
   attempts: number;
+  /** Per-attempt trace; absent on questions created before it existed. */
+  history?: MviAttemptRecord[];
+  /** Catalog rules applied; absent on older questions or when the catalog was unavailable. */
+  rules?: MviRuleSnapshot[];
 }

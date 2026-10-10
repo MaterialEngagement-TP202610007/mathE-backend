@@ -6,6 +6,7 @@ import {
   ItemViolation,
   ItemViolationSeverity,
   ItemValidatorCatalog,
+  MviRuleSnapshot,
 } from "../../domain/interfaces/item-validation/index.js";
 import { VakValue } from "../../domain/constants/vak.constant.js";
 import { CustomError } from "../../domain/error/custom-error.js";
@@ -151,6 +152,19 @@ function parseMaxWords(raw: any, level: number): number | null {
   return null;
 }
 
+/** Maps `reglas[]` to rule snapshots; entries without a string id are skipped. */
+function parseRules(raw: any): MviRuleSnapshot[] {
+  if (!Array.isArray(raw.reglas)) return [];
+  return raw.reglas
+    .filter((r: unknown): r is Record<string, unknown> => isRecord(r) && typeof r.id === "string")
+    .map((r: Record<string, unknown>) => ({
+      id: r.id as string,
+      description: typeof r.descripcion === "string" ? r.descripcion : "",
+      threshold: finiteNumber(r.umbral),
+      severity: r.severidad === "advertencia" ? "warning" : "blocking",
+    }));
+}
+
 export class MviItemValidatorAdapterImpl implements ItemValidatorAdapter {
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly random: () => number;
@@ -244,6 +258,7 @@ export class MviItemValidatorAdapterImpl implements ItemValidatorAdapter {
         markers: parseMarkers(raw.marcadores),
         vocabulary: parseVocabulary(raw, envs.MVI_NIVEL),
         functionWords: parseFunctionWords(raw),
+        rules: parseRules(raw),
       };
       this.cachedCatalog = { catalog, expiresAt: this.now() + CATALOG_TTL_MS };
       return catalog;

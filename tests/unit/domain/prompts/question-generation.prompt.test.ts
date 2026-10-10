@@ -359,5 +359,5 @@ describe('buildQuestionRevisionPrompt', () => {
 });
 
 function makeCatalog(overrides: Partial<ItemValidatorCatalog> = {}): ItemValidatorCatalog {
-  return { version: 'v1', maxWords: 30, markers: { V: ['mapa'], A: ['conversar'], K: ['armar'] }, vocabulary: [], functionWords: [], ...overrides };
+  return { version: 'v1', maxWords: 30, markers: { V: ['mapa'], A: ['conversar'], K: ['armar'] }, vocabulary: [], functionWords: [], rules: [], ...overrides };
 }
