@@ -12,6 +12,7 @@ import {
   SchoolResultStats,
   StudentResultFilters,
   UserResultStats,
+  VakStyleCounts,
 } from "../../domain/interfaces/result/index.js";
 import { PaginationDto } from "../../domain/dtos/shared/pagination.dto.js";
 import { PaginatedResult } from "../../domain/interfaces/shared/paginated-result.interface.js";
@@ -30,6 +31,30 @@ function resultDateWhere(period: ReportPeriod = {}) {
   return {
     OR: [{ resultDate: range }, { resultDate: null, createdAt: range }],
   };
+}
+
+const emptyStyleCounts = (): VakStyleCounts => ({
+  Visual: 0,
+  Auditory: 0,
+  Kinesthetic: 0,
+});
+
+/**
+ * HU-48: keeps the first row per student (rows come newest first) and counts
+ * students by that result's predominant style.
+ */
+function latestStyleCounts(
+  rows: { studentId: number; predominantStyle: string | null }[],
+): { evaluatedStudents: number; styleCounts: VakStyleCounts } {
+  const latest = new Map<number, string | null>();
+  for (const row of rows) {
+    if (!latest.has(row.studentId)) latest.set(row.studentId, row.predominantStyle);
+  }
+  const styleCounts = emptyStyleCounts();
+  for (const style of latest.values()) {
+    if (style && style in styleCounts) styleCounts[style as keyof VakStyleCounts]++;
+  }
+  return { evaluatedStudents: latest.size, styleCounts };
 }
 
 export class ResultRepositoryImpl implements ResultRepository {
@@ -249,6 +274,7 @@ export class ResultRepositoryImpl implements ResultRepository {
             avgVisualProbability: null,
             avgAuditoryProbability: null,
             avgKinestheticProbability: null,
+            styleCounts: emptyStyleCounts(),
           } satisfies GradeVakStats;
         }
 
@@ -259,11 +285,15 @@ export class ResultRepositoryImpl implements ResultRepository {
           ...resultDateWhere(period),
         };
 
-        const [distinctStudents, agg] = await Promise.all([
+        const [studentResults, agg] = await Promise.all([
           prisma.result.findMany({
             where: baseWhere,
-            select: { studentId: true },
-            distinct: ["studentId"],
+            select: { studentId: true, predominantStyle: true },
+            // Postgres sorts NULLs first on DESC; legacy rows without resultDate go last.
+            orderBy: [
+              { resultDate: { sort: "desc", nulls: "last" } },
+              { createdAt: "desc" },
+            ],
           }),
           prisma.result.aggregate({
             where: baseWhere,
@@ -275,14 +305,18 @@ export class ResultRepositoryImpl implements ResultRepository {
           }),
         ]);
 
+        const { evaluatedStudents, styleCounts } =
+          latestStyleCounts(studentResults);
+
         return {
           gradeId: grade.id,
           gradeName: grade.name,
           level: grade.level,
-          evaluatedStudents: distinctStudents.length,
+          evaluatedStudents,
           avgVisualProbability: agg._avg.visualProbability,
           avgAuditoryProbability: agg._avg.auditoryProbability,
           avgKinestheticProbability: agg._avg.kinestheticProbability,
+          styleCounts,
         } satisfies GradeVakStats;
       }),
     );

@@ -95,6 +95,13 @@ export interface SchoolResultStats {
   avgPredominantConfidence: number | null;
 }
 
+/** Students per predominant VAK style. */
+export interface VakStyleCounts {
+  Visual: number;
+  Auditory: number;
+  Kinesthetic: number;
+}
+
 export interface GradeVakStats {
   gradeId: number;
   gradeName: string;
@@ -103,6 +110,12 @@ export interface GradeVakStats {
   avgVisualProbability: number | null;
   avgAuditoryProbability: number | null;
   avgKinestheticProbability: number | null;
+  /**
+   * HU-48: each evaluated student counted once, by the predominant style of
+   * their latest result in the period. Mixed profiles count under their
+   * predominant style. Sums to `evaluatedStudents`.
+   */
+  styleCounts: VakStyleCounts;
 }
 
 export interface UserResultStats {

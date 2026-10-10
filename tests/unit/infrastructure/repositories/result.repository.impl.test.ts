@@ -137,4 +137,60 @@ describe('ResultRepositoryImpl filters', () => {
       expect(aggregate.mock.calls[0][0].where).toMatchObject(periodWhere);
     });
   });
+
+  describe('getStatsByGrade style distribution (HU-48)', () => {
+    beforeEach(() => {
+      findMany.mockReset();
+      aggregate.mockReset().mockResolvedValue({
+        _avg: { visualProbability: 50, auditoryProbability: 30, kinestheticProbability: 20 },
+      });
+      gradeFindMany.mockReset().mockResolvedValue([
+        { id: 3, name: '1ro Primaria', level: 'Primaria' },
+        { id: 4, name: '2do Primaria', level: 'Primaria' },
+      ]);
+      userFindMany.mockReset().mockImplementation(({ where }: { where: { academicGradeId: number } }) =>
+        Promise.resolve(where.academicGradeId === 3 ? [{ id: 1 }, { id: 2 }, { id: 5 }] : []),
+      );
+    });
+
+    it("counts each student once by the predominant style of their latest result in range", async () => {
+      // Newest first, as requested by the repository.
+      findMany.mockResolvedValue([
+        { studentId: 1, predominantStyle: 'Auditory' },
+        { studentId: 2, predominantStyle: 'Visual' },
+        { studentId: 1, predominantStyle: 'Visual' },
+        { studentId: 5, predominantStyle: 'Visual' }, // mixed profile: counted by predominant style
+      ]);
+
+      const [grade, empty] = await new ResultRepositoryImpl().getStatsByGrade(8, undefined, { from, to });
+
+      expect(findMany.mock.calls[0][0]).toMatchObject({
+        select: { studentId: true, predominantStyle: true },
+        orderBy: [{ resultDate: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }],
+      });
+      expect(grade).toEqual({
+        gradeId: 3,
+        gradeName: '1ro Primaria',
+        level: 'Primaria',
+        evaluatedStudents: 3,
+        avgVisualProbability: 50,
+        avgAuditoryProbability: 30,
+        avgKinestheticProbability: 20,
+        styleCounts: { Visual: 2, Auditory: 1, Kinesthetic: 0 },
+      });
+      expect(empty.evaluatedStudents).toBe(0);
+      expect(empty.styleCounts).toEqual({ Visual: 0, Auditory: 0, Kinesthetic: 0 });
+    });
+
+    it('keeps zero counts for a grade whose students have no results in range', async () => {
+      findMany.mockResolvedValue([]);
+      aggregate.mockResolvedValue({ _avg: { visualProbability: null, auditoryProbability: null, kinestheticProbability: null } });
+
+      const [grade] = await new ResultRepositoryImpl().getStatsByGrade(8);
+
+      expect(grade.evaluatedStudents).toBe(0);
+      expect(grade.styleCounts).toEqual({ Visual: 0, Auditory: 0, Kinesthetic: 0 });
+      expect(grade.avgVisualProbability).toBeNull();
+    });
+  });
 });

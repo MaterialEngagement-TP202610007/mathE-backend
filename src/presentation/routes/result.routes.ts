@@ -209,7 +209,29 @@ export class ResultRoutes {
      *         schema: { type: string, format: date }
      *         description: HU-51. Include results dated on or before this ISO date/timestamp (a date-only value covers the whole day, UTC).
      *     responses:
-     *       200: { description: "Array of per-grade VAK stats for the period (every grade is listed; evaluatedStudents 0 when it has no results in range)" }
+     *       200:
+     *         description: "Array of per-grade VAK stats for the period (every grade is listed; evaluatedStudents 0 when it has no results in range)"
+     *         content:
+     *           application/json:
+     *             schema:
+     *               type: array
+     *               items:
+     *                 type: object
+     *                 properties:
+     *                   gradeId: { type: integer }
+     *                   gradeName: { type: string }
+     *                   level: { type: string }
+     *                   evaluatedStudents: { type: integer }
+     *                   avgVisualProbability: { type: number, nullable: true }
+     *                   avgAuditoryProbability: { type: number, nullable: true }
+     *                   avgKinestheticProbability: { type: number, nullable: true }
+     *                   styleCounts:
+     *                     type: object
+     *                     description: "HU-48. Students per predominant style of their latest result in the period (mixed profiles count under their predominant style); sums to evaluatedStudents."
+     *                     properties:
+     *                       Visual: { type: integer }
+     *                       Auditory: { type: integer }
+     *                       Kinesthetic: { type: integer }
      *       400: { description: "Invalid schoolId, level, period, from/to, or from > to" }
      *       403: { description: "Teacher requesting another school — { error: 'You can only access data from your own school' }" }
      */

@@ -558,6 +558,22 @@ Returns `Paginated<Result>`. Invalid date strings return `400 { "error": "Invali
 
 `GET /stats/school/:schoolId` and `GET /stats/school/:schoolId/by-grade`: teachers only for their own school → otherwise `403 { "error": "You can only access data from your own school" }`; admins any school.
 
+#### `GET /stats/school/:schoolId/by-grade` — response (HU-48)
+```ts
+interface GradeVakStats {
+  gradeId: number;
+  gradeName: string;            // "1ro Primaria"
+  level: string;                // "Primaria" | "Secundaria"
+  evaluatedStudents: number;    // students with at least one result in the period
+  avgVisualProbability: number | null;      // 0-100, null when no results
+  avgAuditoryProbability: number | null;
+  avgKinestheticProbability: number | null;
+  styleCounts: { Visual: number; Auditory: number; Kinesthetic: number }; // HU-48, new
+}
+```
+- `styleCounts` counts each evaluated student **once**, by the predominant style of their **latest result in the period**. Mixed profiles count under their predominant style. The three counts sum to `evaluatedStudents`.
+- Every grade (filtered by `level`) is always listed. A grade with no results in the period has `evaluatedStudents: 0`, all counts `0` and `null` averages → show "No hay datos disponibles para este grado" (HU-36/48 S2).
+
 #### Report period filter (HU-51)
 `GET /api/results`, `GET /stats/school/:schoolId` and `GET /stats/school/:schoolId/by-grade` accept the same optional query params. Without them every result is included (unchanged behaviour).
 
