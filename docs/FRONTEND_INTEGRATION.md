@@ -18,7 +18,7 @@
 | Date format | ISO 8601 strings in responses (`2026-06-04T12:00:00.000Z`) |
 
 ### CORS — enabled with credentials
-The server enables CORS with `credentials: true`, origin from env `CORS_ORIGIN` (default `http://localhost:5173`, comma-separated list supported). The auth cookie only flows if the frontend sends requests with credentials included.
+The server enables CORS with `credentials: true`, origin from env `CORS_ORIGIN` (default `http://localhost:5173`, comma-separated list supported). The auth cookie only flows if the frontend sends requests with credentials included. `Content-Disposition` is listed in `exposedHeaders` so download file names are readable.
 
 **Frontend MUST send credentials on every request:**
 - `fetch`: `credentials: "include"`
@@ -602,7 +602,7 @@ Response `200`:
 
 Errors (`{ error }` JSON): `400 "schoolId is required" | "Invalid schoolId" | "Invalid gradeId"` or a period error, `403`, `404 "No results to export for the selected filters"` → show "No hay datos para exportar" (HU-49 S2).
 
-Download it with the bearer token (not a plain link), e.g. `fetch(url, { headers: { Authorization } })` → `res.blob()` → object URL; on non-2xx read the JSON error. The CORS config does not expose `Content-Disposition` yet, so a cross-origin frontend cannot read it: build the same file name client-side from the params (or ask for `exposedHeaders: ["Content-Disposition"]` in the server CORS config).
+Download it with the bearer token (not a plain link), e.g. `fetch(url, { headers: { Authorization } })` → `res.blob()` → object URL; on non-2xx read the JSON error. The CORS config exposes `Content-Disposition` (`exposedHeaders`), so a cross-origin frontend can read the file name with `res.headers.get("Content-Disposition")`; building the same name client-side from the params remains a valid fallback.
 
 #### Report period filter (HU-51)
 `GET /api/results`, `GET /stats/school/:schoolId` and `GET /stats/school/:schoolId/by-grade` accept the same optional query params. Without them every result is included (unchanged behaviour).

@@ -34,6 +34,8 @@ export class Server {
       cors({
         origin: envs.CORS_ORIGIN,
         credentials: true,
+        // Lets the browser read the CSV export file name (HU-49).
+        exposedHeaders: ["Content-Disposition"],
       }),
     );
 
