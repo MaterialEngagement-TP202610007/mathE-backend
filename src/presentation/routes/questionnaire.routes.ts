@@ -10,6 +10,7 @@ import { ListQuestionnairesUseCase } from "../../domain/use-cases/questionnaire/
 import { CompleteQuestionnaireUseCase } from "../../domain/use-cases/questionnaire/complete-questionnaire.use-case.js";
 import { AbandonQuestionnaireUseCase } from "../../domain/use-cases/questionnaire/abandon-questionnaire.use-case.js";
 import { GetActiveQuestionnaireUseCase } from "../../domain/use-cases/questionnaire/get-active-questionnaire.use-case.js";
+import { SaveQuestionnaireProgressUseCase } from "../../domain/use-cases/questionnaire/save-questionnaire-progress.use-case.js";
 import { CreateAnswerUseCase } from "../../domain/use-cases/answer/create-answer.use-case.js";
 import { ListAnswersUseCase } from "../../domain/use-cases/answer/list-answers.use-case.js";
 import { GetAnswerUseCase } from "../../domain/use-cases/answer/get-answer.use-case.js";
@@ -58,6 +59,7 @@ export class QuestionnaireRoutes {
       ),
       new AbandonQuestionnaireUseCase(questionnaireRepository),
       new GetActiveQuestionnaireUseCase(questionnaireRepository),
+      new SaveQuestionnaireProgressUseCase(questionnaireRepository),
     );
 
     const answerController = new AnswerController(
@@ -150,8 +152,9 @@ export class QuestionnaireRoutes {
      *     summary: Get the student's current in-progress questionnaire with all questions. Student only.
      *     description: >
      *       Returns the active (status=in_progress) questionnaire for the authenticated student,
-     *       including all 10 questions and options. Intended for recovery after an abrupt browser
-     *       close when local storage has been lost.
+     *       including all 10 questions and options, the answers saved so far with
+     *       PUT /api/questionnaires/{id}/answers, and where to resume (HU-29). Intended for
+     *       resuming after leaving the platform or an abrupt browser close.
      *     security: [{ bearerAuth: [] }]
      *     responses:
      *       200:
@@ -185,6 +188,25 @@ export class QuestionnaireRoutes {
      *                           properties:
      *                             id: { type: integer }
      *                             text: { type: string }
+     *                 answers:
+     *                   type: array
+     *                   description: Answers saved so far (no VAK labels).
+     *                   items:
+     *                     type: object
+     *                     properties:
+     *                       questionId: { type: integer }
+     *                       selectedOptionId: { type: integer, nullable: true }
+     *                       questionTimeSeconds: { type: number }
+     *                       numberOfChanges: { type: integer }
+     *                       timesReviewed: { type: integer }
+     *                 answeredCount:
+     *                   type: integer
+     *                   description: Questions with a saved, non-null option.
+     *                 resumeIndex:
+     *                   type: integer
+     *                   description: >
+     *                     0-based index in `questions` to resume from (first question without a
+     *                     saved option, or the last question when all have one).
      *       401: { description: Not authenticated }
      *       403: { description: Student role required }
      *       404: { description: No active questionnaire found }
@@ -349,6 +371,74 @@ export class QuestionnaireRoutes {
       "/:id/answers",
       roleGuard(ROLES.STUDENT),
       answerController.create,
+    );
+
+    /**
+     * @openapi
+     * /api/questionnaires/{id}/answers:
+     *   put:
+     *     tags: [Questionnaires]
+     *     summary: Save progress of an in-progress questionnaire (HU-29). Student only.
+     *     description: >
+     *       Upserts 1 to 10 answers, one per question: saving a question again replaces its
+     *       previous answer. Completion (PATCH /complete) still sends all 10 answers and
+     *       replaces these drafts, so answers are never duplicated.
+     *     security: [{ bearerAuth: [] }]
+     *     parameters:
+     *       - in: path
+     *         name: id
+     *         required: true
+     *         schema: { type: integer }
+     *     requestBody:
+     *       required: true
+     *       content:
+     *         application/json:
+     *           schema:
+     *             type: object
+     *             required: [answers]
+     *             properties:
+     *               answers:
+     *                 type: array
+     *                 minItems: 1
+     *                 maxItems: 10
+     *                 items:
+     *                   type: object
+     *                   required: [questionId]
+     *                   properties:
+     *                     questionId: { type: integer }
+     *                     selectedOptionId: { type: integer, nullable: true }
+     *                     questionTimeSeconds: { type: number, default: 0 }
+     *                     numberOfChanges: { type: integer, default: 0 }
+     *                     timesReviewed: { type: integer, default: 0 }
+     *     responses:
+     *       200:
+     *         description: Every answer saved so far for this questionnaire
+     *         content:
+     *           application/json:
+     *             schema:
+     *               type: object
+     *               properties:
+     *                 questionnaireId: { type: integer }
+     *                 answers:
+     *                   type: array
+     *                   items:
+     *                     type: object
+     *                     properties:
+     *                       questionId: { type: integer }
+     *                       selectedOptionId: { type: integer, nullable: true }
+     *                       questionTimeSeconds: { type: number }
+     *                       numberOfChanges: { type: integer }
+     *                       timesReviewed: { type: integer }
+     *       400: { description: Invalid id or body, answers not matching the questionnaire, or questionnaire not in_progress }
+     *       401: { description: Not authenticated }
+     *       403: { description: Student role required, or questionnaire belongs to another student }
+     *       404: { description: Questionnaire not found }
+     *       409: { description: Questionnaire was completed or abandoned while saving }
+     */
+    router.put(
+      "/:id/answers",
+      roleGuard(ROLES.STUDENT),
+      questionnaireController.saveProgress,
     );
 
     /**

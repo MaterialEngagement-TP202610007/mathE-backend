@@ -430,8 +430,52 @@ Every question returned by `/api/questions/*` carries the diagnosis of MVI (the 
 | POST | `/` | Student | — | `201` `CreateQuestionnaireResponse` (10 questions) |
 | GET | `/` | Student | — | paginated own questionnaires |
 | GET | `/:id` | Student, Teacher, Admin | — | `Questionnaire` |
-| PATCH | `/:id/complete` | Student | `{ totalTimeSeconds?, completionPercentage? }` | `CompleteQuestionnaireResult` |
+| GET | `/active` | Student | — | `ActiveQuestionnaireResponse` (questions + saved answers + resume position), `404` if none |
+| PUT | `/:id/answers` | Student | `{ answers: ProgressAnswer[] }` (1–10) | `SaveProgressResponse` |
+| PATCH | `/:id/complete` | Student | `{ completionPercentage, answers[10] }` | `CompleteQuestionnaireResult` |
 | PATCH | `/:id/abandon` | Student | — | `Questionnaire` (status=abandoned) |
+
+New questionnaires avoid questions the student already received in earlier questionnaires (HU-17). When a style has too few unseen questions left, the remaining slots reuse already-seen questions of that style, so creation never fails because of this rule.
+
+#### Progressive save and resume (HU-29)
+Save answers while the student moves through the quiz, then resume after a reload or a new login.
+
+```ts
+// PUT /api/questionnaires/:id/answers — body
+interface ProgressAnswer {
+  questionId: number;
+  selectedOptionId: number | null;  // null = not answered yet / skipped
+  questionTimeSeconds?: number;     // default 0
+  numberOfChanges?: number;         // default 0
+  timesReviewed?: number;           // default 0
+}
+
+// Saved answer as returned by the backend (never includes VAK labels)
+interface SavedAnswer {
+  questionId: number;
+  selectedOptionId: number | null;
+  questionTimeSeconds: number;
+  numberOfChanges: number;
+  timesReviewed: number;
+}
+
+// PUT /api/questionnaires/:id/answers — 200
+interface SaveProgressResponse {
+  questionnaireId: number;
+  answers: SavedAnswer[];           // every answer saved so far
+}
+
+// GET /api/questionnaires/active — 200
+interface ActiveQuestionnaireResponse extends CreateQuestionnaireResponse {
+  answers: SavedAnswer[];           // saved progress ([] when nothing saved)
+  answeredCount: number;            // questions with a non-null saved option
+  resumeIndex: number;              // 0-based index in `questions` to show first
+}
+```
+- Upsert per question: send one or several answers (for example on each "Siguiente"); saving a question again replaces its previous answer. Send the cumulative behaviour metrics for that question, not deltas.
+- `resumeIndex` is the first question without a saved option, or the last question (`questions.length - 1`) when every question has one.
+- Errors: `400` invalid id/body, a question or option outside this questionnaire, the same question twice in one request, or questionnaire not `in_progress`; `403` student role required or another student's questionnaire; `404` questionnaire not found; `409` the questionnaire was completed or abandoned while saving.
+- `PATCH /:id/complete` is unchanged: it still requires all 10 answers and replaces the saved drafts, so no answer is duplicated. Rebuild the full answer list from local state plus `answers` from `GET /active`.
 
 ### Answers — `/api/questionnaires/:id/answers` (all 🔑)
 | Method | Path | Roles | Body | Returns |
@@ -537,14 +581,18 @@ interface School {
    → start a client-side timer; render questions in given `order`.
 
 2. For each question the student answers:
-   POST /api/questionnaires/:id/answers
-   body: { questionId, selectedOptionId, navigationSequence,
-           questionTimeSeconds, numberOfChanges, numberOfClicks, timesReviewed }
-   → Track behaviour locally and send on answer/next. These metrics feed the ML model.
+   PUT /api/questionnaires/:id/answers
+   body: { answers: [{ questionId, selectedOptionId,
+                       questionTimeSeconds, numberOfChanges, timesReviewed }] }
+   → Track behaviour locally and save on answer/next (HU-29). These metrics feed the ML model.
+   → On app load, GET /api/questionnaires/active returns the saved answers and
+     `resumeIndex`: offer "continue" (jump to resumeIndex) or "start new"
+     (PATCH .../abandon, then POST /api/questionnaires).
 
 3. When the student finishes:
    PATCH /api/questionnaires/:id/complete
-   body: { totalTimeSeconds, completionPercentage }
+   body: { completionPercentage, answers: [10 × { questionId, selectedOptionId,
+           questionTimeSeconds, numberOfChanges, timesReviewed }] }
    → returns CompleteQuestionnaireResult: predominantStyle, probabilities,
      isMixedProfile, aiFeedback (Spanish text), classifierType, feedbackSource.
    → Render the VAK result screen from this payload directly.
@@ -558,7 +606,9 @@ interface School {
 ```
 Notes:
 - The `complete` call is where classification + AI feedback happen (Lambda/XGBoost with `simple_score` fallback, Gemini feedback with predefined fallback). It may take a few seconds — show a loading state.
-- The questionnaire-taking question payload hides the question's `vakStyle`, but each **option includes its `vakValue`** (`V`/`A`/`K`) label.
+- The classifier call gives up within 4.5 s by default (`LAMBDA_DEADLINE_MS`), then `simple_score` is used (`classifierType: "simple_score"`): show the result as provisional in that case (HU-52).
+- If the result cannot be stored, the backend retries twice and then answers `503` with a student-readable `error` ("Your answers were saved, but your result could not be stored right now. Please submit again in a few moments to get your result."). Show it with a retry button that repeats the same `PATCH .../complete`: it is idempotent and resumes from the stored answers (HU-39).
+- The questionnaire-taking payload hides the question's `vakStyle` and each option's `vakValue` (options are `{ id, text }` only).
 
 ### B. Teacher authors & validates questions
 ```

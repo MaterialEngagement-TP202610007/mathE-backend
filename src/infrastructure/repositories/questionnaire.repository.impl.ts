@@ -2,13 +2,16 @@ import { prisma } from "../../config/database/index.js";
 import { QuestionnaireRepository } from "../../domain/repositories/questionnaire.repository.js";
 import { QuestionnaireEntity } from "../../domain/entities/questionnaire.entity.js";
 import {
+  ActiveQuestionnaireData,
   CompleteWithAnswersAndDatasetParams,
   CompleteWithAnswersAndDatasetResult,
   CreateQuestionnaireResult,
   PublicOptionView,
   PublicQuestionView,
   QuestionnaireCreationParams,
+  ProgressAnswerInput,
   QuestionnaireQuestionOptions,
+  SavedAnswerView,
   SeenQuestion,
 } from "../../domain/interfaces/questionnaire/index.js";
 import { PaginationDto } from "../../domain/dtos/shared/pagination.dto.js";
@@ -23,6 +26,23 @@ const CREATE_TRANSACTION_TIMEOUT_MS = 15_000;
  */
 function toPublicOption(option: { id: number; text: string }): PublicOptionView {
   return { id: option.id, text: option.text };
+}
+
+/** Student-facing saved answer: behaviour fields only, never the VAK label. */
+function toSavedAnswer(answer: {
+  questionId: number;
+  selectedOptionId: number | null;
+  questionTimeSeconds: number | null;
+  numberOfChanges: number | null;
+  timesReviewed: number | null;
+}): SavedAnswerView {
+  return {
+    questionId: answer.questionId,
+    selectedOptionId: answer.selectedOptionId ?? null,
+    questionTimeSeconds: answer.questionTimeSeconds ?? 0,
+    numberOfChanges: answer.numberOfChanges ?? 0,
+    timesReviewed: answer.timesReviewed ?? 0,
+  };
 }
 
 export class QuestionnaireRepositoryImpl implements QuestionnaireRepository {
@@ -143,7 +163,7 @@ export class QuestionnaireRepositoryImpl implements QuestionnaireRepository {
 
   async findActiveWithQuestions(
     studentId: number,
-  ): Promise<CreateQuestionnaireResult | null> {
+  ): Promise<ActiveQuestionnaireData | null> {
     const questionnaire = await prisma.questionnaire.findFirst({
       where: { studentId, status: "in_progress", deletedAt: null },
       include: {
@@ -155,6 +175,7 @@ export class QuestionnaireRepositoryImpl implements QuestionnaireRepository {
             },
           },
         },
+        answers: { where: { deletedAt: null }, orderBy: { id: "asc" } },
       },
     });
 
@@ -176,7 +197,73 @@ export class QuestionnaireRepositoryImpl implements QuestionnaireRepository {
         mediaUrl: qq.question.mediaUrl,
         options: qq.question.options.map(toPublicOption),
       })),
+      answers: questionnaire.answers.map(toSavedAnswer),
     };
+  }
+
+  async saveProgress(
+    questionnaireId: number,
+    answers: ProgressAnswerInput[],
+  ): Promise<SavedAnswerView[]> {
+    return prisma.$transaction(async (tx) => {
+      // Lock the questionnaire row while it is in progress. This serialises
+      // with concurrent saves and with completion (which claims the same row),
+      // so no draft can be written into a completed questionnaire.
+      const locked = await tx.questionnaire.updateMany({
+        where: { id: questionnaireId, status: "in_progress", deletedAt: null },
+        data: { updatedAt: new Date() },
+      });
+      if (locked.count === 0) {
+        throw CustomError.conflict(
+          "Questionnaire is no longer in progress, answers cannot be saved",
+        );
+      }
+
+      const existing = await tx.answer.findMany({
+        where: {
+          questionnaireId,
+          questionId: { in: answers.map((a) => a.questionId) },
+          deletedAt: null,
+        },
+        select: { id: true, questionId: true },
+        orderBy: { id: "asc" },
+      });
+      const byQuestion = new Map<number, number[]>();
+      for (const row of existing) {
+        byQuestion.set(row.questionId, [...(byQuestion.get(row.questionId) ?? []), row.id]);
+      }
+
+      const duplicateIds: number[] = [];
+      for (const a of answers) {
+        const data = {
+          selectedOptionId: a.selectedOptionId,
+          questionTimeSeconds: a.questionTimeSeconds,
+          numberOfChanges: a.numberOfChanges,
+          timesReviewed: a.timesReviewed,
+        };
+        const [keepId, ...extraIds] = byQuestion.get(a.questionId) ?? [];
+        duplicateIds.push(...extraIds);
+        if (keepId !== undefined) {
+          await tx.answer.update({ where: { id: keepId }, data });
+        } else {
+          await tx.answer.create({
+            data: { questionnaireId, questionId: a.questionId, ...data },
+          });
+        }
+      }
+      if (duplicateIds.length > 0) {
+        await tx.answer.updateMany({
+          where: { id: { in: duplicateIds } },
+          data: { deletedAt: new Date() },
+        });
+      }
+
+      const saved = await tx.answer.findMany({
+        where: { questionnaireId, deletedAt: null },
+        orderBy: { id: "asc" },
+      });
+      return saved.map(toSavedAnswer);
+    });
   }
 
   async findSeenQuestions(studentId: number): Promise<SeenQuestion[]> {
@@ -242,7 +329,9 @@ export class QuestionnaireRepositoryImpl implements QuestionnaireRepository {
         );
       }
 
-      // 1. Save all 10 answers
+      // 1. Replace any progressively saved drafts (HU-29) with the 10
+      //    submitted answers, so a questionnaire never holds duplicates.
+      await tx.answer.deleteMany({ where: { questionnaireId: params.questionnaireId } });
       await tx.answer.createMany({
         data: params.answers.map((a) => ({
           questionnaireId: params.questionnaireId,

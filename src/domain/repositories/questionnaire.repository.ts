@@ -1,10 +1,13 @@
 import { QuestionnaireEntity } from "../entities/questionnaire.entity.js";
 import {
+  ActiveQuestionnaireData,
   CompleteWithAnswersAndDatasetParams,
   CompleteWithAnswersAndDatasetResult,
   CreateQuestionnaireResult,
   QuestionnaireCreationParams,
+  ProgressAnswerInput,
   QuestionnaireQuestionOptions,
+  SavedAnswerView,
   SeenQuestion,
 } from "../interfaces/questionnaire/index.js";
 import { PaginationDto } from "../dtos/shared/pagination.dto.js";
@@ -26,9 +29,20 @@ export abstract class QuestionnaireRepository {
     studentId: number,
   ): Promise<QuestionnaireEntity | null>;
 
+  /** In-progress questionnaire with its questions and saved answers. */
   abstract findActiveWithQuestions(
     studentId: number,
-  ): Promise<CreateQuestionnaireResult | null>;
+  ): Promise<ActiveQuestionnaireData | null>;
+
+  /**
+   * Upserts answers (one per question) of an in-progress questionnaire and
+   * returns every saved answer. Throws a 409 CustomError when the
+   * questionnaire is no longer in_progress (e.g. completed concurrently).
+   */
+  abstract saveProgress(
+    questionnaireId: number,
+    answers: ProgressAnswerInput[],
+  ): Promise<SavedAnswerView[]>;
 
   /** Distinct questions assigned to any of the student's questionnaires. */
   abstract findSeenQuestions(studentId: number): Promise<SeenQuestion[]>;
@@ -44,7 +58,8 @@ export abstract class QuestionnaireRepository {
   ): Promise<QuestionnaireQuestionOptions[]>;
 
   /**
-   * Atomic transaction: saves 10 answers, computes VAK features by joining
+   * Atomic transaction: replaces any progressively saved answers with the
+   * 10 submitted ones, computes VAK features by joining
    * with Option table, creates the MLDataset row, and marks the questionnaire
    * as completed. Returns computed features and the simple-score vak label.
    * Throws a 409 CustomError when the questionnaire is no longer in_progress
