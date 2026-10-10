@@ -16,10 +16,18 @@ import { ExportResultsUseCase } from "../../domain/use-cases/result/export-resul
 import { GetSchoolStabilityUseCase } from "../../domain/use-cases/result/get-school-stability.use-case.js";
 import { toRequester } from "../mappers/requester.mapper.js";
 import {
+  toResultPageResponse,
+  toResultResponse,
+} from "../mappers/result.mapper.js";
+import {
   resultsCsvFilename,
   toResultsCsv,
 } from "../mappers/result-csv.mapper.js";
-import { ReportPeriod } from "../../domain/interfaces/result/index.js";
+import {
+  RESULT_LABEL_STATUSES,
+  ReportPeriod,
+  ResultLabelStatus,
+} from "../../domain/interfaces/result/index.js";
 
 /** Only the bounds that were set, so an open range stays `{}`. */
 function periodOf(dto: ReportPeriodDto): ReportPeriod {
@@ -66,7 +74,7 @@ export class ResultController {
         req.user!.id,
         req.user!.roleId!,
       );
-      res.json(result);
+      res.json(toResultResponse(result, req.user!.roleId));
     } catch (err) {
       next(err);
     }
@@ -87,7 +95,7 @@ export class ResultController {
         req.user!.id,
         req.user!.roleId!,
       );
-      res.json(result);
+      res.json(toResultResponse(result, req.user!.roleId));
     } catch (err) {
       next(err);
     }
@@ -106,7 +114,7 @@ export class ResultController {
         pagination!,
         filters,
       );
-      res.json(result);
+      res.json(toResultPageResponse(result, req.user!.roleId));
     } catch (err) {
       next(err);
     }
@@ -125,6 +133,16 @@ export class ResultController {
       : undefined;
     const classifierType = req.query.classifierType as string | undefined;
 
+    const labelStatus = req.query.labelStatus as string | undefined;
+    if (
+      labelStatus !== undefined &&
+      !RESULT_LABEL_STATUSES.includes(labelStatus as ResultLabelStatus)
+    ) {
+      return res.status(400).json({
+        error: `labelStatus must be one of: ${RESULT_LABEL_STATUSES.join(", ")}`,
+      });
+    }
+
     const [periodError, period] = this.parsePeriod(req);
     if (periodError) return res.status(400).json({ error: periodError });
 
@@ -136,8 +154,11 @@ export class ResultController {
         classifierType,
         startDate: period!.from,
         endDate: period!.to,
+        ...(labelStatus !== undefined && {
+          labelStatus: labelStatus as ResultLabelStatus,
+        }),
       }, toRequester(req));
-      res.json(result);
+      res.json(toResultPageResponse(result, req.user!.roleId));
     } catch (err) {
       next(err);
     }

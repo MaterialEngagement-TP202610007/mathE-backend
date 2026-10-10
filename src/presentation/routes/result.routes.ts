@@ -80,9 +80,19 @@ export class ResultRoutes {
      *         name: to
      *         schema: { type: string, format: date }
      *         description: HU-51. Include results dated on or before this ISO date/timestamp (a date-only value covers the whole day, UTC).
+     *       - in: query
+     *         name: labelStatus
+     *         schema: { type: string, enum: [corrected, uncorrected] }
+     *         description: >
+     *           HU-44 labeling view. corrected = a teacher already set correctedVakLabel;
+     *           uncorrected = still to label. Omitted = both.
      *     responses:
-     *       200: { description: Paginated results }
-     *       400: { description: "Invalid period, from/to, or from > to" }
+     *       200:
+     *         description: >
+     *           Paginated results. Each item includes the HU-44 correction audit:
+     *           correctedVakLabel (string | null), correctedAt (ISO | null) and
+     *           correctedBy ({ id, name } | null).
+     *       400: { description: "Invalid period, from/to, from > to, or labelStatus must be one of: corrected, uncorrected" }
      *       403: { description: "Teacher requesting another school — { error: 'You can only access data from your own school' }" }
      */
     router.get(
@@ -474,7 +484,10 @@ export class ResultRoutes {
      *         required: true
      *         schema: { type: integer }
      *     responses:
-     *       200: { description: Result detail }
+     *       200:
+     *         description: >
+     *           Result detail. Teachers/admins also get the HU-44 correction audit
+     *           (correctedVakLabel, correctedAt, correctedBy { id, name } | null); students do not.
      *       403: { description: Result does not belong to you }
      *       404: { description: Not found }
      */
@@ -493,6 +506,8 @@ export class ResultRoutes {
      *     description: >
      *       Updates correctedVakLabel on the Result and sets vakLabel + labelSource=teacher_validated
      *       on the corresponding MLDataset row. Used during the pilot phase to build Ground Truth.
+     *       HU-44: also records who corrected (the authenticated user) and when (correctedAt).
+     *       A later correction overwrites label, corrector and date.
      *     security: [{ bearerAuth: [] }]
      *     parameters:
      *       - in: path
@@ -511,7 +526,9 @@ export class ResultRoutes {
      *                 type: string
      *                 enum: [Visual, Auditory, Kinesthetic]
      *     responses:
-     *       200: { description: Result with corrected label }
+     *       200:
+     *         description: >
+     *           Result with correctedVakLabel, correctedAt (ISO) and correctedBy { id, name }.
      *       400: { description: Invalid vakLabel }
      *       404: { description: Result not found }
      */

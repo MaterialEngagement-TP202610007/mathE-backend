@@ -64,7 +64,12 @@ export interface ResultListFilters {
   classifierType?: string;
   startDate?: Date;
   endDate?: Date;
+  /** HU-44: results whose label a teacher already corrected, or not yet. */
+  labelStatus?: ResultLabelStatus;
 }
+
+export const RESULT_LABEL_STATUSES = ["corrected", "uncorrected"] as const;
+export type ResultLabelStatus = (typeof RESULT_LABEL_STATUSES)[number];
 
 export interface StudentResultFilters {
   predominantStyle?: string;
@@ -77,6 +82,8 @@ export interface CorrectResultLabelData {
   resultId: number;
   teacherId: number;
   vakLabel: string;
+  /** HU-44: when the correction happened. */
+  correctedAt: Date;
 }
 
 /**

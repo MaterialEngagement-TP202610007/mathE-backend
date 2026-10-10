@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { ResultController } from '../../../../src/presentation/controllers/result.controller.js';
+import { ResultEntity } from '../../../../src/domain/entities/result.entity.js';
 
 function makeRes(): jest.Mocked<Response> {
   const res = {} as jest.Mocked<Response>;
@@ -325,5 +326,105 @@ describe('ResultController school stability (HU-38)', () => {
     expect(res.status).toHaveBeenCalledWith(400);
     expect(res.json).toHaveBeenCalledWith({ error: message });
     expect(stability.execute).not.toHaveBeenCalled();
+  });
+});
+
+describe('ResultController label correction fields (HU-44)', () => {
+  const teacher = { id: 7, roleId: 2 };
+  const student = { id: 30, roleId: 3 };
+  const correctedAt = new Date('2026-10-10T12:00:00.000Z');
+  const corrected = ResultEntity.fromObject({
+    id: 10, questionnaireId: 20, studentId: 30, predominantStyle: 'Visual',
+    correctedVakLabel: 'Auditory', correctedAt, correctingTeacher: { id: 7, name: 'Profe Ana' },
+  });
+  const page = { items: [corrected], total: 1, page: 1, limit: 10 };
+
+  function makeController() {
+    const one = { execute: jest.fn().mockResolvedValue(corrected) };
+    const list = { execute: jest.fn().mockResolvedValue(page) };
+    const correct = { execute: jest.fn().mockResolvedValue(corrected) };
+    const unused = {} as never;
+    const controller = new ResultController(
+      one as never, one as never, list as never, list as never, correct as never,
+      unused, unused, unused, unused, unused, unused, () => NOW,
+    );
+    return { controller, one, list, correct };
+  }
+
+  function json(res: jest.Mocked<Response>) {
+    return JSON.parse(JSON.stringify(res.json.mock.calls[0][0]));
+  }
+
+  const auditFields = {
+    correctedVakLabel: 'Auditory',
+    correctedAt: '2026-10-10T12:00:00.000Z',
+    correctedBy: { id: 7, name: 'Profe Ana' },
+  };
+
+  it('PATCH /:id/correct-label returns the label, when and who', async () => {
+    const { controller, correct } = makeController();
+    const res = makeRes();
+    const req = { params: { id: '10' }, body: { vakLabel: 'Auditory' }, user: teacher } as unknown as Request;
+
+    await controller.correctLabel(req, res, jest.fn());
+
+    expect(correct.execute).toHaveBeenCalledWith(10, 7, expect.objectContaining({ vakLabel: 'Auditory' }));
+    expect(json(res)).toMatchObject(auditFields);
+  });
+
+  it.each(['getById', 'getByQuestionnaire'] as const)('%s returns the correction to a teacher', async (handler) => {
+    const { controller } = makeController();
+    const res = makeRes();
+    const req = { params: { id: '10', questionnaireId: '20' }, query: {}, user: teacher } as unknown as Request;
+
+    await controller[handler](req, res, jest.fn());
+
+    expect(json(res)).toMatchObject(auditFields);
+  });
+
+  it.each(['listAll', 'getByStudent'] as const)('%s returns the correction in teacher lists', async (handler) => {
+    const { controller } = makeController();
+    const res = makeRes();
+    const req = { params: { studentId: '30' }, query: {}, user: teacher } as unknown as Request;
+
+    await controller[handler](req, res, jest.fn());
+
+    expect(json(res).items[0]).toMatchObject(auditFields);
+  });
+
+  it.each(['getById', 'getByQuestionnaire', 'listMine'] as const)('%s hides the correction audit from a student', async (handler) => {
+    const { controller } = makeController();
+    const res = makeRes();
+    const req = { params: { id: '10', questionnaireId: '20' }, query: {}, user: student } as unknown as Request;
+
+    await controller[handler](req, res, jest.fn());
+
+    const body = json(res);
+    const item = handler === 'listMine' ? body.items[0] : body;
+    expect(item.id).toBe(10);
+    expect(item).not.toHaveProperty('correctedVakLabel');
+    expect(item).not.toHaveProperty('correctedAt');
+    expect(item).not.toHaveProperty('correctedBy');
+  });
+
+  it('listAll forwards labelStatus', async () => {
+    const { controller, list } = makeController();
+    const req = { params: {}, query: { labelStatus: 'uncorrected' }, user: teacher } as unknown as Request;
+
+    await controller.listAll(req, makeRes(), jest.fn());
+
+    expect(list.execute.mock.calls[0][1].labelStatus).toBe('uncorrected');
+  });
+
+  it('listAll rejects an unknown labelStatus with 400', async () => {
+    const { controller, list } = makeController();
+    const res = makeRes();
+    const req = { params: {}, query: { labelStatus: 'pending' }, user: teacher } as unknown as Request;
+
+    await controller.listAll(req, res, jest.fn());
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({ error: 'labelStatus must be one of: corrected, uncorrected' });
+    expect(list.execute).not.toHaveBeenCalled();
   });
 });

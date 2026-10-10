@@ -5,10 +5,16 @@ jest.mock('../../../../src/config/database/index.js', () => ({
       count: jest.fn().mockResolvedValue(0),
       groupBy: jest.fn().mockResolvedValue([]),
       aggregate: jest.fn().mockResolvedValue({ _avg: {} }),
+      findFirst: jest.fn().mockResolvedValue(null),
+      update: jest.fn(),
     },
+    $transaction: jest.fn(),
     user: { findMany: jest.fn().mockResolvedValue([]) },
     questionnaire: { count: jest.fn().mockResolvedValue(0) },
-    mLDataset: { aggregate: jest.fn().mockResolvedValue({ _avg: { avgQuestionTime: null } }) },
+    mLDataset: {
+      aggregate: jest.fn().mockResolvedValue({ _avg: { avgQuestionTime: null } }),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
     academicGrade: { findMany: jest.fn().mockResolvedValue([]) },
   },
 }));
@@ -446,5 +452,70 @@ describe('ResultRepositoryImpl stability (HU-38)', () => {
         },
       ]);
     });
+  });
+});
+
+describe('ResultRepositoryImpl label correction (HU-44)', () => {
+  const findFirst = prisma.result.findFirst as unknown as jest.Mock;
+  const update = prisma.result.update as unknown as jest.Mock;
+  const transaction = prisma.$transaction as unknown as jest.Mock;
+  const datasetUpdateMany = prisma.mLDataset.updateMany as unknown as jest.Mock;
+  const corrector = { correctingTeacher: { select: { id: true, name: true } } };
+  const correctedAt = new Date('2026-10-10T12:00:00.000Z');
+  const stored = {
+    id: 10, questionnaireId: 20, studentId: 30,
+    correctedVakLabel: 'Auditory', correctedAt, correctingTeacherId: 7,
+    correctingTeacher: { id: 7, name: 'Profe Ana' },
+  };
+
+  it('stores who corrected and when, and returns them', async () => {
+    transaction.mockImplementation((fn: (tx: typeof prisma) => unknown) => fn(prisma));
+    findFirst.mockResolvedValueOnce({ id: 10, questionnaireId: 20, studentId: 30 });
+    update.mockResolvedValueOnce(stored);
+
+    const entity = await new ResultRepositoryImpl().correctLabel({
+      resultId: 10, teacherId: 7, vakLabel: 'Auditory', correctedAt,
+    });
+
+    expect(update).toHaveBeenCalledWith({
+      where: { id: 10 },
+      data: { correctedVakLabel: 'Auditory', correctingTeacherId: 7, correctedAt },
+      include: corrector,
+    });
+    expect(datasetUpdateMany).toHaveBeenCalledWith({
+      where: { questionnaireId: 20 },
+      data: { vakLabel: 'Auditory', labelSource: 'teacher_validated' },
+    });
+    expect(entity).toMatchObject({ correctedVakLabel: 'Auditory', correctedAt, correctedBy: { id: 7, name: 'Profe Ana' } });
+  });
+
+  it('loads the corrector with a single result', async () => {
+    findFirst.mockResolvedValueOnce(stored);
+
+    const entity = await new ResultRepositoryImpl().findById(10);
+
+    expect(findFirst.mock.calls[0][0].include).toEqual(corrector);
+    expect(entity!.correctedBy).toEqual({ id: 7, name: 'Profe Ana' });
+  });
+
+  it('loads the corrector in teacher result lists', async () => {
+    findMany.mockResolvedValueOnce([stored]);
+    count.mockResolvedValueOnce(1);
+
+    const page = await new ResultRepositoryImpl().findAll(pagination(), {});
+
+    expect(findMany.mock.calls[0][0].include).toEqual(corrector);
+    expect(page.items[0].correctedVakLabel).toBe('Auditory');
+  });
+
+  it.each([
+    ['corrected', { correctedVakLabel: { not: null } }],
+    ['uncorrected', { correctedVakLabel: null }],
+  ] as const)('filters findAll by labelStatus=%s', async (labelStatus, expected) => {
+    findMany.mockResolvedValueOnce([]);
+
+    await new ResultRepositoryImpl().findAll(pagination(), { labelStatus });
+
+    expect(findMany.mock.calls[0][0].where).toMatchObject(expected);
   });
 });

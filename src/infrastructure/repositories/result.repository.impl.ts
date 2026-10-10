@@ -23,6 +23,11 @@ import { PaginationDto } from "../../domain/dtos/shared/pagination.dto.js";
 import { PaginatedResult } from "../../domain/interfaces/shared/paginated-result.interface.js";
 import { CustomError } from "../../domain/error/custom-error.js";
 
+/** HU-44: load only the corrector's id and name with a result. */
+const withCorrector = {
+  correctingTeacher: { select: { id: true, name: true } },
+} as const;
+
 /**
  * HU-51: match results whose `resultDate` falls in the period. Legacy rows
  * without a `resultDate` fall back to `createdAt`. Empty when the period is open.
@@ -103,6 +108,7 @@ export class ResultRepositoryImpl implements ResultRepository {
   async findById(id: number): Promise<ResultEntity | null> {
     const result = await prisma.result.findFirst({
       where: { id, deletedAt: null },
+      include: withCorrector,
     });
     return result ? ResultEntity.fromObject(result) : null;
   }
@@ -112,6 +118,7 @@ export class ResultRepositoryImpl implements ResultRepository {
   ): Promise<ResultEntity | null> {
     const result = await prisma.result.findFirst({
       where: { questionnaireId, deletedAt: null },
+      include: withCorrector,
     });
     return result ? ResultEntity.fromObject(result) : null;
   }
@@ -142,6 +149,7 @@ export class ResultRepositoryImpl implements ResultRepository {
     const [rows, total] = await Promise.all([
       prisma.result.findMany({
         where,
+        include: withCorrector,
         skip: (page - 1) * limit,
         take: limit,
         orderBy: { createdAt: "desc" },
@@ -168,6 +176,10 @@ export class ResultRepositoryImpl implements ResultRepository {
         classifierType: filters.classifierType,
       }),
       ...resultDateWhere({ from: filters.startDate, to: filters.endDate }),
+      ...(filters.labelStatus === "corrected" && {
+        correctedVakLabel: { not: null as null },
+      }),
+      ...(filters.labelStatus === "uncorrected" && { correctedVakLabel: null }),
       // Both conditions target the same relation — merge them into one object.
       ...((filters.gradeId !== undefined || filters.schoolId !== undefined) && {
         student: {
@@ -183,6 +195,7 @@ export class ResultRepositoryImpl implements ResultRepository {
     const [rows, total] = await Promise.all([
       prisma.result.findMany({
         where,
+        include: withCorrector,
         skip: (page - 1) * limit,
         take: limit,
         orderBy: { createdAt: "desc" },
@@ -600,7 +613,9 @@ export class ResultRepositoryImpl implements ResultRepository {
         data: {
           correctedVakLabel: data.vakLabel,
           correctingTeacherId: data.teacherId,
+          correctedAt: data.correctedAt,
         },
+        include: withCorrector,
       });
 
       await tx.mLDataset.updateMany({

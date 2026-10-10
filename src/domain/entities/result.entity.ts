@@ -1,5 +1,12 @@
 import { CustomError } from "../error/custom-error.js";
 
+/** HU-44: the user who corrected a result's label. */
+export interface ResultCorrector {
+  id: number;
+  /** `null` only when the corrector relation was not loaded. */
+  name: string | null;
+}
+
 export class ResultEntity {
   constructor(
     public id: number,
@@ -20,6 +27,12 @@ export class ResultEntity {
     public feedbackSource: string | null,
     public createdAt: Date,
     public updatedAt: Date,
+    /** HU-44: pilot ground-truth label set by a teacher. */
+    public correctedVakLabel: string | null = null,
+    /** HU-44: when the label was last corrected. */
+    public correctedAt: Date | null = null,
+    /** HU-44: who last corrected the label. */
+    public correctedBy: ResultCorrector | null = null,
   ) {}
 
   static fromObject(object: { [key: string]: any }): ResultEntity {
@@ -42,6 +55,10 @@ export class ResultEntity {
       feedbackSource,
       createdAt,
       updatedAt,
+      correctedVakLabel,
+      correctedAt,
+      correctingTeacherId,
+      correctingTeacher,
     } = object;
 
     if (!id) throw CustomError.badRequest("Missing Result Id");
@@ -67,6 +84,19 @@ export class ResultEntity {
       feedbackSource ?? null,
       createdAt ? new Date(createdAt) : new Date(),
       updatedAt ? new Date(updatedAt) : new Date(),
+      correctedVakLabel ?? null,
+      correctedAt ? new Date(correctedAt) : null,
+      ResultEntity.correctorOf(correctingTeacher, correctingTeacherId),
     );
+  }
+
+  /** Only id and name of the corrector, never other account fields. */
+  private static correctorOf(
+    relation: { id?: number; name?: string } | null | undefined,
+    correctingTeacherId: number | null | undefined,
+  ): ResultCorrector | null {
+    if (relation?.id) return { id: relation.id, name: relation.name ?? null };
+    if (correctingTeacherId) return { id: correctingTeacherId, name: null };
+    return null;
   }
 }

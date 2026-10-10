@@ -220,6 +220,10 @@ interface Result {
   feedbackSource: string | null;           // "gemini" | "predefined"
   createdAt: string;
   updatedAt: string;
+  // HU-44, Teacher/Admin responses only (absent for students):
+  correctedVakLabel?: "Visual" | "Auditory" | "Kinesthetic" | null;
+  correctedAt?: string | null;
+  correctedBy?: { id: number; name: string } | null;
 }
 
 // Returned by POST .../complete (slimmer than full Result)
@@ -532,14 +536,14 @@ Only `questionId` is required; the behavioural metrics are nullable but **feed t
 ### Results — `/api/results` (all 🔑)
 | Method | Path | Roles | Notes |
 |--------|------|-------|-------|
-| GET | `/` | Teacher, Admin | paginated; filters `studentId, gradeId, schoolId, classifierType` (teacher + foreign `schoolId` → `403`) |
+| GET | `/` | Teacher, Admin | paginated; filters `studentId, gradeId, schoolId, classifierType, labelStatus` (HU-44) (teacher + foreign `schoolId` → `403`) |
 | GET | `/my` | Student | own results (paginated + filtered — see below) |
 | GET | `/export` | Teacher, Admin | CSV download by school/grade/period (HU-49, see below) |
 | GET | `/stats/school/:schoolId/stability` | Teacher, Admin | stability monitor per student (HU-38, see below) |
 | GET | `/stats/user/:userId` | Student(own), Teacher, Admin | `{ userId, total, predominantStyle, profile: "Estable" \| "Variable" \| null }` — `profile` is `null` with fewer than two results (HU-38) |
 | GET | `/questionnaire/:questionnaireId` | Student(own), Teacher, Admin | result for a questionnaire |
 | GET | `/:id` | Student(own), Teacher, Admin | single result |
-| PATCH | `/:id/correct-label` | Teacher, Admin | `{ vakLabel }` — pilot ground-truth |
+| PATCH | `/:id/correct-label` | Teacher, Admin | `{ vakLabel }` — pilot ground-truth; returns `correctedVakLabel`, `correctedAt`, `correctedBy` (HU-44) |
 
 #### `GET /api/results/my` — query params
 | Param | Type | Default | Description |
@@ -650,7 +654,19 @@ interface SchoolStabilityReport {
 - Errors (`400 { error }`): `"period must be one of: week, month, quarter, year"`, `"Invalid from date"`, `"Invalid to date"`, `"from must be before or equal to to"`.
 - **Empty range (HU-51 S2):** the response keeps its normal shape with zero/empty data (`items: []`, `total: 0`; school stats `evaluatedStudents: 0`, `mostCommonStyle: null`; every grade with `evaluatedStudents: 0`). Show "No hay resultados en ese rango".
 
-`correct-label` body: `{ "vakLabel": "Visual" | "Auditory" | "Kinesthetic" }`. Sets `correctedVakLabel` on the result and marks the matching ML dataset row `labelSource=teacher_validated`.
+#### Label correction (HU-44)
+`correct-label` body: `{ "vakLabel": "Visual" | "Auditory" | "Kinesthetic" }`. Sets `correctedVakLabel` on the result, records **who** (the authenticated teacher/admin) and **when** (`correctedAt`, server clock), and marks the matching ML dataset row `labelSource=teacher_validated`. A later correction overwrites label, corrector and date. Errors: `400 "Missing vakLabel" | "vakLabel must be one of: Visual, Auditory, Kinesthetic"`, `404 "Result not found"`.
+
+Teacher/admin responses carry the correction audit (also after a reload):
+```ts
+interface ResultCorrectionAudit {
+  correctedVakLabel: "Visual" | "Auditory" | "Kinesthetic" | null; // null = not corrected yet
+  correctedAt: string | null;                                       // ISO
+  correctedBy: { id: number; name: string } | null;
+}
+```
+- Returned by `PATCH /:id/correct-label`, `GET /:id`, `GET /questionnaire/:questionnaireId`, `GET /` and `GET /student/:studentId` for Teacher/Admin. Student responses (`/my`, own `/:id`, own `/questionnaire/:id`) do **not** include these fields.
+- Labeling view (HU-44 S1/S2): list with `GET /api/results?schoolId=<id>&labelStatus=uncorrected` (to label) or `labelStatus=corrected` (already labeled, show the current label with the option to change it); combine with `gradeId`, `studentId`, `classifierType` and the HU-51 period. Invalid value → `400 "labelStatus must be one of: corrected, uncorrected"`.
 
 ### Notifications — `/api/notifications` (all 🔑, Student only)
 | Method | Path | Returns |
