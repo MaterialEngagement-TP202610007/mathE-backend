@@ -16,6 +16,7 @@ import { GetStatsByGradeUseCase } from "../../domain/use-cases/result/get-stats-
 import { GetUserStatsUseCase } from "../../domain/use-cases/result/get-user-stats.use-case.js";
 import { GetUserEvolutionUseCase } from "../../domain/use-cases/result/get-user-evolution.use-case.js";
 import { ExportResultsUseCase } from "../../domain/use-cases/result/export-results.use-case.js";
+import { GetSchoolStabilityUseCase } from "../../domain/use-cases/result/get-school-stability.use-case.js";
 
 export class ResultRoutes {
   static get routes(): Router {
@@ -35,6 +36,7 @@ export class ResultRoutes {
       new GetUserStatsUseCase(resultRepository),
       new GetUserEvolutionUseCase(resultRepository),
       new ExportResultsUseCase(resultRepository, schoolAccessPolicy),
+      new GetSchoolStabilityUseCase(resultRepository, schoolAccessPolicy),
     );
 
     router.use(authMiddleware);
@@ -259,6 +261,55 @@ export class ResultRoutes {
 
     /**
      * @openapi
+     * /api/results/stats/school/{schoolId}/stability:
+     *   get:
+     *     tags: [Results]
+     *     summary: Stability monitor — how each student's VAK classification varied in the period (HU-38). Admin (any school) or Teacher (own school only).
+     *     description: >
+     *       One entry per student with classified results in the period, ordered by grade, name and id.
+     *       `changes` counts predominant-style changes between consecutive results (oldest first).
+     *       `profile` is "stable" when the most frequent style covers at least 60% of the student's
+     *       results, "variable" otherwise, and null when the student has a single result (no
+     *       comparison available yet). No account or MVI data is included.
+     *     security: [{ bearerAuth: [] }]
+     *     parameters:
+     *       - in: path
+     *         name: schoolId
+     *         required: true
+     *         schema: { type: integer }
+     *       - in: query
+     *         name: gradeId
+     *         schema: { type: integer }
+     *         description: Only students of this academic grade
+     *       - in: query
+     *         name: period
+     *         schema: { type: string, enum: [week, month, quarter, year] }
+     *         description: "HU-51. Relative range ending now. An explicit from/to overrides that bound."
+     *       - in: query
+     *         name: from
+     *         schema: { type: string, format: date }
+     *       - in: query
+     *         name: to
+     *         schema: { type: string, format: date }
+     *         description: A date-only value covers the whole day (UTC).
+     *     responses:
+     *       200:
+     *         description: >
+     *           { schoolId, gradeId | null, summary: { students, stable, variable, insufficientData },
+     *           students: [{ studentId, studentName, gradeId, gradeName, resultsCount, firstStyle,
+     *           lastStyle, changes, profile: "stable" | "variable" | null, lastResultDate }] }.
+     *           An empty period returns students [] and a zero summary.
+     *       400: { description: "Invalid schoolId, Invalid gradeId, or an invalid period" }
+     *       403: { description: "Teacher requesting another school — { error: 'You can only access data from your own school' }" }
+     */
+    router.get(
+      "/stats/school/:schoolId/stability",
+      roleGuard(ROLES.TEACHER, ROLES.ADMIN),
+      controller.getSchoolStability,
+    );
+
+    /**
+     * @openapi
      * /api/results/export:
      *   get:
      *     tags: [Results]
@@ -319,7 +370,10 @@ export class ResultRoutes {
      *         required: true
      *         schema: { type: integer }
      *     responses:
-     *       200: { description: User stats summary }
+     *       200:
+     *         description: >
+     *           { userId, total, predominantStyle, profile: "Estable" | "Variable" | null }.
+     *           HU-38: profile is null with fewer than two results (no comparison yet).
      *       400: { description: Invalid userId }
      *       403: { description: Student accessing another user's stats }
      *       404: { description: User not found }

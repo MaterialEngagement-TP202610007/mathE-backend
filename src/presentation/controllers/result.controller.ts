@@ -13,6 +13,7 @@ import { GetStatsByGradeUseCase } from "../../domain/use-cases/result/get-stats-
 import { GetUserStatsUseCase } from "../../domain/use-cases/result/get-user-stats.use-case.js";
 import { GetUserEvolutionUseCase } from "../../domain/use-cases/result/get-user-evolution.use-case.js";
 import { ExportResultsUseCase } from "../../domain/use-cases/result/export-results.use-case.js";
+import { GetSchoolStabilityUseCase } from "../../domain/use-cases/result/get-school-stability.use-case.js";
 import { toRequester } from "../mappers/requester.mapper.js";
 import {
   resultsCsvFilename,
@@ -40,6 +41,7 @@ export class ResultController {
     private readonly getUserStatsUseCase: GetUserStatsUseCase,
     private readonly getUserEvolutionUseCase: GetUserEvolutionUseCase,
     private readonly exportResultsUseCase: ExportResultsUseCase,
+    private readonly getSchoolStabilityUseCase: GetSchoolStabilityUseCase,
     /** Clock for relative report periods (HU-51); injectable for tests. */
     private readonly now: () => Date = () => new Date(),
   ) {}
@@ -215,6 +217,41 @@ export class ResultController {
         `attachment; filename="${resultsCsvFilename(report)}"`,
       );
       res.status(200).send(toResultsCsv(report.rows));
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  /** HU-38: per-student classification variation for a school (or grade). */
+  getSchoolStability = async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => {
+    const schoolId = Number(req.params.schoolId);
+    if (isNaN(schoolId)) {
+      return res.status(400).json({ error: "Invalid schoolId" });
+    }
+    const gradeId =
+      req.query.gradeId !== undefined && req.query.gradeId !== ""
+        ? Number(req.query.gradeId)
+        : undefined;
+    if (gradeId !== undefined && isNaN(gradeId)) {
+      return res.status(400).json({ error: "Invalid gradeId" });
+    }
+    const [periodError, period] = this.parsePeriod(req);
+    if (periodError) return res.status(400).json({ error: periodError });
+
+    try {
+      const report = await this.getSchoolStabilityUseCase.execute(
+        {
+          schoolId,
+          ...(gradeId !== undefined && { gradeId }),
+          ...periodOf(period!),
+        },
+        toRequester(req),
+      );
+      res.json(report);
     } catch (err) {
       next(err);
     }

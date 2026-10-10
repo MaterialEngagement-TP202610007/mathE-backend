@@ -16,7 +16,7 @@ describe('ResultController student result listings', () => {
     studentResults = { execute: jest.fn().mockResolvedValue({ items: [], total: 0, page: 1, limit: 10 }) };
     const unused = {} as never;
     controller = new ResultController(
-      unused, unused, studentResults as never, unused, unused, unused, unused, unused, unused, unused,
+      unused, unused, studentResults as never, unused, unused, unused, unused, unused, unused, unused, unused,
     );
   });
 
@@ -78,7 +78,7 @@ describe('ResultController school-scoped endpoints', () => {
     const unused = {} as never;
     const controller = new ResultController(
       unused, unused, unused, allResults as never, unused, schoolStats as never, byGrade as never, unused, unused,
-      unused, () => NOW,
+      unused, unused, () => NOW,
     );
     return { controller, schoolStats, byGrade, allResults };
   }
@@ -123,7 +123,7 @@ describe('ResultController report period (HU-51)', () => {
     const unused = {} as never;
     const controller = new ResultController(
       unused, unused, unused, allResults as never, unused, schoolStats as never, byGrade as never, unused, unused,
-      unused, () => NOW,
+      unused, unused, () => NOW,
     );
     return { controller, schoolStats, byGrade, allResults };
   }
@@ -202,7 +202,7 @@ describe('ResultController CSV export (HU-49)', () => {
     const unused = {} as never;
     const controller = new ResultController(
       unused, unused, unused, unused, unused, unused, unused, unused, unused,
-      exportResults as never, () => NOW,
+      exportResults as never, unused, () => NOW,
     );
     return { controller, exportResults };
   }
@@ -268,5 +268,62 @@ describe('ResultController CSV export (HU-49)', () => {
 
     expect(next).toHaveBeenCalledWith(error);
     expect(res.send).not.toHaveBeenCalled();
+  });
+});
+
+describe('ResultController school stability (HU-38)', () => {
+  const teacher = { id: 7, roleId: 2 };
+  const report = {
+    schoolId: 3,
+    gradeId: 4,
+    summary: { students: 0, stable: 0, variable: 0, insufficientData: 0 },
+    students: [],
+  };
+
+  function makeController() {
+    const stability = { execute: jest.fn().mockResolvedValue(report) };
+    const unused = {} as never;
+    const controller = new ResultController(
+      unused, unused, unused, unused, unused, unused, unused, unused, unused,
+      unused, stability as never, () => NOW,
+    );
+    return { controller, stability };
+  }
+
+  it('forwards school, grade, the resolved period and the requester', async () => {
+    const { controller, stability } = makeController();
+    const res = makeRes();
+    const req = {
+      params: { schoolId: '3' },
+      query: { gradeId: '4', period: 'quarter' },
+      user: teacher,
+    } as unknown as Request;
+
+    await controller.getSchoolStability(req, res, jest.fn());
+
+    expect(stability.execute).toHaveBeenCalledWith(
+      { schoolId: 3, gradeId: 4, from: new Date('2026-07-10T12:00:00.000Z'), to: NOW },
+      teacher,
+    );
+    expect(res.json).toHaveBeenCalledWith(report);
+  });
+
+  it.each([
+    [{ schoolId: 'abc' }, {}, 'Invalid schoolId'],
+    [{ schoolId: '3' }, { gradeId: 'x' }, 'Invalid gradeId'],
+    [{ schoolId: '3' }, { period: 'decade' }, 'period must be one of: week, month, quarter, year'],
+  ])('returns 400 for params %p query %p', async (params, query, message) => {
+    const { controller, stability } = makeController();
+    const res = makeRes();
+
+    await controller.getSchoolStability(
+      { params, query, user: teacher } as unknown as Request,
+      res,
+      jest.fn(),
+    );
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({ error: message });
+    expect(stability.execute).not.toHaveBeenCalled();
   });
 });

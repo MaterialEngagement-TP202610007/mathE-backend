@@ -10,6 +10,8 @@ import {
   ResultListFilters,
   SaveResultData,
   SchoolResultStats,
+  StabilityFilters,
+  StabilityResultRow,
   StudentResultFilters,
   UserResultStats,
 } from "../interfaces/result/index.js";
@@ -53,6 +55,14 @@ export abstract class ResultRepository {
   abstract findForExport(
     filters: ResultExportFilters,
   ): Promise<ResultExportRow[]>;
+
+  /**
+   * HU-38: classified results of a school (optionally one grade) in the
+   * period, grouped by student (grade order, name, id) and oldest first.
+   */
+  abstract findForStability(
+    filters: StabilityFilters,
+  ): Promise<StabilityResultRow[]>;
 
   abstract getUserStats(userId: number): Promise<UserResultStats>;
 

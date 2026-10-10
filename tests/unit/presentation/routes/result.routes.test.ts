@@ -40,3 +40,30 @@ describe('ResultRoutes GET /export (HU-49)', () => {
     expect(next.mock.calls.length > 0).toBe(allowed);
   });
 });
+
+describe('ResultRoutes GET /stats/school/:schoolId/stability (HU-38)', () => {
+  const path = '/stats/school/:schoolId/stability';
+
+  it('is registered', () => {
+    const paths = stack().filter((l) => l.route?.methods.get).map((l) => l.route!.path);
+
+    expect(paths).toContain(path);
+  });
+
+  it.each([
+    [ROLES.TEACHER, true],
+    [ROLES.ADMIN, true],
+    [ROLES.STUDENT, false],
+  ])('role %s allowed=%s', (roleId, allowed) => {
+    const layer = stack().find((l) => l.route?.path === path && l.route.methods.get)!;
+    const [guard] = layer.route!.stack.map((s) => s.handle);
+    const res = {} as jest.Mocked<Response>;
+    res.status = jest.fn().mockReturnValue(res);
+    res.json = jest.fn().mockReturnValue(res);
+    const next = jest.fn();
+
+    guard({ user: { id: 9, email: 'u@example.com', roleId } } as unknown as Request, res, next);
+
+    expect(next.mock.calls.length > 0).toBe(allowed);
+  });
+});

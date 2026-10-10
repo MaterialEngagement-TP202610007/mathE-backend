@@ -535,6 +535,8 @@ Only `questionId` is required; the behavioural metrics are nullable but **feed t
 | GET | `/` | Teacher, Admin | paginated; filters `studentId, gradeId, schoolId, classifierType` (teacher + foreign `schoolId` → `403`) |
 | GET | `/my` | Student | own results (paginated + filtered — see below) |
 | GET | `/export` | Teacher, Admin | CSV download by school/grade/period (HU-49, see below) |
+| GET | `/stats/school/:schoolId/stability` | Teacher, Admin | stability monitor per student (HU-38, see below) |
+| GET | `/stats/user/:userId` | Student(own), Teacher, Admin | `{ userId, total, predominantStyle, profile: "Estable" \| "Variable" \| null }` — `profile` is `null` with fewer than two results (HU-38) |
 | GET | `/questionnaire/:questionnaireId` | Student(own), Teacher, Admin | result for a questionnaire |
 | GET | `/:id` | Student(own), Teacher, Admin | single result |
 | PATCH | `/:id/correct-label` | Teacher, Admin | `{ vakLabel }` — pilot ground-truth |
@@ -608,8 +610,34 @@ Errors (`{ error }` JSON): `400 "schoolId is required" | "Invalid schoolId" | "I
 
 Download it with the bearer token (not a plain link), e.g. `fetch(url, { headers: { Authorization } })` → `res.blob()` → object URL; on non-2xx read the JSON error. The CORS config exposes `Content-Disposition` (`exposedHeaders`), so a cross-origin frontend can read the file name with `res.headers.get("Content-Disposition")`; building the same name client-side from the params remains a valid fallback.
 
+#### `GET /stats/school/:schoolId/stability` — stability monitor (HU-38)
+Query: `gradeId` (optional) and the HU-51 `period` / `from` / `to`. Same school access as the other stats (teachers: own school only → `403`).
+
+```ts
+interface SchoolStabilityReport {
+  schoolId: number;
+  gradeId: number | null;
+  summary: { students: number; stable: number; variable: number; insufficientData: number };
+  students: Array<{
+    studentId: number;
+    studentName: string;
+    gradeId: number | null;
+    gradeName: string | null;
+    resultsCount: number;            // classified results in the period
+    firstStyle: "Visual" | "Auditory" | "Kinesthetic";
+    lastStyle: "Visual" | "Auditory" | "Kinesthetic";
+    changes: number;                 // predominant-style changes between consecutive results
+    profile: "stable" | "variable" | null;
+    lastResultDate: string;          // ISO
+  }>;
+}
+```
+- `profile`: `"stable"` when the most frequent style covers at least 60% of the student's results in the period, `"variable"` otherwise, `null` when the student has a **single result** → show "No hay comparativa disponible aún" (HU-38 S2). This is the same rule as `GET /stats/user/:userId` (which keeps its Spanish values `"Estable" | "Variable"`, and now also returns `null` for a single result instead of `"Estable"`).
+- Ordered by grade, student name and id. Students without results in the period are not listed; an empty period returns `students: []` and a zero summary.
+- Errors: `400 "Invalid schoolId" | "Invalid gradeId"` or a period error, `403`.
+
 #### Report period filter (HU-51)
-`GET /api/results`, `GET /stats/school/:schoolId` and `GET /stats/school/:schoolId/by-grade` accept the same optional query params. Without them every result is included (unchanged behaviour).
+`GET /api/results`, `GET /stats/school/:schoolId`, `GET /stats/school/:schoolId/by-grade`, `GET /stats/school/:schoolId/stability` and `GET /export` accept the same optional query params. Without them every result is included (unchanged behaviour).
 
 | Param | Type | Description |
 |-------|------|-------------|

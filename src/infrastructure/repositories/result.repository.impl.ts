@@ -12,10 +12,13 @@ import {
   ResultListFilters,
   SaveResultData,
   SchoolResultStats,
+  StabilityFilters,
+  StabilityResultRow,
   StudentResultFilters,
   UserResultStats,
   VakStyleCounts,
 } from "../../domain/interfaces/result/index.js";
+import { stabilityProfile } from "../../domain/use-cases/result/stability-profile.js";
 import { PaginationDto } from "../../domain/dtos/shared/pagination.dto.js";
 import { PaginatedResult } from "../../domain/interfaces/shared/paginated-result.interface.js";
 import { CustomError } from "../../domain/error/custom-error.js";
@@ -425,6 +428,55 @@ export class ResultRepositoryImpl implements ResultRepository {
     }));
   }
 
+  async findForStability(
+    filters: StabilityFilters,
+  ): Promise<StabilityResultRow[]> {
+    const rows = await prisma.result.findMany({
+      where: {
+        deletedAt: null,
+        predominantStyle: { not: null as null },
+        student: {
+          schoolId: filters.schoolId,
+          deletedAt: null,
+          ...(filters.gradeId !== undefined && {
+            academicGradeId: filters.gradeId,
+          }),
+        },
+        ...resultDateWhere(filters),
+      },
+      // Only what the monitor shows: no account or MVI data.
+      select: {
+        resultDate: true,
+        createdAt: true,
+        predominantStyle: true,
+        student: {
+          select: {
+            id: true,
+            name: true,
+            academicGradeId: true,
+            academicGrade: { select: { name: true } },
+          },
+        },
+      },
+      orderBy: [
+        { student: { academicGrade: { order: "asc" } } },
+        { student: { name: "asc" } },
+        { studentId: "asc" },
+        { resultDate: { sort: "asc", nulls: "first" } },
+        { createdAt: "asc" },
+      ],
+    });
+
+    return rows.map((row) => ({
+      studentId: row.student.id,
+      studentName: row.student.name,
+      gradeId: row.student.academicGradeId,
+      gradeName: row.student.academicGrade?.name ?? null,
+      predominantStyle: row.predominantStyle as StabilityResultRow["predominantStyle"],
+      resultDate: row.resultDate ?? row.createdAt,
+    }));
+  }
+
   async getUserStats(userId: number): Promise<UserResultStats> {
     const baseWhere = { studentId: userId, deletedAt: null };
 
@@ -448,9 +500,13 @@ export class ResultRepositoryImpl implements ResultRepository {
       | "Auditory"
       | "Kinesthetic"
       | null;
-    const topCount = topGroup?._count.predominantStyle ?? 0;
-    const profile: "Estable" | "Variable" =
-      predominantStyle && topCount / total >= 0.6 ? "Estable" : "Variable";
+    const topCount = predominantStyle
+      ? (topGroup?._count.predominantStyle ?? 0)
+      : 0;
+    // HU-38: shared rule; a single result has no profile (null), not "Estable".
+    const shared = stabilityProfile(topCount, total);
+    const profile =
+      shared === null ? null : shared === "stable" ? "Estable" : "Variable";
 
     return { userId, total, predominantStyle, profile };
   }

@@ -381,3 +381,70 @@ describe('ResultRepositoryImpl filters', () => {
     });
   });
 });
+
+describe('ResultRepositoryImpl stability (HU-38)', () => {
+  describe('getUserStats', () => {
+    it('gives no profile to a student with a single result', async () => {
+      count.mockResolvedValueOnce(1);
+      groupBy.mockResolvedValueOnce([{ predominantStyle: 'Visual', _count: { predominantStyle: 1 } }]);
+
+      const stats = await new ResultRepositoryImpl().getUserStats(5);
+
+      expect(stats).toEqual({ userId: 5, total: 1, predominantStyle: 'Visual', profile: null });
+    });
+
+    it('keeps "Estable" / "Variable" from two results on', async () => {
+      count.mockResolvedValueOnce(2);
+      groupBy.mockResolvedValueOnce([{ predominantStyle: 'Visual', _count: { predominantStyle: 2 } }]);
+      expect((await new ResultRepositoryImpl().getUserStats(5)).profile).toBe('Estable');
+
+      count.mockResolvedValueOnce(2);
+      groupBy.mockResolvedValueOnce([
+        { predominantStyle: 'Visual', _count: { predominantStyle: 1 } },
+        { predominantStyle: 'Auditory', _count: { predominantStyle: 1 } },
+      ]);
+      expect((await new ResultRepositoryImpl().getUserStats(5)).profile).toBe('Variable');
+    });
+  });
+
+  describe('findForStability', () => {
+    it('loads school (and grade) results in the period grouped by grade, name and student, oldest first', async () => {
+      findMany.mockResolvedValueOnce([
+        {
+          resultDate: null,
+          createdAt: new Date('2026-09-02T10:00:00.000Z'),
+          predominantStyle: 'Auditory',
+          student: { id: 12, name: 'Ana', academicGradeId: 3, academicGrade: { name: '1ro Primaria' } },
+        },
+      ]);
+
+      const rows = await new ResultRepositoryImpl().findForStability({ schoolId: 8, gradeId: 3, from, to });
+
+      const args = findMany.mock.calls[0][0];
+      expect(args.where).toMatchObject({
+        deletedAt: null,
+        predominantStyle: { not: null },
+        student: { schoolId: 8, deletedAt: null, academicGradeId: 3 },
+        ...periodWhere,
+      });
+      expect(args.select).not.toHaveProperty('mviResult');
+      expect(args.orderBy).toEqual([
+        { student: { academicGrade: { order: 'asc' } } },
+        { student: { name: 'asc' } },
+        { studentId: 'asc' },
+        { resultDate: { sort: 'asc', nulls: 'first' } },
+        { createdAt: 'asc' },
+      ]);
+      expect(rows).toEqual([
+        {
+          studentId: 12,
+          studentName: 'Ana',
+          gradeId: 3,
+          gradeName: '1ro Primaria',
+          predominantStyle: 'Auditory',
+          resultDate: new Date('2026-09-02T10:00:00.000Z'),
+        },
+      ]);
+    });
+  });
+});

@@ -165,6 +165,48 @@ export interface ResultExport {
   rows: ResultExportRow[];
 }
 
+/** HU-38: one classified result read for the stability monitor. */
+export interface StabilityResultRow {
+  studentId: number;
+  studentName: string;
+  gradeId: number | null;
+  gradeName: string | null;
+  predominantStyle: "Visual" | "Auditory" | "Kinesthetic";
+  /** `resultDate`, or `createdAt` for legacy rows without one. */
+  resultDate: Date;
+}
+
+/** HU-38: filters of the stability monitor (same shape as the export). */
+export type StabilityFilters = ResultExportFilters;
+
+/** HU-38: classification variation of one student in the period. */
+export interface StudentStability {
+  studentId: number;
+  studentName: string;
+  gradeId: number | null;
+  gradeName: string | null;
+  resultsCount: number;
+  firstStyle: "Visual" | "Auditory" | "Kinesthetic";
+  lastStyle: "Visual" | "Auditory" | "Kinesthetic";
+  /** Predominant-style changes between consecutive results. */
+  changes: number;
+  /** `null` when the student has a single result (no comparison yet). */
+  profile: "stable" | "variable" | null;
+  lastResultDate: Date;
+}
+
+export interface SchoolStabilityReport {
+  schoolId: number;
+  gradeId: number | null;
+  summary: {
+    students: number;
+    stable: number;
+    variable: number;
+    insufficientData: number;
+  };
+  students: StudentStability[];
+}
+
 export interface UserResultStats {
   userId: number;
   total: number;
