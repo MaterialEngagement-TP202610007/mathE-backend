@@ -66,13 +66,27 @@ describe('LoginUserUseCase', () => {
     await expect(useCase.execute(validDto!)).rejects.toMatchObject({ statusCode: 400 });
   });
 
-  it('throws 401 when account is inactive', async () => {
+  it('throws 401 when account is inactive and the password is correct', async () => {
     repo.findByEmail.mockResolvedValueOnce(makeInactiveUser());
+    passwordAdapter.compare.mockReturnValueOnce(true);
     await expect(useCase.execute(validDto!)).rejects.toMatchObject({ statusCode: 401 });
+  });
+
+  it('inactive account with a wrong password gets the generic invalid credentials error', async () => {
+    repo.findByEmail.mockResolvedValueOnce(makeInactiveUser());
+    passwordAdapter.compare.mockReturnValueOnce(false);
+
+    const error = await useCase.execute(validDto!).catch((e) => e);
+
+    expect(error).toBeInstanceOf(CustomError);
+    expect(error.statusCode).toBe(400);
+    expect(error.message).toBe('Invalid credentials');
+    expect(tokenAdapter.generate).not.toHaveBeenCalled();
   });
 
   it('inactive teacher gets the pending administrator approval message', async () => {
     repo.findByEmail.mockResolvedValueOnce(makeInactiveUser());
+    passwordAdapter.compare.mockReturnValueOnce(true);
     await expect(useCase.execute(validDto!)).rejects.toMatchObject({
       message: 'Account is inactive. Your teacher account is pending administrator approval.',
     });
@@ -82,6 +96,7 @@ describe('LoginUserUseCase', () => {
     const deleted = makeInactiveUser();
     deleted.deletedAt = new Date();
     repo.findByEmail.mockResolvedValueOnce(deleted);
+    passwordAdapter.compare.mockReturnValueOnce(true);
 
     const error = await useCase.execute(validDto!).catch((e) => e);
 

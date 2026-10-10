@@ -65,10 +65,12 @@ export class AuthRoutes {
      *             description: auth_token=<jwt>; HttpOnly; Secure; SameSite=None; Max-Age=<SESSION_TTL_HOURS * 3600>; Path=/
      *             schema: { type: string }
      *       400:
-     *         description: Validation error
+     *         description: >
+     *           Validation error, or "Invalid credentials" for an unknown email or a wrong
+     *           password (also for inactive accounts, so their state is never revealed)
      *       401:
      *         description: >
-     *           Inactive account. Pending teachers get "Account is inactive. Your teacher
+     *           Inactive account, returned only after the password is verified. Pending teachers get "Account is inactive. Your teacher
      *           account is pending administrator approval."; any other inactive account gets
      *           "Account is inactive. Contact an administrator." (both start with "Account is inactive").
      *       429:
