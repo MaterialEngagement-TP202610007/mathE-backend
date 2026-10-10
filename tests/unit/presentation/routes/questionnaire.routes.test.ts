@@ -8,6 +8,10 @@ jest.mock('../../../../src/infrastructure/adapters/jwt.adapter.impl.js', () => (
 jest.mock('../../../../src/infrastructure/adapters/gemini-vak-feedback.adapter.impl.js', () => ({
   GeminiVakFeedbackAdapterImpl: jest.fn(),
 }));
+const mockSaveProgressExecute = jest.fn();
+jest.mock('../../../../src/domain/use-cases/questionnaire/save-questionnaire-progress.use-case.js', () => ({
+  SaveQuestionnaireProgressUseCase: jest.fn().mockImplementation(() => ({ execute: mockSaveProgressExecute })),
+}));
 
 import { Request, Response } from 'express';
 import { QuestionnaireRoutes } from '../../../../src/presentation/routes/questionnaire.routes.js';
@@ -47,6 +51,31 @@ describe('QuestionnaireRoutes PUT /:id/answers (HU-29 S1)', () => {
   it.each([ROLES.TEACHER, ROLES.ADMIN])('rejects role %s with 403', (roleId) => {
     const { res, next } = runGuard(roleId);
     expect(res.status).toHaveBeenCalledWith(403);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('hands the request to questionnaireController.saveProgress after the guard', async () => {
+    const handlers = routeHandlers('/:id/answers', 'put');
+    const handler = handlers[handlers.length - 1];
+    const saved = { questionnaireId: 1, answers: [] };
+    mockSaveProgressExecute.mockResolvedValueOnce(saved);
+    const req = {
+      user: { id: 9, email: 'u@example.com', roleId: ROLES.STUDENT },
+      params: { id: '1' },
+      body: { answers: [{ questionId: 5, selectedOptionId: 20 }] },
+    } as unknown as Request;
+    const res = makeRes();
+    const next = jest.fn();
+
+    await handler(req, res, next);
+
+    expect(handlers).toHaveLength(2);
+    expect(mockSaveProgressExecute).toHaveBeenCalledWith(
+      1,
+      9,
+      expect.objectContaining({ answers: [expect.objectContaining({ questionId: 5, selectedOptionId: 20 })] }),
+    );
+    expect(res.json).toHaveBeenCalledWith(saved);
     expect(next).not.toHaveBeenCalled();
   });
 });

@@ -240,9 +240,17 @@ export class CompleteQuestionnaireUseCase {
         return { result, alreadyStored: false };
       } catch (err) {
         // A concurrent retry may have saved the result first (unique questionnaireId).
-        const existing = await this.resultRepository.findByQuestionnaire(
-          params.questionnaireId,
-        );
+        // If the lookup fails too (e.g. the database is down), treat the result
+        // as not saved so the bounded retry and the final 503 still apply.
+        const existing = await this.resultRepository
+          .findByQuestionnaire(params.questionnaireId)
+          .catch((lookupErr: unknown) => {
+            console.error(
+              `[complete] Looking up a stored result failed (attempt ${attempt + 1}):`,
+              errorMessage(lookupErr),
+            );
+            return null;
+          });
         if (existing) return { result: existing, alreadyStored: true };
 
         console.error(

@@ -309,6 +309,19 @@ describe('CompleteQuestionnaireUseCase', () => {
       expect(resultRepo.saveWithNotification).toHaveBeenCalledTimes(2);
     });
 
+    it('keeps retrying and ends with the 503 when the lookup for a stored result also fails', async () => {
+      resultRepo.saveWithNotification.mockRejectedValue(new Error('db down'));
+      resultRepo.findByQuestionnaire.mockRejectedValue(new Error('db down'));
+
+      const error = await retrying.execute(QUESTIONNAIRE_ID, STUDENT_ID, makeDto()).catch((e) => e);
+
+      expect(error).toBeInstanceOf(CustomError);
+      expect(error.statusCode).toBe(503);
+      expect(error.message).toMatch(/answers were saved/i);
+      expect(resultRepo.saveWithNotification).toHaveBeenCalledTimes(3);
+      expect(sleep.mock.calls.map(([ms]) => ms)).toEqual([200, 400]);
+    });
+
     it('lets a re-submission resume from the persisted answers after giving up', async () => {
       resultRepo.saveWithNotification.mockRejectedValue(new Error('db down'));
       await expect(retrying.execute(QUESTIONNAIRE_ID, STUDENT_ID, makeDto())).rejects.toMatchObject({ statusCode: 503 });
