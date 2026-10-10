@@ -5,6 +5,7 @@ import {
   CreateQuestionnaireResult,
   QuestionnaireCreationParams,
   QuestionnaireQuestionOptions,
+  SeenQuestion,
 } from "../interfaces/questionnaire/index.js";
 import { PaginationDto } from "../dtos/shared/pagination.dto.js";
 import { PaginatedResult } from "../interfaces/shared/paginated-result.interface.js";
@@ -28,6 +29,9 @@ export abstract class QuestionnaireRepository {
   abstract findActiveWithQuestions(
     studentId: number,
   ): Promise<CreateQuestionnaireResult | null>;
+
+  /** Distinct questions assigned to any of the student's questionnaires. */
+  abstract findSeenQuestions(studentId: number): Promise<SeenQuestion[]>;
 
   abstract findByStudent(
     studentId: number,

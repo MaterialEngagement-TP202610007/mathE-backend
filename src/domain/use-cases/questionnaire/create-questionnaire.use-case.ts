@@ -42,6 +42,14 @@ export class CreateQuestionnaireUseCase {
     const student = await this.userRepository.findById(studentId);
     const schoolId = student?.schoolId ?? null;
 
+    // HU-17: questions already delivered in previous questionnaires are
+    // avoided. When a style's unseen pool is too small, the remaining slots
+    // are topped up from already-seen questions of that style instead of
+    // failing (a repeated question beats no questionnaire).
+    const seen = await this.questionnaireRepository.findSeenQuestions(studentId);
+    const seenIds = seen.map((q) => q.questionId);
+    const seenStatements = new Set(seen.map((q) => q.statement));
+
     // 1. For each VAK style, check whether the student's school bank has enough
     //    approved (AI-generated) questions to cover the full distribution.
     //    A student without school always gets the fallback bank.
@@ -51,10 +59,11 @@ export class CreateQuestionnaireUseCase {
     for (const style of VAK_STYLES) {
       if (schoolId === null) break;
       const needed = STYLE_DISTRIBUTION[style];
-      const dbQuestions = await this.questionRepository.findApprovedByStyle(
+      const dbQuestions = await this.pickFromSchoolBank(
         style,
         needed,
         schoolId,
+        seenIds,
       );
       dbQuestionsByStyle.set(style, dbQuestions);
       if (dbQuestions.length < needed) {
@@ -78,7 +87,9 @@ export class CreateQuestionnaireUseCase {
         }
       } else {
         const pool = this.fallbackAdapter.getByStyle(style);
-        const picked = shuffle(pool).slice(0, needed);
+        const unseen = pool.filter((fb) => !seenStatements.has(fb.statement));
+        const alreadySeen = pool.filter((fb) => seenStatements.has(fb.statement));
+        const picked = [...shuffle(unseen), ...shuffle(alreadySeen)].slice(0, needed);
         for (const fb of picked) {
           slots.push({ fallback: fb });
         }
@@ -106,6 +117,36 @@ export class CreateQuestionnaireUseCase {
     });
 
     return this.questionnaireRepository.createWithQuestions(params);
+  }
+
+  /**
+   * Unseen questions first; if the unseen pool cannot fill `needed` slots,
+   * top up with a random sample of the full pool (already-seen questions).
+   */
+  private async pickFromSchoolBank(
+    style: VakStyle,
+    needed: number,
+    schoolId: number,
+    seenIds: number[],
+  ): Promise<{ id: number }[]> {
+    const unseen = await this.questionRepository.findApprovedByStyle(
+      style,
+      needed,
+      schoolId,
+      seenIds,
+    );
+    if (unseen.length >= needed || seenIds.length === 0) return unseen;
+
+    const pickedIds = new Set(unseen.map((q) => q.id));
+    const fullPool = await this.questionRepository.findApprovedByStyle(
+      style,
+      needed,
+      schoolId,
+    );
+    const topUp = fullPool
+      .filter((q) => !pickedIds.has(q.id))
+      .slice(0, needed - unseen.length);
+    return [...unseen, ...topUp];
   }
 }
 

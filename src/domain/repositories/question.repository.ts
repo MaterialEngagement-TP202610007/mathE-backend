@@ -45,12 +45,14 @@ export abstract class QuestionRepository {
   /**
    * Returns up to `limit` questions sampled uniformly at random among the
    * approved, AI-generated, non-deleted questions of a VAK style that belong
-   * to `schoolId`. Options are stripped of vakValue (not safe to expose).
+   * to `schoolId`, leaving out `excludeIds` (questions the student already
+   * received). Options are stripped of vakValue (not safe to expose).
    */
   abstract findApprovedByStyle(
     vakStyle: string,
     limit: number,
     schoolId: number,
+    excludeIds?: number[],
   ): Promise<ApprovedQuestionSlim[]>;
 
   abstract findByTeacher(

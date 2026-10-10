@@ -9,6 +9,7 @@ import {
   PublicQuestionView,
   QuestionnaireCreationParams,
   QuestionnaireQuestionOptions,
+  SeenQuestion,
 } from "../../domain/interfaces/questionnaire/index.js";
 import { PaginationDto } from "../../domain/dtos/shared/pagination.dto.js";
 import { PaginatedResult } from "../../domain/interfaces/shared/paginated-result.interface.js";
@@ -176,6 +177,20 @@ export class QuestionnaireRepositoryImpl implements QuestionnaireRepository {
         options: qq.question.options.map(toPublicOption),
       })),
     };
+  }
+
+  async findSeenQuestions(studentId: number): Promise<SeenQuestion[]> {
+    // Every status counts: an abandoned questionnaire was still shown.
+    const rows = await prisma.questionnaireQuestion.findMany({
+      where: { questionnaire: { studentId } },
+      distinct: ["questionId"],
+      select: { questionId: true, question: { select: { statement: true } } },
+    });
+
+    return rows.map((row) => ({
+      questionId: row.questionId,
+      statement: row.question.statement,
+    }));
   }
 
   async findByStudent(

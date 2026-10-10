@@ -116,6 +116,23 @@ describe('QuestionRepositoryImpl.findApprovedByStyle', () => {
     expect(Object.keys(question).sort()).toEqual(['contentType', 'id', 'mediaUrl', 'options', 'statement']);
   });
 
+  it('leaves out the excluded (already seen) question ids from the candidate pool', async () => {
+    mocked.question.findMany
+      .mockResolvedValueOnce([{ id: 3 }])
+      .mockImplementationOnce(async ({ where }) => where.id.in.map(dbQuestion));
+
+    await new QuestionRepositoryImpl().findApprovedByStyle('Visual', 2, 7, [1, 2]);
+
+    expect(mocked.question.findMany.mock.calls[0][0].where).toEqual({
+      vakStyle: 'Visual',
+      validationStatus: 'approved',
+      origin: 'ai_generated',
+      deletedAt: null,
+      schoolId: 7,
+      id: { notIn: [1, 2] },
+    });
+  });
+
   it('does not load questions when the school has no candidates', async () => {
     mocked.question.findMany.mockResolvedValueOnce([]);
 

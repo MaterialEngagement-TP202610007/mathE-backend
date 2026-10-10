@@ -3,7 +3,7 @@ import { QuestionnaireRepository } from '../../../../../src/domain/repositories/
 import { ApprovedQuestionSlim, QuestionRepository } from '../../../../../src/domain/repositories/question.repository.js';
 import { UserRepository } from '../../../../../src/domain/repositories/user.repository.js';
 import { FallbackQuestionsAdapter } from '../../../../../src/domain/adapters/fallback-questions.adapter.js';
-import { FallbackQuestionTemplate, QuestionnaireCreationParams } from '../../../../../src/domain/interfaces/questionnaire/index.js';
+import { FallbackQuestionTemplate, QuestionnaireCreationParams, SeenQuestion } from '../../../../../src/domain/interfaces/questionnaire/index.js';
 import { UserEntity } from '../../../../../src/domain/entities/user.entity.js';
 import { ROLES } from '../../../../../src/domain/constants/roles.constant.js';
 import { VAK_STYLES, VakStyle } from '../../../../../src/domain/constants/vak.constant.js';
@@ -40,9 +40,9 @@ function bank(schoolId: number, firstId: number, counts: Record<VakStyle, number
 /** In-memory question repository honouring the school filter like the real one. */
 function makeQuestionRepo(stored: StoredQuestion[]): jest.Mocked<QuestionRepository> {
   return {
-    findApprovedByStyle: jest.fn(async (vakStyle: string, limit: number, schoolId: number) =>
+    findApprovedByStyle: jest.fn(async (vakStyle: string, limit: number, schoolId: number, excludeIds: number[] = []) =>
       stored
-        .filter((q) => q.vakStyle === vakStyle && q.schoolId === schoolId)
+        .filter((q) => q.vakStyle === vakStyle && q.schoolId === schoolId && !excludeIds.includes(q.id))
         .slice(0, limit)
         .map<ApprovedQuestionSlim>((q) => ({
           id: q.id, statement: `Q${q.id}`, contentType: 'text', mediaUrl: null, options: [],
@@ -63,9 +63,10 @@ function makeFallbackAdapter(): FallbackQuestionsAdapter {
   };
 }
 
-function makeQuestionnaireRepo(): jest.Mocked<QuestionnaireRepository> {
+function makeQuestionnaireRepo(seen: SeenQuestion[] = []): jest.Mocked<QuestionnaireRepository> {
   return {
     findInProgressByStudent: jest.fn().mockResolvedValue(null),
+    findSeenQuestions: jest.fn().mockResolvedValue(seen),
     createWithQuestions: jest.fn(async (params: QuestionnaireCreationParams) => ({
       id: 1, studentId: params.studentId, status: 'in_progress', startTime: new Date(),
       usedFallback: params.usedFallback, createdAt: new Date(), updatedAt: new Date(), questions: [],
@@ -86,8 +87,8 @@ function makeUserRepo(): jest.Mocked<UserRepository> {
 
 const FULL = { Visual: 4, Auditory: 3, Kinesthetic: 3 };
 
-function setup(stored: StoredQuestion[]) {
-  const questionnaireRepo = makeQuestionnaireRepo();
+function setup(stored: StoredQuestion[], seen: SeenQuestion[] = []) {
+  const questionnaireRepo = makeQuestionnaireRepo(seen);
   const questionRepo = makeQuestionRepo(stored);
   const useCase = new CreateQuestionnaireUseCase(
     questionnaireRepo, questionRepo, makeFallbackAdapter(), makeUserRepo(),
@@ -185,5 +186,63 @@ describe('CreateQuestionnaireUseCase per-school question bank', () => {
     repo.findInProgressByStudent.mockResolvedValueOnce({} as never);
 
     await expect(useCase.execute(STUDENT_A)).rejects.toMatchObject({ statusCode: 409 });
+  });
+});
+
+describe('CreateQuestionnaireUseCase avoids questions seen in previous questionnaires (HU-17)', () => {
+  const seenDb = (ids: number[]): SeenQuestion[] => ids.map((id) => ({ questionId: id, statement: `Q${id}` }));
+  const seenFallback = (statements: string[]): SeenQuestion[] =>
+    statements.map((statement, i) => ({ questionId: 5000 + i, statement }));
+
+  it('asks the bank to exclude every question the student already received', async () => {
+    const { useCase, questionRepo, params } = setup(bank(SCHOOL_A, 1, { Visual: 8, Auditory: 6, Kinesthetic: 6 }), seenDb([1, 2, 3, 4, 9, 10, 11]));
+
+    await useCase.execute(STUDENT_A);
+
+    const p = params();
+    expect(p.usedFallback).toBe(false);
+    expect(p.assignedQuestions).toHaveLength(10);
+    const assigned = p.assignedQuestions.map((q) => q.questionId);
+    for (const id of [1, 2, 3, 4, 9, 10, 11]) expect(assigned).not.toContain(id);
+    expect(questionRepo.findApprovedByStyle.mock.calls[0][3]).toEqual([1, 2, 3, 4, 9, 10, 11]);
+  });
+
+  it('tops up a style from already-seen questions when the unseen pool is too small, keeping every unseen one', async () => {
+    // Visual ids 1..5, Auditory 6..8, Kinesthetic 9..11. The student saw Visual 1..3.
+    const { useCase, params } = setup(bank(SCHOOL_A, 1, { Visual: 5, Auditory: 3, Kinesthetic: 3 }), seenDb([1, 2, 3]));
+
+    await useCase.execute(STUDENT_A);
+
+    const p = params();
+    expect(p.usedFallback).toBe(false);
+    expect(p.assignedQuestions).toHaveLength(10);
+    const assigned = p.assignedQuestions.map((q) => q.questionId);
+    expect(new Set(assigned).size).toBe(10);
+    expect(assigned).toEqual(expect.arrayContaining([4, 5]));
+    expect(assigned.filter((id) => [1, 2, 3].includes(id))).toHaveLength(2);
+  });
+
+  it('excludes already-seen fallback questions by statement', async () => {
+    const seen = seenFallback(['Visual fallback 0', 'Visual fallback 1', 'Auditory fallback 0']);
+    const { useCase, params } = setup([], seen);
+
+    await useCase.execute(STUDENT_NO_SCHOOL);
+
+    const statements = params().fallbackToCreate.map((f) => f.statement);
+    expect(statements).toHaveLength(10);
+    for (const s of seen) expect(statements).not.toContain(s.statement);
+  });
+
+  it('reuses seen fallback questions only when the unseen fallback pool is too small', async () => {
+    // The fallback mock has 6 per style; the student saw 5 Visual ones.
+    const seen = seenFallback([0, 1, 2, 3, 4].map((i) => `Visual fallback ${i}`));
+    const { useCase, params } = setup([], seen);
+
+    await useCase.execute(STUDENT_NO_SCHOOL);
+
+    const visual = params().fallbackToCreate.filter((f) => f.vakStyle === 'Visual').map((f) => f.statement);
+    expect(visual).toHaveLength(4);
+    expect(new Set(visual).size).toBe(4);
+    expect(visual).toContain('Visual fallback 5');
   });
 });

@@ -92,6 +92,7 @@ export class QuestionRepositoryImpl implements QuestionRepository {
     vakStyle: string,
     limit: number,
     schoolId: number,
+    excludeIds: number[] = [],
   ): Promise<ApprovedQuestionSlim[]> {
     // Uniform random sample over the WHOLE eligible pool: load only candidate
     // ids (a school bank is small), sample them in memory, then load the picks.
@@ -102,6 +103,7 @@ export class QuestionRepositoryImpl implements QuestionRepository {
         origin: "ai_generated",
         deletedAt: null,
         schoolId,
+        ...(excludeIds.length > 0 ? { id: { notIn: excludeIds } } : {}),
       },
       select: { id: true },
     });

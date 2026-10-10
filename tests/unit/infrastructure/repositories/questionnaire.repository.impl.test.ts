@@ -1,6 +1,7 @@
 jest.mock('../../../../src/config/database/index.js', () => ({
   prisma: {
     questionnaire: { findFirst: jest.fn() },
+    questionnaireQuestion: { findMany: jest.fn() },
     $transaction: jest.fn(),
   },
 }));
@@ -10,6 +11,7 @@ import { QuestionnaireRepositoryImpl } from '../../../../src/infrastructure/repo
 
 const mocked = prisma as unknown as {
   questionnaire: { findFirst: jest.Mock };
+  questionnaireQuestion: { findMany: jest.Mock };
   $transaction: jest.Mock;
 };
 
@@ -94,5 +96,24 @@ describe('QuestionnaireRepositoryImpl student-facing views', () => {
 
     expect(result.questions).toHaveLength(2);
     expectNoVakLeak(result.questions);
+  });
+});
+
+describe('QuestionnaireRepositoryImpl.findSeenQuestions', () => {
+  it("returns the distinct questions of every questionnaire of the student", async () => {
+    mocked.questionnaireQuestion.findMany.mockResolvedValueOnce([
+      { questionId: 10, question: { statement: 'How do you learn?' } },
+      { questionId: 11, question: { statement: 'Fallback statement' } },
+    ]);
+
+    const seen = await new QuestionnaireRepositoryImpl().findSeenQuestions(42);
+
+    expect(seen).toEqual([
+      { questionId: 10, statement: 'How do you learn?' },
+      { questionId: 11, statement: 'Fallback statement' },
+    ]);
+    const query = mocked.questionnaireQuestion.findMany.mock.calls[0][0];
+    expect(query.where).toEqual({ questionnaire: { studentId: 42 } });
+    expect(query.distinct).toEqual(['questionId']);
   });
 });

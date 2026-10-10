@@ -60,6 +60,15 @@ export interface CreateQuestionnaireResult {
   questions: PublicQuestionView[];
 }
 
+/**
+ * A question already delivered to a student in a previous questionnaire.
+ * The statement identifies fallback-bank questions, which are matched by text.
+ */
+export interface SeenQuestion {
+  questionId: number;
+  statement: string;
+}
+
 /** Fallback question template loaded from the local data bank. */
 export interface FallbackQuestionTemplate {
   statement: string;
