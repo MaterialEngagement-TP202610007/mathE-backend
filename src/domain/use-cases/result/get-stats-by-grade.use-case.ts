@@ -1,5 +1,5 @@
 import { CustomError } from "../../error/custom-error.js";
-import { GradeVakStats } from "../../interfaces/result/index.js";
+import { GradeVakStats, ReportPeriod } from "../../interfaces/result/index.js";
 import { Requester } from "../../interfaces/shared/requester.interface.js";
 import { SchoolAccessPolicy } from "../../policies/school-access.policy.js";
 import { ResultRepository } from "../../repositories/result.repository.js";
@@ -17,6 +17,7 @@ export class GetStatsByGradeUseCase {
     schoolId: number,
     level: string | undefined,
     requester: Requester,
+    period: ReportPeriod = {},
   ): Promise<GradeVakStats[]> {
     if (!Number.isInteger(schoolId) || schoolId <= 0) {
       throw CustomError.badRequest("Invalid School Id");
@@ -27,6 +28,6 @@ export class GetStatsByGradeUseCase {
       );
     }
     await this.schoolAccessPolicy.assertCanAccessSchool(requester, schoolId);
-    return this.resultRepository.getStatsByGrade(schoolId, level);
+    return this.resultRepository.getStatsByGrade(schoolId, level, period);
   }
 }

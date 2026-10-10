@@ -79,6 +79,15 @@ export interface CorrectResultLabelData {
   vakLabel: string;
 }
 
+/**
+ * HU-51 report time range. Results are matched by `resultDate` (falling back to
+ * `createdAt` for legacy rows without one). Missing bounds are open.
+ */
+export interface ReportPeriod {
+  from?: Date;
+  to?: Date;
+}
+
 export interface SchoolResultStats {
   schoolId: number;
   evaluatedStudents: number;

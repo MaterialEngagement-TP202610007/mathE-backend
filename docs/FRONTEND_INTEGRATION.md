@@ -554,8 +554,23 @@ Returns `Paginated<Result>`. Invalid date strings return `400 { "error": "Invali
 | `gradeId` | integer | Filter by academic grade |
 | `schoolId` | integer | Filter by school (teachers: own school only, else `403`) |
 | `classifierType` | string | Filter by classifier, e.g. `xgboost` |
+| `period`, `from`, `to` | see below | HU-51 report period |
 
 `GET /stats/school/:schoolId` and `GET /stats/school/:schoolId/by-grade`: teachers only for their own school → otherwise `403 { "error": "You can only access data from your own school" }`; admins any school.
+
+#### Report period filter (HU-51)
+`GET /api/results`, `GET /stats/school/:schoolId` and `GET /stats/school/:schoolId/by-grade` accept the same optional query params. Without them every result is included (unchanged behaviour).
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `period` | `week` \| `month` \| `quarter` \| `year` | Range ending **now** (server clock): last 7 days, 1 month, 3 months, 1 year |
+| `from` | ISO date or timestamp | Results dated on or after this instant, e.g. `2026-09-01` |
+| `to` | ISO date or timestamp | Results dated on or before this instant; a date-only value covers the whole day (UTC) |
+
+- Combine freely: when `period` and `from`/`to` are both sent, the explicit bound wins for that side.
+- Results are matched by `resultDate` (rows without one fall back to `createdAt`).
+- Errors (`400 { error }`): `"period must be one of: week, month, quarter, year"`, `"Invalid from date"`, `"Invalid to date"`, `"from must be before or equal to to"`.
+- **Empty range (HU-51 S2):** the response keeps its normal shape with zero/empty data (`items: []`, `total: 0`; school stats `evaluatedStudents: 0`, `mostCommonStyle: null`; every grade with `evaluatedStudents: 0`). Show "No hay resultados en ese rango".
 
 `correct-label` body: `{ "vakLabel": "Visual" | "Auditory" | "Kinesthetic" }`. Sets `correctedVakLabel` on the result and marks the matching ML dataset row `labelSource=teacher_validated`.
 

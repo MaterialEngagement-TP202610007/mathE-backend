@@ -6,6 +6,7 @@ import {
   EvolutionDataPoint,
   GradeVakStats,
   Granularity,
+  ReportPeriod,
   ResultListFilters,
   SaveResultData,
   SchoolResultStats,
@@ -15,6 +16,21 @@ import {
 import { PaginationDto } from "../../domain/dtos/shared/pagination.dto.js";
 import { PaginatedResult } from "../../domain/interfaces/shared/paginated-result.interface.js";
 import { CustomError } from "../../domain/error/custom-error.js";
+
+/**
+ * HU-51: match results whose `resultDate` falls in the period. Legacy rows
+ * without a `resultDate` fall back to `createdAt`. Empty when the period is open.
+ */
+function resultDateWhere(period: ReportPeriod = {}) {
+  if (!period.from && !period.to) return {};
+  const range = {
+    ...(period.from && { gte: period.from }),
+    ...(period.to && { lte: period.to }),
+  };
+  return {
+    OR: [{ resultDate: range }, { resultDate: null, createdAt: range }],
+  };
+}
 
 export class ResultRepositoryImpl implements ResultRepository {
   async saveWithNotification(data: SaveResultData): Promise<ResultEntity> {
@@ -121,6 +137,7 @@ export class ResultRepositoryImpl implements ResultRepository {
       ...(filters.classifierType !== undefined && {
         classifierType: filters.classifierType,
       }),
+      ...resultDateWhere({ from: filters.startDate, to: filters.endDate }),
       // Both conditions target the same relation — merge them into one object.
       ...((filters.gradeId !== undefined || filters.schoolId !== undefined) && {
         student: {
@@ -151,7 +168,10 @@ export class ResultRepositoryImpl implements ResultRepository {
     };
   }
 
-  async getSchoolStats(schoolId: number): Promise<SchoolResultStats> {
+  async getSchoolStats(
+    schoolId: number,
+    period: ReportPeriod = {},
+  ): Promise<SchoolResultStats> {
     const studentIds = await prisma.user
       .findMany({
         where: { schoolId, deletedAt: null },
@@ -172,6 +192,7 @@ export class ResultRepositoryImpl implements ResultRepository {
       deletedAt: null,
       predominantStyle: { not: null as null },
       studentId: { in: studentIds },
+      ...resultDateWhere(period),
     };
 
     const [distinctStudents, styleGroups, agg] = await Promise.all([
@@ -203,6 +224,7 @@ export class ResultRepositoryImpl implements ResultRepository {
   async getStatsByGrade(
     schoolId: number,
     level?: string,
+    period: ReportPeriod = {},
   ): Promise<GradeVakStats[]> {
     const grades = await prisma.academicGrade.findMany({
       where: level ? { level } : undefined,
@@ -234,6 +256,7 @@ export class ResultRepositoryImpl implements ResultRepository {
           deletedAt: null,
           predominantStyle: { not: null as null },
           studentId: { in: studentIds },
+          ...resultDateWhere(period),
         };
 
         const [distinctStudents, agg] = await Promise.all([

@@ -66,6 +66,8 @@ describe('ResultController student result listings', () => {
   });
 });
 
+const NOW = new Date('2026-10-10T12:00:00.000Z');
+
 describe('ResultController school-scoped endpoints', () => {
   const teacher = { id: 7, roleId: 2 };
 
@@ -76,6 +78,7 @@ describe('ResultController school-scoped endpoints', () => {
     const unused = {} as never;
     const controller = new ResultController(
       unused, unused, unused, allResults as never, unused, schoolStats as never, byGrade as never, unused, unused,
+      () => NOW,
     );
     return { controller, schoolStats, byGrade, allResults };
   }
@@ -86,7 +89,7 @@ describe('ResultController school-scoped endpoints', () => {
 
     await controller.getSchoolStats(req, makeRes(), jest.fn());
 
-    expect(schoolStats.execute).toHaveBeenCalledWith(3, teacher);
+    expect(schoolStats.execute).toHaveBeenCalledWith(3, teacher, {});
   });
 
   it('getStatsByGrade passes level and the authenticated requester', async () => {
@@ -95,7 +98,7 @@ describe('ResultController school-scoped endpoints', () => {
 
     await controller.getStatsByGrade(req, makeRes(), jest.fn());
 
-    expect(byGrade.execute).toHaveBeenCalledWith(3, 'Primaria', teacher);
+    expect(byGrade.execute).toHaveBeenCalledWith(3, 'Primaria', teacher, {});
   });
 
   it('listAll passes the schoolId filter and the authenticated requester', async () => {
@@ -107,5 +110,72 @@ describe('ResultController school-scoped endpoints', () => {
     const [, filters, requester] = allResults.execute.mock.calls[0];
     expect(filters.schoolId).toBe(3);
     expect(requester).toEqual(teacher);
+  });
+});
+
+describe('ResultController report period (HU-51)', () => {
+  const teacher = { id: 7, roleId: 2 };
+
+  function makeController() {
+    const schoolStats = { execute: jest.fn().mockResolvedValue({}) };
+    const byGrade = { execute: jest.fn().mockResolvedValue([]) };
+    const allResults = { execute: jest.fn().mockResolvedValue({ items: [], total: 0, page: 1, limit: 10 }) };
+    const unused = {} as never;
+    const controller = new ResultController(
+      unused, unused, unused, allResults as never, unused, schoolStats as never, byGrade as never, unused, unused,
+      () => NOW,
+    );
+    return { controller, schoolStats, byGrade, allResults };
+  }
+
+  it('getSchoolStats resolves period=month against the injected clock', async () => {
+    const { controller, schoolStats } = makeController();
+    const req = { params: { schoolId: '3' }, query: { period: 'month' }, user: teacher } as unknown as Request;
+
+    await controller.getSchoolStats(req, makeRes(), jest.fn());
+
+    const [, , period] = schoolStats.execute.mock.calls[0];
+    expect(period.from.toISOString()).toBe('2026-09-10T12:00:00.000Z');
+    expect(period.to.toISOString()).toBe('2026-10-10T12:00:00.000Z');
+  });
+
+  it('getStatsByGrade forwards from/to', async () => {
+    const { controller, byGrade } = makeController();
+    const req = { params: { schoolId: '3' }, query: { from: '2026-09-01', to: '2026-09-30' }, user: teacher } as unknown as Request;
+
+    await controller.getStatsByGrade(req, makeRes(), jest.fn());
+
+    const [, , , period] = byGrade.execute.mock.calls[0];
+    expect(period.from.toISOString()).toBe('2026-09-01T00:00:00.000Z');
+    expect(period.to.toISOString()).toBe('2026-09-30T23:59:59.999Z');
+  });
+
+  it('listAll maps the period onto startDate/endDate', async () => {
+    const { controller, allResults } = makeController();
+    const req = { params: {}, query: { schoolId: '3', period: 'week' }, user: teacher } as unknown as Request;
+
+    await controller.listAll(req, makeRes(), jest.fn());
+
+    const [, filters] = allResults.execute.mock.calls[0];
+    expect(filters.startDate.toISOString()).toBe('2026-10-03T12:00:00.000Z');
+    expect(filters.endDate.toISOString()).toBe('2026-10-10T12:00:00.000Z');
+  });
+
+  it.each([
+    ['getSchoolStats', { from: '2026-10-02', to: '2026-10-01' }, 'from must be before or equal to to'],
+    ['getStatsByGrade', { period: 'decade' }, 'period must be one of: week, month, quarter, year'],
+    ['listAll', { from: 'nope' }, 'Invalid from date'],
+  ] as const)('%s returns 400 for an invalid period', async (method, query, message) => {
+    const { controller, schoolStats, byGrade, allResults } = makeController();
+    const res = makeRes();
+    const req = { params: { schoolId: '3' }, query, user: teacher } as unknown as Request;
+
+    await controller[method](req, res, jest.fn());
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({ error: message });
+    expect(schoolStats.execute).not.toHaveBeenCalled();
+    expect(byGrade.execute).not.toHaveBeenCalled();
+    expect(allResults.execute).not.toHaveBeenCalled();
   });
 });

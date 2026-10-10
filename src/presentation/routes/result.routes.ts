@@ -64,8 +64,21 @@ export class ResultRoutes {
      *       - in: query
      *         name: classifierType
      *         schema: { type: string }
+     *       - in: query
+     *         name: period
+     *         schema: { type: string, enum: [week, month, quarter, year] }
+     *         description: "HU-51. Relative range ending now (last 7 days, 1 month, 3 months, 1 year). An explicit from/to overrides that bound."
+     *       - in: query
+     *         name: from
+     *         schema: { type: string, format: date }
+     *         description: HU-51. Include results dated on or after this ISO date/timestamp.
+     *       - in: query
+     *         name: to
+     *         schema: { type: string, format: date }
+     *         description: HU-51. Include results dated on or before this ISO date/timestamp (a date-only value covers the whole day, UTC).
      *     responses:
      *       200: { description: Paginated results }
+     *       400: { description: "Invalid period, from/to, or from > to" }
      *       403: { description: "Teacher requesting another school — { error: 'You can only access data from your own school' }" }
      */
     router.get(
@@ -144,9 +157,21 @@ export class ResultRoutes {
      *         name: schoolId
      *         required: true
      *         schema: { type: integer }
+     *       - in: query
+     *         name: period
+     *         schema: { type: string, enum: [week, month, quarter, year] }
+     *         description: "HU-51. Relative range ending now (last 7 days, 1 month, 3 months, 1 year). An explicit from/to overrides that bound."
+     *       - in: query
+     *         name: from
+     *         schema: { type: string, format: date }
+     *         description: HU-51. Include results dated on or after this ISO date/timestamp.
+     *       - in: query
+     *         name: to
+     *         schema: { type: string, format: date }
+     *         description: HU-51. Include results dated on or before this ISO date/timestamp (a date-only value covers the whole day, UTC).
      *     responses:
-     *       200: { description: School stats }
-     *       400: { description: Invalid schoolId }
+     *       200: { description: "School stats for the period (zero counts and null averages when the range has no data)" }
+     *       400: { description: "Invalid schoolId, period, from/to, or from > to" }
      *       403: { description: "Teacher requesting another school — { error: 'You can only access data from your own school' }" }
      */
     router.get(
@@ -171,9 +196,21 @@ export class ResultRoutes {
      *         name: level
      *         schema: { type: string, enum: [Primaria, Secundaria] }
      *         description: Filter grades by education level
+     *       - in: query
+     *         name: period
+     *         schema: { type: string, enum: [week, month, quarter, year] }
+     *         description: "HU-51. Relative range ending now (last 7 days, 1 month, 3 months, 1 year). An explicit from/to overrides that bound."
+     *       - in: query
+     *         name: from
+     *         schema: { type: string, format: date }
+     *         description: HU-51. Include results dated on or after this ISO date/timestamp.
+     *       - in: query
+     *         name: to
+     *         schema: { type: string, format: date }
+     *         description: HU-51. Include results dated on or before this ISO date/timestamp (a date-only value covers the whole day, UTC).
      *     responses:
-     *       200: { description: Array of per-grade VAK stats }
-     *       400: { description: Invalid schoolId or level }
+     *       200: { description: "Array of per-grade VAK stats for the period (every grade is listed; evaluatedStudents 0 when it has no results in range)" }
+     *       400: { description: "Invalid schoolId, level, period, from/to, or from > to" }
      *       403: { description: "Teacher requesting another school — { error: 'You can only access data from your own school' }" }
      */
     router.get(

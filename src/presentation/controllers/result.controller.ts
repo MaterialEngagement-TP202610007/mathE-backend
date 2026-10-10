@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response } from "express";
 import { PaginationDto } from "../../domain/dtos/shared/pagination.dto.js";
 import { CorrectResultLabelDto } from "../../domain/dtos/result/correct-result-label.dto.js";
+import { ReportPeriodDto } from "../../domain/dtos/result/report-period.dto.js";
 import { StudentResultsFilterDto } from "../../domain/dtos/result/student-results-filter.dto.js";
 import { GetResultUseCase } from "../../domain/use-cases/result/get-result.use-case.js";
 import { GetResultByQuestionnaireUseCase } from "../../domain/use-cases/result/get-result-by-questionnaire.use-case.js";
@@ -12,6 +13,15 @@ import { GetStatsByGradeUseCase } from "../../domain/use-cases/result/get-stats-
 import { GetUserStatsUseCase } from "../../domain/use-cases/result/get-user-stats.use-case.js";
 import { GetUserEvolutionUseCase } from "../../domain/use-cases/result/get-user-evolution.use-case.js";
 import { toRequester } from "../mappers/requester.mapper.js";
+import { ReportPeriod } from "../../domain/interfaces/result/index.js";
+
+/** Only the bounds that were set, so an open range stays `{}`. */
+function periodOf(dto: ReportPeriodDto): ReportPeriod {
+  return {
+    ...(dto.from && { from: dto.from }),
+    ...(dto.to && { to: dto.to }),
+  };
+}
 
 export class ResultController {
   constructor(
@@ -24,7 +34,13 @@ export class ResultController {
     private readonly getStatsByGradeUseCase: GetStatsByGradeUseCase,
     private readonly getUserStatsUseCase: GetUserStatsUseCase,
     private readonly getUserEvolutionUseCase: GetUserEvolutionUseCase,
+    /** Clock for relative report periods (HU-51); injectable for tests. */
+    private readonly now: () => Date = () => new Date(),
   ) {}
+
+  private parsePeriod(req: Request): [string?, ReportPeriodDto?] {
+    return ReportPeriodDto.create(req.query, this.now());
+  }
 
   private parsePagination(req: Request): [string?, PaginationDto?] {
     const page = req.query.page ? Number(req.query.page) : 1;
@@ -101,12 +117,17 @@ export class ResultController {
       : undefined;
     const classifierType = req.query.classifierType as string | undefined;
 
+    const [periodError, period] = this.parsePeriod(req);
+    if (periodError) return res.status(400).json({ error: periodError });
+
     try {
       const result = await this.getAllResultsUseCase.execute(pagination!, {
         studentId: !isNaN(studentId!) ? studentId : undefined,
         gradeId: !isNaN(gradeId!) ? gradeId : undefined,
         schoolId: !isNaN(schoolId!) ? schoolId : undefined,
         classifierType,
+        startDate: period!.from,
+        endDate: period!.to,
       }, toRequester(req));
       res.json(result);
     } catch (err) {
@@ -119,10 +140,13 @@ export class ResultController {
     if (isNaN(schoolId)) {
       return res.status(400).json({ error: "Invalid schoolId" });
     }
+    const [periodError, period] = this.parsePeriod(req);
+    if (periodError) return res.status(400).json({ error: periodError });
     try {
       const stats = await this.getSchoolStatsUseCase.execute(
         schoolId,
         toRequester(req),
+        periodOf(period!),
       );
       res.json(stats);
     } catch (err) {
@@ -136,11 +160,14 @@ export class ResultController {
       return res.status(400).json({ error: "Invalid schoolId" });
     }
     const level = req.query.level as string | undefined;
+    const [periodError, period] = this.parsePeriod(req);
+    if (periodError) return res.status(400).json({ error: periodError });
     try {
       const stats = await this.getStatsByGradeUseCase.execute(
         schoolId,
         level,
         toRequester(req),
+        periodOf(period!),
       );
       res.json(stats);
     } catch (err) {

@@ -4,6 +4,7 @@ import {
   EvolutionDataPoint,
   GradeVakStats,
   Granularity,
+  ReportPeriod,
   ResultListFilters,
   SaveResultData,
   SchoolResultStats,
@@ -35,11 +36,15 @@ export abstract class ResultRepository {
 
   abstract correctLabel(data: CorrectResultLabelData): Promise<ResultEntity>;
 
-  abstract getSchoolStats(schoolId: number): Promise<SchoolResultStats>;
+  abstract getSchoolStats(
+    schoolId: number,
+    period?: ReportPeriod,
+  ): Promise<SchoolResultStats>;
 
   abstract getStatsByGrade(
     schoolId: number,
     level?: string,
+    period?: ReportPeriod,
   ): Promise<GradeVakStats[]>;
 
   abstract getUserStats(userId: number): Promise<UserResultStats>;
