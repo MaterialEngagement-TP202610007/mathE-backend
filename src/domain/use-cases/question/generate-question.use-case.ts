@@ -18,7 +18,9 @@ import type {
   ItemValidationBatch,
   ItemValidatorCatalog,
   ItemViolation,
+  MviAttemptRecord,
   MviMode,
+  MviRuleSnapshot,
   MviStatus,
   MviValidationRecord,
 } from "../../interfaces/item-validation/index.js";
@@ -99,8 +101,12 @@ export class GenerateQuestionUseCase {
     // Last attempt that reached MVI and was rejected: the next attempt revises it in place.
     let lastRejected: { generated: GeneratedQuestion; messages: string[] } | null = null;
     let best: RejectedAttempt | null = null;
+    // One entry per answered MVI call, in order (the teacher-facing trace).
+    const history: MviAttemptRecord[] = [];
+    const rules = ruleSnapshot(validation.catalog);
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const isRevision = lastRejected !== null;
       const prompt = lastRejected
         ? buildQuestionRevisionPrompt(
             dto.vakStyle,
@@ -168,10 +174,26 @@ export class GenerateQuestionUseCase {
         });
       }
 
+      history.push({
+        attempt: history.length + 1,
+        kind: isRevision ? "revision" : "generation",
+        statement: generated.statement,
+        options: generated.options,
+        approved: result.approved,
+        violations: result.violations,
+        validatedAt: this.now().toISOString(),
+      });
+
       if (result.approved) {
         return this.save(dto, schoolId, generated, {
           mviStatus: "passed",
-          mviResult: { approved: true, violations: result.violations, attempts: attempt },
+          mviResult: {
+            approved: true,
+            violations: result.violations,
+            attempts: attempt,
+            history,
+            ...rules,
+          },
           mviCatalogVersion: batch.catalogVersion,
           mviValidatedAt: this.now(),
         });
@@ -199,7 +221,13 @@ export class GenerateQuestionUseCase {
       }
       return this.save(dto, schoolId, best.generated, {
         mviStatus: "failed",
-        mviResult: { approved: false, violations: best.violations, attempts: maxAttempts },
+        mviResult: {
+          approved: false,
+          violations: best.violations,
+          attempts: maxAttempts,
+          history,
+          ...rules,
+        },
         mviCatalogVersion: best.catalogVersion,
         mviValidatedAt: this.now(),
       });
@@ -276,6 +304,13 @@ export class GenerateQuestionUseCase {
     const present = new Set(q.options.map((o) => o.vakValue));
     return VAK_VALUES.every((v) => present.has(v));
   }
+}
+
+/** The catalog rules as a spreadable `rules` key; no key when the catalog is unknown. */
+function ruleSnapshot(
+  catalog: ItemValidatorCatalog | null,
+): { rules?: MviRuleSnapshot[] } {
+  return catalog ? { rules: catalog.rules.map((rule) => ({ ...rule })) } : {};
 }
 
 /** A revision must keep each option's VAK label at its original position. */

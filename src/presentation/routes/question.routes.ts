@@ -180,7 +180,9 @@ export class QuestionRoutes {
      *         description: >
      *           Paginated list of questions. Each question includes the MVI diagnosis
      *           (teacher/admin only): mviStatus (passed|failed|unavailable|skipped|null),
-     *           mviResult, mviCatalogVersion, mviValidatedAt and approvedOverMvi.
+     *           mviResult { approved, violations, attempts, history?, rules? },
+     *           mviCatalogVersion, mviValidatedAt and approvedOverMvi. history (one entry
+     *           per MVI call) and rules (catalog snapshot) are absent on older questions.
      *       400:
      *         description: Validation error (invalid status, vakStyle, date, or pagination params)
      */
@@ -226,7 +228,8 @@ export class QuestionRoutes {
      *       200:
      *         description: >
      *           Paginated list of approved and rejected questions, with the MVI fields
-     *           (mviStatus, mviResult, mviCatalogVersion, mviValidatedAt, approvedOverMvi).
+     *           (mviStatus, mviResult { approved, violations, attempts, history?, rules? },
+     *           mviCatalogVersion, mviValidatedAt, approvedOverMvi).
      *       400:
      *         description: Validation error (invalid vakStyle, date, or pagination params)
      */
@@ -254,6 +257,9 @@ export class QuestionRoutes {
      *         description: >
      *           Question with options array and the MVI diagnosis (teacher/admin only):
      *           mviStatus, mviResult, mviCatalogVersion, mviValidatedAt, approvedOverMvi.
+     *           mviResult.history lists every MVI call (generation, revision, revalidation)
+     *           with the checked text and its violations; mviResult.rules is the catalog
+     *           snapshot. Both are optional (absent on questions created before them).
      *       400:
      *         description: Invalid id
      *       403:
@@ -345,8 +351,10 @@ export class QuestionRoutes {
      *     tags: [Questions]
      *     summary: Re-run MVI validation for a question. Admin (any) or Teacher (own school's questions).
      *     description: >
-     *       Sends the question to MVI again and overwrites mviStatus, mviResult,
-     *       mviCatalogVersion and mviValidatedAt (attempts is reset to 1). Works for any
+     *       Sends the question to MVI again and replaces mviStatus, mviResult.approved,
+     *       mviResult.violations, mviCatalogVersion and mviValidatedAt. It appends one
+     *       revalidation entry to mviResult.history instead of overwriting it, refreshes
+     *       mviResult.rules from the catalog and keeps attempts. Works for any
      *       validationStatus, e.g. to validate a question saved as unavailable or after a
      *       catalog change; it never changes validationStatus or approvedOverMvi.
      *       Rate limited per user: 30 requests every 10 minutes.
@@ -361,7 +369,8 @@ export class QuestionRoutes {
      *       200:
      *         description: >
      *           Updated question including the MVI fields (mviStatus passed|failed,
-     *           mviResult { approved, violations, attempts }, mviCatalogVersion, mviValidatedAt)
+     *           mviResult { approved, violations, attempts, history, rules? },
+     *           mviCatalogVersion, mviValidatedAt)
      *       400:
      *         description: 'Invalid id, or MVI integration disabled — { error: "MVI integration is disabled" }'
      *       403:

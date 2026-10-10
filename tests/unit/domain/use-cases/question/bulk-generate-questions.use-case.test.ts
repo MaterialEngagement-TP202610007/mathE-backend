@@ -260,7 +260,7 @@ describe('BulkGenerateQuestionsUseCase', () => {
 
   describe('MVI context', () => {
     const catalog: ItemValidatorCatalog = {
-      version: 'v1', maxWords: 20, markers: { V: ['mapa'], A: ['conversar'], K: ['armar'] }, vocabulary: [], functionWords: [],
+      version: 'v1', maxWords: 20, markers: { V: ['mapa'], A: ['conversar'], K: ['armar'] }, vocabulary: [], functionWords: [], rules: [],
     };
     let validator: jest.Mocked<ItemValidatorAdapter>;
 

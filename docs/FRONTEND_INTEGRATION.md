@@ -261,7 +261,21 @@ interface Question {
       measuredValue: unknown; threshold: unknown;
       severity: "blocking" | "warning";
     }[];
-    attempts: number;                      // generation attempts used (1 after a manual revalidation)
+    attempts: number;                      // generation attempts used (kept by a manual revalidation)
+    history?: {                            // one entry per MVI call, oldest first (absent on older questions)
+      attempt: number;                     // 1-based position in history
+      kind: "generation" | "revision" | "revalidation";
+      statement: string;
+      options: { text: string; vakValue: "V" | "A" | "K" }[];
+      approved: boolean;
+      violations: { ruleId: string; message: string; measuredValue: unknown; threshold: unknown; severity: "blocking" | "warning" }[];
+      validatedAt: string;                 // ISO date
+    }[];
+    rules?: {                              // catalog rules applied (absent on older questions or if the catalog was down)
+      id: string; description: string;
+      threshold: number | null;
+      severity: "blocking" | "warning";
+    }[];
   } | null;
   mviCatalogVersion: string | null;
   mviValidatedAt: string | null;           // ISO date
@@ -358,13 +372,49 @@ Every question returned by `/api/questions/*` carries the diagnosis of MVI (the 
 | Field | Meaning |
 |-------|---------|
 | `mviStatus` | `passed` (no blocking violation), `failed` (blocking violations remain after all attempts), `unavailable` (MVI did not answer at generation time), `skipped` (integration off), `null` (never validated, e.g. older questions) |
-| `mviResult` | `{ approved, violations[], attempts }`. Each violation is `{ ruleId, message, measuredValue, threshold, severity: "blocking" \| "warning" }`. Warnings do not fail a question |
+| `mviResult` | `{ approved, violations[], attempts, history?, rules? }`. Each violation is `{ ruleId, message, measuredValue, threshold, severity: "blocking" \| "warning" }`. Warnings do not fail a question. `violations` always belongs to the saved text; `history` and `rules` are described below |
 | `mviCatalogVersion` | Rule catalog version used for the diagnosis |
 | `mviValidatedAt` | When the diagnosis was made |
 | `approvedOverMvi` | `true` when a teacher approved the question while `mviStatus` was `failed` (set by `PATCH /:id/approve`) |
 
+##### Per-attempt trace and rule checklist (`history`, `rules`)
+
+- **`history`** lists every MVI call made for the question, oldest first. `kind` is `generation` (a fresh Gemini draft), `revision` (Gemini rewrote the previous rejected draft using its blocking messages) or `revalidation` (a manual `POST /:id/validate`). Each entry carries the exact text that was checked, so the UI can show what changed between attempts and why each one failed.
+- **`rules`** is a snapshot of the catalog rules in force for the latest diagnosis: `id` matches `violation.ruleId`, `description` is MVI's own wording (Spanish), `threshold` is numeric or `null`. A checklist is "rules minus the `ruleId`s in `violations`".
+- `attempts` counts generation-loop iterations, including drafts Gemini returned malformed that never reached MVI, so `history.length` can be lower than `attempts`.
+- **Backward compatibility:** questions created before this change have no `history` and no `rules`. The UI must treat both as optional and fall back to the `violations` panel. Revalidating such a question starts its `history` with a single `revalidation` entry.
+
+```json
+{
+  "approved": true,
+  "violations": [],
+  "attempts": 2,
+  "history": [
+    {
+      "attempt": 1, "kind": "generation",
+      "statement": "Cuando estudias fracciones, ¿qué prefieres?",
+      "options": [{ "text": "dibujar un esquema", "vakValue": "V" }, { "text": "escuchar la explicación", "vakValue": "A" }, { "text": "armar con bloques", "vakValue": "K" }, { "text": "mirar un video", "vakValue": "V" }],
+      "approved": false,
+      "violations": [{ "ruleId": "vocabulario-nivel", "message": "palabra fuera de nivel: esquema", "measuredValue": 1, "threshold": 0, "severity": "blocking" }],
+      "validatedAt": "2026-10-09T15:00:01.000Z"
+    },
+    {
+      "attempt": 2, "kind": "revision",
+      "statement": "Cuando estudias fracciones, ¿qué prefieres?",
+      "options": [{ "text": "dibujar un mapa", "vakValue": "V" }, { "text": "escuchar la explicación", "vakValue": "A" }, { "text": "armar con bloques", "vakValue": "K" }, { "text": "mirar un video", "vakValue": "V" }],
+      "approved": true, "violations": [],
+      "validatedAt": "2026-10-09T15:00:04.000Z"
+    }
+  ],
+  "rules": [
+    { "id": "longitud-enunciado", "description": "El enunciado no supera el máximo de palabras del nivel", "threshold": 30, "severity": "blocking" },
+    { "id": "vocabulario-nivel", "description": "Solo vocabulario del nivel", "threshold": null, "severity": "blocking" }
+  ]
+}
+```
+
 - **Approval is never blocked by MVI.** `PATCH /:id/approve` works on a `failed` question and just sets `approvedOverMvi: true`.
-- **`POST /api/questions/:id/validate`** re-runs MVI (use it for `unavailable` questions or after a catalog change). It works for any `validationStatus`, overwrites the `mvi*` fields, and never changes `validationStatus` or `approvedOverMvi`. Same school scope as the other `/:id` routes. Errors: `400 "MVI integration is disabled"`, `404`, `403`, `429` (30 requests / 10 min per user), `502` (invalid MVI answer), `503` (MVI unreachable, may be a cold start: allow a retry), `504` (MVI timeout).
+- **`POST /api/questions/:id/validate`** re-runs MVI (use it for `unavailable` questions or after a catalog change). It works for any `validationStatus`, replaces `mviStatus`, `approved`, `violations`, `mviCatalogVersion` and `mviValidatedAt`, appends one `revalidation` entry to `history` (it never overwrites earlier entries), refreshes `rules`, keeps `attempts`, and never changes `validationStatus` or `approvedOverMvi`. Same school scope as the other `/:id` routes. Errors: `400 "MVI integration is disabled"`, `404`, `403`, `429` (30 requests / 10 min per user), `502` (invalid MVI answer), `503` (MVI unreachable, may be a cold start: allow a retry), `504` (MVI timeout).
 - **UI suggestions:**
   - A badge per question in the pending list (`passed` green, `failed` red, `unavailable` grey with a "Validate" action, `skipped`/`null` none).
   - A violations panel on the review screen, blocking violations first, showing `message` (it names the failing rule and word).

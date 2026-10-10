@@ -351,7 +351,22 @@ describe('GenerateQuestionUseCase', () => {
 
       const payload = repo.createWithOptionsAndEmbedding.mock.calls[0][0];
       expect(payload.mviStatus).toBe('passed');
-      expect(payload.mviResult).toEqual({ approved: true, violations: [warn], attempts: 1 });
+      expect(payload.mviResult).toEqual({
+        approved: true,
+        violations: [warn],
+        attempts: 1,
+        history: [
+          {
+            attempt: 1,
+            kind: 'generation',
+            statement: validGenerated.statement,
+            options: validGenerated.options,
+            approved: true,
+            violations: [warn],
+            validatedAt: NOW.toISOString(),
+          },
+        ],
+      });
       expect(payload.mviCatalogVersion).toBe('v1.2');
       expect(payload.mviValidatedAt).toEqual(NOW);
       expect(validator.validate).toHaveBeenCalledWith(
@@ -364,7 +379,7 @@ describe('GenerateQuestionUseCase', () => {
       aiGenerator.generateQuestion.mockResolvedValueOnce(validGenerated);
       validator.validate.mockResolvedValueOnce(batch(true));
       const catalog: ItemValidatorCatalog = {
-        version: 'v1.2', maxWords: 17, markers: { V: ['mapa'], A: ['conversar'], K: ['armar'] }, vocabulary: [], functionWords: [],
+        version: 'v1.2', maxWords: 17, markers: { V: ['mapa'], A: ['conversar'], K: ['armar'] }, vocabulary: [], functionWords: [], rules: [],
       };
 
       await build('advisory').execute(visualDto!, [], 4, { bank: ['existente 1', 'existente 2'], catalog });
@@ -396,6 +411,26 @@ describe('GenerateQuestionUseCase', () => {
       expect(payload.statement).toBe('segundo');
       expect(payload.mviStatus).toBe('passed');
       expect(payload.mviResult).toMatchObject({ attempts: 2 });
+      expect(payload.mviResult?.history).toEqual([
+        {
+          attempt: 1,
+          kind: 'generation',
+          statement: 'primero',
+          options: validGenerated.options,
+          approved: false,
+          violations: [blocking('opciones muy largas'), warning('ignorar')],
+          validatedAt: NOW.toISOString(),
+        },
+        {
+          attempt: 2,
+          kind: 'revision',
+          statement: 'segundo',
+          options: validGenerated.options,
+          approved: true,
+          violations: [],
+          validatedAt: NOW.toISOString(),
+        },
+      ]);
       expect(sleep).not.toHaveBeenCalled();
       expect(embeddingAdapter.embed).toHaveBeenCalledTimes(1);
       expect(embeddingAdapter.embed).toHaveBeenCalledWith('segundo');
@@ -480,7 +515,14 @@ describe('GenerateQuestionUseCase', () => {
       const payload = repo.createWithOptionsAndEmbedding.mock.calls[0][0];
       expect(payload.statement).toBe('dos');
       expect(payload.mviStatus).toBe('failed');
-      expect(payload.mviResult).toEqual({ approved: false, violations: [blocking('c')], attempts: 3 });
+      expect(payload.mviResult).toMatchObject({ approved: false, violations: [blocking('c')], attempts: 3 });
+      expect(payload.mviResult?.history?.map((h) => [h.attempt, h.kind, h.statement, h.approved])).toEqual([
+        [1, 'generation', 'uno', false],
+        [2, 'revision', 'dos', false],
+        [3, 'revision', 'tres', false],
+      ]);
+      expect(payload.mviResult?.history?.[2].violations).toEqual([blocking('d'), blocking('e'), blocking('f')]);
+      expect(payload.mviResult).not.toHaveProperty('rules');
       expect(payload.mviCatalogVersion).toBe('v1.2');
       expect(payload.mviValidatedAt).toEqual(NOW);
       expect(embeddingAdapter.embed).toHaveBeenCalledTimes(1);
@@ -543,6 +585,54 @@ describe('GenerateQuestionUseCase', () => {
       expect(payload.statement).toBe('valida');
       expect(payload.mviStatus).toBe('failed');
       expect(payload.mviResult).toMatchObject({ attempts: 3 });
+      expect(payload.mviResult?.history).toHaveLength(1);
+    });
+
+    it('records only validated attempts in history, skipping a revision that changed vakValues', async () => {
+      const swapped = {
+        statement: 'cambiado',
+        options: validGenerated.options.map((o, i) => (i === 0 ? { ...o, vakValue: 'K' as const } : o)),
+      };
+      aiGenerator.generateQuestion
+        .mockResolvedValueOnce(generated('primero'))
+        .mockResolvedValueOnce(swapped)
+        .mockResolvedValueOnce(generated('tercero'));
+      validator.validate
+        .mockResolvedValueOnce(batch(false, [blocking('razon')]))
+        .mockResolvedValueOnce(batch(true));
+
+      await build('advisory').execute(visualDto!);
+
+      const payload = repo.createWithOptionsAndEmbedding.mock.calls[0][0];
+      expect(payload.mviResult).toMatchObject({ attempts: 3 });
+      expect(payload.mviResult?.history?.map((h) => [h.attempt, h.kind, h.statement])).toEqual([
+        [1, 'generation', 'primero'],
+        [2, 'revision', 'tercero'],
+      ]);
+    });
+
+    it.each([
+      ['passed', true],
+      ['failed', false],
+    ])('copies the catalog rule snapshot into a %s result', async (_label, approved) => {
+      const rules = [
+        { id: 'longitud-enunciado', description: 'Statement length', threshold: 17, severity: 'blocking' as const },
+        { id: 'marcador-vak', description: 'VAK marker', threshold: null, severity: 'warning' as const },
+      ];
+      const catalog: ItemValidatorCatalog = {
+        version: 'v1.2', maxWords: 17, markers: { V: [], A: [], K: [] }, vocabulary: [], functionWords: [], rules,
+      };
+      aiGenerator.generateQuestion.mockResolvedValue(validGenerated);
+      validator.validate.mockResolvedValue(batch(approved, approved ? [] : [blocking('x')]));
+
+      await build('advisory', true, 1).execute(visualDto!, [], null, { bank: [], catalog });
+
+      const payload = repo.createWithOptionsAndEmbedding.mock.calls[0][0];
+      expect(payload.mviStatus).toBe(approved ? 'passed' : 'failed');
+      expect(payload.mviResult?.rules).toEqual(rules);
+      expect(payload.mviResult?.history).toHaveLength(1);
+      expect(embeddingAdapter.embed).toHaveBeenCalledTimes(1);
+      expect(imageGenerator.generateImage).toHaveBeenCalledTimes(1);
     });
 
     it('gate: throws when later attempts are invalid after a blocked one', async () => {

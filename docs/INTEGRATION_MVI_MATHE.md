@@ -219,6 +219,7 @@ Implementado en la rama `feat/mvi-integration`:
 - **Banco para R8:** enunciados `approved` y `pending` del colegio, cargados una vez por lote y ampliados con los nuevos del mismo lote.
 - **`approvedOverMvi`:** `PATCH /api/questions/:id/approve` nunca se bloquea y marca `approvedOverMvi = true` si la pregunta estaba en `failed`.
 - **`POST /api/questions/:id/validate`:** revalida una pregunta guardada (admin, o profesor del mismo colegio) con limite de 30 peticiones cada 10 minutos. Los campos MVI se devuelven solo a profesor y admin; el estudiante nunca los recibe.
+- **Trazabilidad del diagnostico:** `mviResult.history` guarda cada llamada a MVI (`generation`, `revision` o `revalidation`) con su texto y sus violaciones, y `mviResult.rules` guarda una copia de las reglas del catalogo; la revalidacion agrega una entrada en lugar de sobrescribir. Ambas claves son opcionales: las preguntas anteriores no las tienen.
 - **CSV de investigacion:** `preguntas.csv` incluye `mviStatus`, `approvedOverMvi`, `mviCatalogVersion` y `mviValidatedAt`.
 
 Sigue como propuesta:
