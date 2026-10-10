@@ -50,8 +50,15 @@ mviResult: {
 - [x] **B2** Record a per-attempt `history` and a `rules` snapshot in the generation loop. Route: delegated writer. Commit `6d342e1`. RED: 7 failing in generate-question suite; GREEN: question use-case suites 8/8, 117 tests.
 - [x] **B3** Revalidation appends a `revalidation` entry and refreshes `rules`. Route: delegated writer. Commit `696c039`. RED: 5 failing in revalidate suite; GREEN: full suite 59/59, 546 tests.
 - [x] **B4** Docs: `docs/FRONTEND_INTEGRATION.md`, `docs/INTEGRATION_MVI_MATHE.md` and the Swagger text. Route: delegated writer. Commit `7a4e276`. Passive docs + JSDoc; tsc clean.
-- [ ] **B5** Plain-language explanation `docs/explanations/2026-10-09-mvi-transparency-panel-pencil.md` (`/nk-explain pencil`). Route: inline (one passive doc).
-- [ ] **V1** Localhost smoke test: generate questions, check `history.length === attempts` and the 10 rules, revalidate to append an entry, confirm the old question still loads, confirm the student sees no MVI data.
+- [x] **B5** Plain-language explanation `docs/explanations/2026-10-09-mvi-transparency-panel-pencil.md` (`/nk-explain pencil`). Route: inline (one passive doc). Structural readback only (passive doc).
+- [x] **V1** Localhost smoke test: generate questions, check `history.length === attempts` and the 10 rules, revalidate to append an entry, confirm the old question still loads, confirm the student sees no MVI data.
+  - Setup: local MVI 0.4.0 on :3001 with an ephemeral token, backend `MVI_MODE=advisory` on :3000, Postgres `postgres-dev` on :5433.
+  - Generated #47 (Auditory), #48 (Visual) and #49 (Kinesthetic): all `passed`. #48 took 2 attempts, the others 1. `history.length === attempts` for all three, and `rules` had 10 entries each.
+  - #48 history: `1:generation:x[legibilidad-nivel/blocking, vocabulario-nivel/blocking]`, then `2:revision:ok[vocabulario-nivel/warning]`.
+  - `POST /api/questions/48/validate` returned 200 and appended `3:revalidation:ok`; `attempts` stayed at 2.
+  - Old #29 returned 200 with its original keys `approved, attempts, violations`.
+  - A student calling `GET /api/questions/48` got 403. The student questionnaire repo test (no `mvi*` keys) is green.
+  - The 10 rule ids from `/reglas` are: longitud-enunciado, legibilidad-nivel, vocabulario-nivel, redaccion-positiva, longitud-opciones, homogeneidad-opciones, exclusividad-opciones, independencia-banco, correspondencia-dimension, composicion-dimensiones. `distribucion-posicional` is a bank-level check and not part of this list.
 - [ ] **F0** Send the frontend brief to `mathe-frontend-87`.
 
 ## Acceptance criteria
@@ -71,5 +78,7 @@ mviResult: {
 - Note for V1: `history` holds one entry per answered MVI call, while `attempts` counts loop iterations (including malformed Gemini drafts or AI errors that never reached MVI). `history.length === attempts` holds only when every iteration reached MVI; in advisory `failed`, `attempts` is `maxAttempts`.
 - `history[].attempt` is the 1-based position in `history`, not the loop iteration. Revalidation keeps `attempts` (previously reset to 1).
 
+- RDD: range 9120926..7007c23 assessed as medium (`slice_budget_reached`); consent granted; reliability review approved and acknowledged (lineage review-583cd9b10047e7fe). Non-blocking suggestions R3-001 (`revalidate-question.use-case.ts:80`) and R3-002 (`generate-question.use-case.ts:104-106`) are follow-ups.
+
 ## Next step
-B5 (plain-language explanation), then V1 localhost smoke test.
+Push `feat/mvi-transparency`, then send the frontend brief (F0) to `mathe-frontend-87`.
