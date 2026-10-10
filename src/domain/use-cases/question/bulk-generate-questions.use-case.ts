@@ -10,12 +10,24 @@ import {
   GenerationValidationContext,
 } from "./generate-question.use-case.js";
 import { CustomError } from "../../error/custom-error.js";
+import { AiAvailabilityTracker } from "../../adapters/ai-availability-tracker.adapter.js";
+import { QuestionFailureReason } from "../../interfaces/question/index.js";
+import { questionFailureReason } from "./question-generation.error.js";
 
 export interface BulkGenerateQuestionsConfig {
   /** Maximum number of generations running at the same time. */
   concurrency: number;
   /** How MVI validation applies to the batch (default "off"). */
   mviMode?: MviMode;
+}
+
+/** Per-question progress hooks of a background batch. */
+export interface QuestionGenerationProgress {
+  onGenerated: (question: QuestionEntity) => void;
+  /** HU-47: `reason` tells an AI outage apart from other failures. */
+  onFailed: (reason: QuestionFailureReason) => void;
+  /** HU-47: called once when a generation ends an AI outage. */
+  onAiRestored?: () => void;
 }
 
 /** Resolved before generation starts (and before any AI call). */
@@ -32,6 +44,7 @@ export class BulkGenerateQuestionsUseCase {
     private readonly userRepository: UserRepository,
     private readonly config: BulkGenerateQuestionsConfig = { concurrency: 2 },
     private readonly itemValidator: ItemValidatorAdapter | null = null,
+    private readonly aiAvailability: AiAvailabilityTracker | null = null,
   ) {}
 
   /**
@@ -59,10 +72,7 @@ export class BulkGenerateQuestionsUseCase {
     dto: GenerateQuestionDto,
     count: number,
     requesterId: number,
-    onProgress?: {
-      onGenerated: (question: QuestionEntity) => void;
-      onFailed: () => void;
-    },
+    onProgress?: QuestionGenerationProgress,
     context?: QuestionGenerationContext,
   ): Promise<QuestionEntity[]> {
     const { schoolId } = context ?? (await this.prepare(dto));
@@ -80,12 +90,19 @@ export class BulkGenerateQuestionsUseCase {
       this.generateQuestionUseCase
         .execute(dto, recentStatements, schoolId, validation)
         .then((q) => {
+          this.recordAiAnswered(onProgress);
           // R8 within the batch: later items must not repeat this statement.
           validation?.bank.push(q.statement);
           onProgress?.onGenerated(q);
           return q;
         })
-        .catch((err) => { onProgress?.onFailed(); throw err; });
+        .catch((err) => {
+          const reason = questionFailureReason(err);
+          if (reason === "ai_unavailable") this.aiAvailability?.recordFailure();
+          else if (reason !== "internal_error") this.recordAiAnswered(onProgress);
+          onProgress?.onFailed(reason);
+          throw err;
+        });
 
     const results = await runWithConcurrency(
       count,
@@ -112,7 +129,15 @@ export class BulkGenerateQuestionsUseCase {
     return questions;
   }
 
-  /** Once per batch: wake the validator, load its catalog and the school bank. */
+  /**
+   * HU-47: a generated question, or a draft rejected by the checks, proves the
+   * AI answered. When that ends an outage the caller announces the recovery.
+   */
+  private recordAiAnswered(onProgress?: QuestionGenerationProgress): void {
+    if (this.aiAvailability?.recordSuccess()) onProgress?.onAiRestored?.();
+  }
+
+    /** Once per batch: wake the validator, load its catalog and the school bank. */
   private async loadValidationContext(
     schoolId: number,
   ): Promise<GenerationValidationContext | undefined> {

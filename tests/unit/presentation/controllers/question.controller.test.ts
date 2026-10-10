@@ -86,7 +86,7 @@ describe('QuestionController.generate', () => {
     await flushPromises();
 
     expect(sse.push).toHaveBeenCalledTimes(1);
-    expect(sse.push).toHaveBeenCalledWith(7, 'notification', { type: 'question_failed', vakStyle: 'Visual' });
+    expect(sse.push).toHaveBeenCalledWith(7, 'notification', { type: 'question_failed', vakStyle: 'Visual', reason: 'internal_error' });
     expect(console.error).toHaveBeenCalledWith(
       expect.stringContaining('generation'),
       'database unavailable',
@@ -95,8 +95,8 @@ describe('QuestionController.generate', () => {
 
   it('does not push a duplicate failure when per-question events were already sent', async () => {
     bulk.execute.mockImplementationOnce(async (_dto, _count, _userId, progress) => {
-      progress.onFailed();
-      progress.onFailed();
+      progress.onFailed('validation_failed');
+      progress.onFailed('validation_failed');
       throw new Error('Could not generate any Visual questions');
     });
 
@@ -104,7 +104,59 @@ describe('QuestionController.generate', () => {
     await flushPromises();
 
     expect(sse.push).toHaveBeenCalledTimes(2);
-    expect(sse.push).toHaveBeenNthCalledWith(1, 7, 'notification', { type: 'question_failed', vakStyle: 'Visual' });
+    expect(sse.push).toHaveBeenNthCalledWith(1, 7, 'notification', { type: 'question_failed', vakStyle: 'Visual', reason: 'validation_failed' });
+  });
+
+  it('tells the teacher when a question failed because the AI service is unavailable (HU-47)', async () => {
+    bulk.execute.mockImplementationOnce(async (_dto, _count, _userId, progress) => {
+      progress.onFailed('ai_unavailable');
+      throw new Error('Could not generate any Visual questions');
+    });
+
+    await controller.generate(makeReq(), makeRes(), jest.fn());
+    await flushPromises();
+
+    expect(sse.push).toHaveBeenCalledTimes(1);
+    expect(sse.push).toHaveBeenCalledWith(7, 'notification', { type: 'question_failed', vakStyle: 'Visual', reason: 'ai_unavailable' });
+  });
+
+  it('announces the AI restoration to the requester and to teachers alerted during the outage (HU-47)', async () => {
+    const otherTeacher = { ...makeReq(), user: { id: 8, email: 'o@example.com', roleId: 2 } } as unknown as Request;
+    bulk.execute.mockImplementationOnce(async (_dto, _count, _userId, progress) => {
+      progress.onFailed('ai_unavailable');
+      throw new Error('Could not generate any Visual questions');
+    });
+    await controller.generate(otherTeacher, makeRes(), jest.fn());
+    await flushPromises();
+    sse.push.mockClear();
+
+    const question = { id: 11, vakStyle: 'Visual' } as QuestionEntity;
+    bulk.execute.mockImplementationOnce(async (_dto, _count, _userId, progress) => {
+      progress.onAiRestored();
+      progress.onGenerated(question);
+      return [question];
+    });
+    await controller.generate(makeReq(), makeRes(), jest.fn());
+    await flushPromises();
+
+    const restored = sse.push.mock.calls.filter(([, , data]) => data.type === 'ai_service_restored');
+    expect(restored.map(([userId]) => userId).sort()).toEqual([7, 8]);
+    expect(restored[0][1]).toBe('notification');
+  });
+
+  it('announces a later restoration only to the requester once the outage audience was cleared (HU-47)', async () => {
+    bulk.execute.mockImplementation(async (_dto, _count, _userId, progress) => {
+      progress.onAiRestored();
+      return [];
+    });
+
+    await controller.generate(makeReq(), makeRes(), jest.fn());
+    await flushPromises();
+    await controller.generate(makeReq(), makeRes(), jest.fn());
+    await flushPromises();
+
+    const restored = sse.push.mock.calls.filter(([, , data]) => data.type === 'ai_service_restored');
+    expect(restored.map(([userId]) => userId)).toEqual([7, 7]);
   });
 
   it('attributes a teacher request to the authenticated teacher, ignoring body teacherId', async () => {

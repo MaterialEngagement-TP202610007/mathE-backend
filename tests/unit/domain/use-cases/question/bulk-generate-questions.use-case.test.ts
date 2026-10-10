@@ -10,6 +10,8 @@ import { ItemValidatorAdapter } from '../../../../../src/domain/adapters/item-va
 import type { ItemValidatorCatalog, MviMode } from '../../../../../src/domain/interfaces/item-validation/index.js';
 import { CustomError } from '../../../../../src/domain/error/custom-error.js';
 import { ROLES } from '../../../../../src/domain/constants/roles.constant.js';
+import { AiAvailabilityTracker } from '../../../../../src/domain/adapters/ai-availability-tracker.adapter.js';
+import { QuestionGenerationError } from '../../../../../src/domain/use-cases/question/question-generation.error.js';
 
 const TEACHER_SCHOOL_ID = 4;
 
@@ -337,5 +339,84 @@ describe('BulkGenerateQuestionsUseCase', () => {
 
       expect(result).toHaveLength(1);
     });
+  });
+});
+
+describe('BulkGenerateQuestionsUseCase AI availability (HU-47)', () => {
+  let generateUseCase: jest.Mocked<Pick<GenerateQuestionUseCase, 'execute'>>;
+  let tracker: jest.Mocked<AiAvailabilityTracker>;
+  let useCase: BulkGenerateQuestionsUseCase;
+
+  const aiDown = () => QuestionGenerationError.aiUnavailable(CustomError.serviceUnavailable('Gemini chat unavailable'));
+
+  beforeEach(() => {
+    generateUseCase = makeGenerateUseCase();
+    tracker = {
+      current: jest.fn(),
+      recordSuccess: jest.fn().mockReturnValue(false),
+      recordFailure: jest.fn().mockReturnValue(false),
+    } as jest.Mocked<AiAvailabilityTracker>;
+    useCase = new BulkGenerateQuestionsUseCase(
+      generateUseCase as unknown as GenerateQuestionUseCase,
+      makeNotificationRepo(),
+      makeQuestionRepo(),
+      makeUserRepo(),
+      { concurrency: 1 },
+      null,
+      tracker,
+    );
+  });
+
+  it('tells onFailed that the AI service was unavailable', async () => {
+    generateUseCase.execute.mockRejectedValue(aiDown());
+    const onFailed = jest.fn();
+
+    await useCase.execute(visualDto!, 1, 5, { onGenerated: jest.fn(), onFailed }).catch(() => undefined);
+
+    expect(onFailed).toHaveBeenCalledWith('ai_unavailable');
+    expect(tracker.recordFailure).toHaveBeenCalledTimes(1);
+    expect(tracker.recordSuccess).not.toHaveBeenCalled();
+  });
+
+  it('reports validation failures with their own reason and counts the AI as available', async () => {
+    generateUseCase.execute.mockRejectedValue(QuestionGenerationError.validationFailed('no valid draft'));
+    const onFailed = jest.fn();
+
+    await useCase.execute(visualDto!, 1, 5, { onGenerated: jest.fn(), onFailed }).catch(() => undefined);
+
+    expect(onFailed).toHaveBeenCalledWith('validation_failed');
+    expect(tracker.recordSuccess).toHaveBeenCalledTimes(1);
+    expect(tracker.recordFailure).not.toHaveBeenCalled();
+  });
+
+  it('reports other failures as internal errors without touching the AI state', async () => {
+    generateUseCase.execute.mockRejectedValue(new Error('database down'));
+    const onFailed = jest.fn();
+
+    await useCase.execute(visualDto!, 1, 5, { onGenerated: jest.fn(), onFailed }).catch(() => undefined);
+
+    expect(onFailed).toHaveBeenCalledWith('internal_error');
+    expect(tracker.recordSuccess).not.toHaveBeenCalled();
+    expect(tracker.recordFailure).not.toHaveBeenCalled();
+  });
+
+  it('signals the restoration when a success ends an outage', async () => {
+    generateUseCase.execute.mockResolvedValue(makeEntity(1));
+    tracker.recordSuccess.mockReturnValueOnce(true).mockReturnValue(false);
+    const onAiRestored = jest.fn();
+
+    await useCase.execute(visualDto!, 2, 5, { onGenerated: jest.fn(), onFailed: jest.fn(), onAiRestored });
+
+    expect(tracker.recordSuccess).toHaveBeenCalledTimes(2);
+    expect(onAiRestored).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not signal a restoration when the AI was not down', async () => {
+    generateUseCase.execute.mockResolvedValue(makeEntity(1));
+    const onAiRestored = jest.fn();
+
+    await useCase.execute(visualDto!, 1, 5, { onGenerated: jest.fn(), onFailed: jest.fn(), onAiRestored });
+
+    expect(onAiRestored).not.toHaveBeenCalled();
   });
 });

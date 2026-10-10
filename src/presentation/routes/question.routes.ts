@@ -26,6 +26,7 @@ import { GeminiImageGeneratorAdapter } from "../../infrastructure/adapters/gemin
 import { S3ImageStorageAdapter } from "../../infrastructure/adapters/s3-image-storage.adapter.impl.js";
 import { MviItemValidatorAdapterImpl } from "../../infrastructure/adapters/mvi-item-validator.adapter.impl.js";
 import { sseNotificationService } from "../../infrastructure/services/sse-notification.service.js";
+import { aiAvailabilityTracker } from "../../infrastructure/adapters/in-memory-ai-availability-tracker.adapter.impl.js";
 import { envs } from "../../config/envs.js";
 
 export class QuestionRoutes {
@@ -60,6 +61,7 @@ export class QuestionRoutes {
         userRepository,
         { concurrency: envs.QUESTION_GENERATION_CONCURRENCY, mviMode },
         itemValidator,
+        aiAvailabilityTracker,
       ),
       new ListQuestionsUseCase(questionRepository),
       new ValidatedHistoryUseCase(questionRepository),
@@ -90,8 +92,12 @@ export class QuestionRoutes {
      *       and is persisted with validationStatus=pending in the attributed teacher's
      *       school question bank (schoolId). Progress is pushed over SSE
      *       as `notification` events ({ type: "question_generated", questionId, vakStyle }
-     *       or { type: "question_failed", vakStyle }). Rate limited per user: 10 requests
-     *       every 10 minutes.
+     *       or { type: "question_failed", vakStyle, reason }). HU-47: reason is
+     *       ai_unavailable (every AI call failed), validation_failed (no draft passed the
+     *       checks), mvi_rejected (MVI gate blocked every attempt) or internal_error.
+     *       When a generation ends an AI outage, { type: "ai_service_restored", since } is
+     *       pushed to the requester and to every teacher alerted during the outage.
+     *       Rate limited per user: 10 requests every 10 minutes.
      *     security: [{ bearerAuth: [] }]
      *     parameters:
      *       - in: query

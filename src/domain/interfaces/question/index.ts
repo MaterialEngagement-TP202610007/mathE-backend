@@ -59,3 +59,15 @@ export interface ApproveQuestionData {
   /** VAK style stated by the teacher; null or absent keeps the current style. */
   vakStyle?: VakStyle | null;
 }
+
+/**
+ * Why one question generation failed (HU-47), sent with the `question_failed`
+ * SSE event: `ai_unavailable` when every AI call failed, `validation_failed`
+ * when no draft passed the checks, `mvi_rejected` when MVI (gate mode) blocked
+ * every attempt, `internal_error` for anything else (e.g. persistence).
+ */
+export type QuestionFailureReason =
+  | "ai_unavailable"
+  | "validation_failed"
+  | "mvi_rejected"
+  | "internal_error";

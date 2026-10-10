@@ -19,6 +19,7 @@ import { DeleteQuestionUseCase } from "../../domain/use-cases/question/delete-qu
 import { RevalidateQuestionUseCase } from "../../domain/use-cases/question/revalidate-question.use-case.js";
 import { SseNotificationService } from "../../infrastructure/services/sse-notification.service.js";
 import { toRequester } from "../mappers/requester.mapper.js";
+import { QuestionFailureReason } from "../../domain/interfaces/question/index.js";
 
 export class QuestionController {
   constructor(
@@ -32,6 +33,9 @@ export class QuestionController {
     private readonly revalidateQuestionUseCase: RevalidateQuestionUseCase,
     private readonly sseService: SseNotificationService,
   ) {}
+
+  /** Teachers who received a `question_failed` with `ai_unavailable` (HU-47). */
+  private readonly aiOutageAudience = new Set<number>();
 
   private parsePagination(req: Request): [string?, PaginationDto?] {
     const page = req.query.page ? Number(req.query.page) : 1;
@@ -69,11 +73,15 @@ export class QuestionController {
       count: rawCount,
     });
 
-    const pushFailed = () =>
+    const pushFailed = (reason: QuestionFailureReason) => {
+      // HU-47: remember who saw the outage so they also hear about the recovery.
+      if (reason === "ai_unavailable") this.aiOutageAudience.add(userId);
       this.sseService.push(userId, "notification", {
         type: "question_failed",
         vakStyle: dto!.vakStyle,
+        reason,
       });
+    };
 
     // Tracks whether the teacher already got per-question events for this batch.
     let progressNotified = false;
@@ -88,10 +96,11 @@ export class QuestionController {
             vakStyle: q.vakStyle,
           });
         },
-        onFailed: () => {
+        onFailed: (reason) => {
           progressNotified = true;
-          pushFailed();
+          pushFailed(reason);
         },
+        onAiRestored: () => this.pushAiRestored(userId),
       }, context)
       .catch((err) => {
         console.error(
@@ -99,9 +108,20 @@ export class QuestionController {
           err instanceof Error ? err.message : String(err),
         );
         // Failed before any question finished (e.g. DB error) — tell the teacher.
-        if (!progressNotified) pushFailed();
+        if (!progressNotified) pushFailed("internal_error");
       });
   };
+
+  /**
+   * HU-47: tells the requester and every teacher alerted during the outage
+   * that AI generation is back, then forgets that audience.
+   */
+  private pushAiRestored(requesterId: number): void {
+    const audience = new Set([...this.aiOutageAudience, requesterId]);
+    this.aiOutageAudience.clear();
+    const event = { type: "ai_service_restored", since: new Date().toISOString() };
+    for (const id of audience) this.sseService.push(id, "notification", event);
+  }
 
   listMyQuestions = async (req: Request, res: Response, next: NextFunction) => {
     const [filterError, dto] = ListQuestionsDto.create({

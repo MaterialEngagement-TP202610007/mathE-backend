@@ -369,6 +369,32 @@ Email / password / roleId are **not** editable here. `schoolId` must be an exist
 - **Approve with a VAK style (HU-42):** `PATCH /:id/approve` accepts an optional JSON body `{ "vakStyle": "Visual" | "Auditory" | "Kinesthetic" }`. When sent, the question joins the approved bank with that style (it replaces the generated `vakStyle`; options keep their own `vakValue`). When the body or `vakStyle` is omitted (or `null`), the current style is kept, so older clients keep working. Any other value → `400 "Invalid Vak Style. Allowed: Visual, Auditory, Kinesthetic"`. The new UI should make the style selector mandatory (preselect the generated `vakStyle` and block confirm until a style is chosen; HU-42 S2 is enforced in the UI). `approvedOverMvi` works exactly as before.
 - Generation can return `502` (Gemini failed) or `503` (couldn't produce a unique, non-redundant question after max attempts). Show a retry affordance. **Generation is slow** (AI + embedding round-trips) — show a spinner and allow ~10–30s.
 
+#### AI generation availability (HU-47)
+Generation runs in the background; progress arrives on the SSE stream `GET /api/notifications/stream` as `notification` events:
+
+| `type` | Payload | Meaning |
+|--------|---------|---------|
+| `question_generated` | `{ type, questionId, vakStyle }` | unchanged |
+| `question_failed` | `{ type, vakStyle, reason }` | one question failed. `reason` is new (existing keys unchanged) |
+| `ai_service_restored` | `{ type, since }` (`since` ISO date) | **new**: a generation succeeded after an AI outage |
+
+`reason` values:
+- `ai_unavailable`: every call to the AI service failed (network, 5xx, quota, timeout). **This is the outage alert.**
+- `validation_failed`: the AI answered, but no draft passed the checks (e.g. VAK option distribution).
+- `mvi_rejected`: MVI in gate mode blocked every attempt.
+- `internal_error`: anything else (e.g. database error before or while saving).
+
+`ai_service_restored` goes to the teacher whose generation succeeded and to every teacher who received an `ai_unavailable` failure during that outage (sent once per outage).
+
+`GET /api/health` (public) now also returns the last known state, without calling the AI service:
+```json
+{ "status": "ok", "db": "up", "aiGeneration": { "status": "unavailable", "since": "2026-10-10T10:00:00.000Z" } }
+```
+- `aiGeneration.status` ∈ `available | unavailable | unknown` (`unknown` = no generation since the server started; `since` is then `null`). It never changes `status` or the HTTP code.
+- The state comes from real generation outcomes only and is kept in memory per server instance (it resets to `unknown` on restart).
+
+**UI suggestion (phase B):** on `question_failed` with `reason: "ai_unavailable"` (or `aiGeneration.status === "unavailable"` when the teacher opens the question screens), show a banner: "The AI question service is unavailable. New questions cannot be generated for now; questionnaires keep using the existing approved question bank." On `ai_service_restored` (or health back to `available`), replace it with "The AI question service is available again. You can resume generating questions." Other reasons keep the current generic failure toast with a retry.
+
 #### MVI diagnosis on questions (teacher/admin)
 
 Every question returned by `/api/questions/*` carries the diagnosis of MVI (the external item validator) next to the usual fields. Students **never** receive these fields: `PublicQuestionView` is unchanged.

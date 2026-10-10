@@ -9,6 +9,8 @@ import { EmbeddingAdapter } from '../../../../../src/domain/adapters/embedding.a
 import { AIImageGeneratorAdapter } from '../../../../../src/domain/adapters/ai-image-generator.adapter.js';
 import { ImageStorageAdapter } from '../../../../../src/domain/adapters/image-storage.adapter.js';
 import { ItemValidatorAdapter } from '../../../../../src/domain/adapters/item-validator.adapter.js';
+import { QuestionGenerationError } from '../../../../../src/domain/use-cases/question/question-generation.error.js';
+import { CustomError } from '../../../../../src/domain/error/custom-error.js';
 import type {
   ItemValidationBatch,
   ItemViolation,
@@ -190,8 +192,22 @@ describe('GenerateQuestionUseCase', () => {
     const invalid = { statement: '', options: [] };
     aiGenerator.generateQuestion.mockResolvedValue(invalid as any);
 
-    await expect(useCase.execute(visualDto!)).rejects.toMatchObject({ statusCode: 503 });
+    await expect(useCase.execute(visualDto!)).rejects.toMatchObject({ statusCode: 503, reason: 'validation_failed' });
     expect(aiGenerator.generateQuestion).toHaveBeenCalledTimes(3);
+  });
+
+  it('keeps the AI status code when every AI call fails (HU-47)', async () => {
+    const quiet = new GenerateQuestionUseCase(
+      repo, aiGenerator, embeddingAdapter, imageGenerator, imageStorage,
+      { maxAttempts: 2, sleep: jest.fn().mockResolvedValue(undefined) },
+    );
+    aiGenerator.generateQuestion.mockRejectedValue(CustomError.gatewayTimeout('Gemini chat timed out'));
+
+    await expect(quiet.execute(visualDto!)).rejects.toMatchObject({
+      statusCode: 504,
+      reason: 'ai_unavailable',
+      message: 'Gemini chat timed out',
+    });
   });
 
   describe('VAK option distribution (HU-20)', () => {
@@ -290,7 +306,10 @@ describe('GenerateQuestionUseCase', () => {
         .mockRejectedValueOnce(new Error('second'))
         .mockRejectedValueOnce(lastError);
 
-      await expect(useCase.execute(visualDto!)).rejects.toBe(lastError);
+      const error = await useCase.execute(visualDto!).catch((e) => e);
+
+      expect(error).toBeInstanceOf(QuestionGenerationError);
+      expect(error).toMatchObject({ reason: 'ai_unavailable', message: 'still failing', originalError: lastError });
       expect(sleep).toHaveBeenCalledTimes(2);
       expect(repo.createWithOptionsAndEmbedding).not.toHaveBeenCalled();
     });
@@ -599,6 +618,7 @@ describe('GenerateQuestionUseCase', () => {
 
       await expect(build('gate').execute(visualDto!)).rejects.toMatchObject({
         statusCode: 503,
+        reason: 'mvi_rejected',
         message: 'Generated Visual question did not pass MVI after 3 attempts',
       });
       expect(repo.createWithOptionsAndEmbedding).not.toHaveBeenCalled();

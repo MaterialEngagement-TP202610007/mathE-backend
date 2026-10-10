@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from "uuid";
-import { CustomError } from "../../error/custom-error.js";
+import { QuestionGenerationError } from "./question-generation.error.js";
 import { QuestionRepository } from "../../repositories/question.repository.js";
 import { AIQuestionGeneratorAdapter } from "../../adapters/ai-question-generator.adapter.js";
 import { AIImageGeneratorAdapter } from "../../adapters/ai-image-generator.adapter.js";
@@ -131,7 +131,7 @@ export class GenerateQuestionUseCase {
         // Transient AI failures (429 / 5xx / timeout): back off and retry.
         if (attempt === maxAttempts) {
           if (best) break;
-          throw err;
+          throw QuestionGenerationError.aiUnavailable(err);
         }
         console.error(
           `[question] AI generation attempt ${attempt} failed:`,
@@ -221,7 +221,7 @@ export class GenerateQuestionUseCase {
 
     if (best) {
       if (mviMode === "gate") {
-        throw CustomError.serviceUnavailable(
+        throw QuestionGenerationError.mviRejected(
           `Generated ${dto.vakStyle} question did not pass MVI after ${maxAttempts} attempts`,
         );
       }
@@ -239,7 +239,7 @@ export class GenerateQuestionUseCase {
       });
     }
 
-    throw CustomError.serviceUnavailable(
+    throw QuestionGenerationError.validationFailed(
       `Could not generate a valid ${dto.vakStyle} question after ${maxAttempts} attempts`,
     );
   }
