@@ -59,7 +59,7 @@ mviResult: {
   - Old #29 returned 200 with its original keys `approved, attempts, violations`.
   - A student calling `GET /api/questions/48` got 403. The student questionnaire repo test (no `mvi*` keys) is green.
   - The 10 rule ids from `/reglas` are: longitud-enunciado, legibilidad-nivel, vocabulario-nivel, redaccion-positiva, longitud-opciones, homogeneidad-opciones, exclusividad-opciones, independencia-banco, correspondencia-dimension, composicion-dimensiones. `distribucion-posicional` is a bank-level check and not part of this list.
-- [ ] **F0** Send the frontend brief to `mathe-frontend-87`.
+- [x] **F0** Send the frontend brief to `mathe-frontend-87`. Delivered by SendMessage. It covers the contract, the 10 real rule ids with friendly names, the dialog/badge/fallback requirements and the `ConfirmModal` copy. The frontend session plans and implements on its own branch.
 
 ## Acceptance criteria
 - New questions carry `history` (one entry per MVI call) and `rules` (the catalog snapshot).
@@ -80,5 +80,7 @@ mviResult: {
 
 - RDD: range 9120926..7007c23 assessed as medium (`slice_budget_reached`); consent granted; reliability review approved and acknowledged (lineage review-583cd9b10047e7fe). Non-blocking suggestions R3-001 (`revalidate-question.use-case.ts:80`) and R3-002 (`generate-question.use-case.ts:104-106`) are follow-ups.
 
+- Pushed `feat/mvi-transparency` (up to 6f4151f) to origin.
+
 ## Next step
-Push `feat/mvi-transparency`, then send the frontend brief (F0) to `mathe-frontend-87`.
+User decides on merging `feat/mvi-transparency` into `release` (Render deploy). Frontend implementation is pending in mathE-frontend.
