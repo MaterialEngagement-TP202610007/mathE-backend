@@ -17,11 +17,15 @@ const SERVICE_NAME = "Lambda";
 const THROTTLE_RETRY_DELAYS_MS = [500, 1000];
 const MAX_RETRY_JITTER_MS = 250;
 const THROTTLE_STATUSES = new Set([429, 503]);
+/** A retry is only worth sending with at least this much time left. */
+const MIN_ATTEMPT_MS = 250;
 
 export interface LambdaClassifierAdapterOptions {
   sleep?: (ms: number) => Promise<void>;
   /** Returns a number in [0, 1); used to spread concurrent retries. */
   random?: () => number;
+  /** Monotonic-enough clock in ms; injectable so tests can prove the deadline. */
+  now?: () => number;
 }
 
 const defaultSleep = (ms: number) =>
@@ -62,10 +66,16 @@ function requireNumber(value: unknown, field: string): number {
 export class LambdaClassifierAdapterImpl implements LambdaClassifierAdapter {
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly random: () => number;
+  private readonly now: () => number;
 
-  constructor({ sleep = defaultSleep, random = Math.random }: LambdaClassifierAdapterOptions = {}) {
+  constructor({
+    sleep = defaultSleep,
+    random = Math.random,
+    now = Date.now,
+  }: LambdaClassifierAdapterOptions = {}) {
     this.sleep = sleep;
     this.random = random;
+    this.now = now;
   }
 
   async classify(input: LambdaClassifierInput): Promise<LambdaClassifierOutput> {
@@ -74,15 +84,21 @@ export class LambdaClassifierAdapterImpl implements LambdaClassifierAdapter {
     }
 
     const body = JSON.stringify({ features: input.features });
-    let response = await this.post(body);
+    // HU-52: the whole call (attempts + backoffs) ends by this deadline, so the
+    // simple_score fallback still answers the student in under 5 s.
+    const deadline = this.now() + envs.LAMBDA_DEADLINE_MS;
+    let response = await this.post(body, this.attemptTimeout(deadline));
 
     // Throttled calls are rejected instantly when the account concurrency limit
     // is reached, so a short retry usually lands on a freed execution slot.
     // Timeouts and other errors are not retried: they fall back right away.
+    // A retry that would not fit before the deadline is cancelled.
     for (const delayMs of THROTTLE_RETRY_DELAYS_MS) {
       if (!THROTTLE_STATUSES.has(response.status)) break;
-      await this.sleep(delayMs + Math.floor(this.random() * MAX_RETRY_JITTER_MS));
-      response = await this.post(body);
+      const waitMs = delayMs + Math.floor(this.random() * MAX_RETRY_JITTER_MS);
+      if (deadline - this.now() - waitMs < MIN_ATTEMPT_MS) break;
+      await this.sleep(waitMs);
+      response = await this.post(body, this.attemptTimeout(deadline));
     }
 
     if (!response.ok) throw upstreamStatusError(response, SERVICE_NAME);
@@ -91,12 +107,18 @@ export class LambdaClassifierAdapterImpl implements LambdaClassifierAdapter {
     return this.toOutput(raw);
   }
 
-  private post(body: string): Promise<Response> {
+  /** Per-request timeout, never past the overall deadline. */
+  private attemptTimeout(deadline: number): number {
+    const remaining = Math.max(1, deadline - this.now());
+    return Math.min(envs.LAMBDA_TIMEOUT_MS, remaining);
+  }
+
+  private post(body: string, timeoutMs: number): Promise<Response> {
     return fetchWithTimeout(envs.LAMBDA_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body,
-      timeoutMs: envs.LAMBDA_TIMEOUT_MS,
+      timeoutMs,
       serviceName: SERVICE_NAME,
     });
   }

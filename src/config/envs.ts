@@ -51,7 +51,11 @@ export const envs = {
 
   // Outbound request timeouts (ms). Lambda + feedback run synchronously
   // inside PATCH /complete and must stay well under the proxy limit.
-  LAMBDA_TIMEOUT_MS: envVar.get("LAMBDA_TIMEOUT_MS").default("7000").asIntPositive(),
+  // HU-52: the classifier (attempts + throttling retries) must give up within
+  // LAMBDA_DEADLINE_MS so simple_score still answers in under 5 s. Each attempt
+  // is also capped by the time left before the deadline.
+  LAMBDA_TIMEOUT_MS: envVar.get("LAMBDA_TIMEOUT_MS").default("4000").asIntPositive(),
+  LAMBDA_DEADLINE_MS: envVar.get("LAMBDA_DEADLINE_MS").default("4500").asIntPositive(),
   GEMINI_FEEDBACK_TIMEOUT_MS: envVar
     .get("GEMINI_FEEDBACK_TIMEOUT_MS")
     .default("8000")
