@@ -82,5 +82,12 @@ mviResult: {
 
 - Pushed `feat/mvi-transparency` (up to 6f4151f) to origin.
 
+- 2026-10-10 integration review of mathE-frontend `feat/mvi-transparency` (5 commits, head d4a8ea4):
+  - Frontend checks: `tsc -b` exit 0, `eslint .` clean, `vite build` OK.
+  - Real backend responses parsed by the frontend MVI utils: all checks pass (#48 three entries, #47 one entry, #29 fallback, `/questions/my` fields).
+  - Contract review found one bug, caused by the backend brief: the checklist used `history.at(-1).violations` instead of `result.violations`, which is wrong for advisory `failed` questions where the best attempt is saved.
+  - Fix and three minor recommendations sent to session `mathe-frontend-d6`, which will open its PR once its checks pass.
+- Backend PR opened: https://github.com/MaterialEngagement-TP202610007/mathE-backend/pull/1 (feat/mvi-transparency → release).
+
 ## Next step
-User decides on merging `feat/mvi-transparency` into `release` (Render deploy). Frontend implementation is pending in mathE-frontend.
+Frontend session fixes the checklist source and opens its PR into `release`. The user merges both PRs (backend first; Render deploy).
