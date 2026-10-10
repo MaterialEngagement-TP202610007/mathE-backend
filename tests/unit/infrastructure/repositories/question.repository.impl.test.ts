@@ -286,12 +286,33 @@ describe('QuestionRepositoryImpl MVI persistence', () => {
   it('approve records approvedOverMvi when overriding an MVI failure', async () => {
     mocked.question.update.mockResolvedValueOnce({ ...dbQuestion(5), approvedOverMvi: true });
 
-    const entity = await new QuestionRepositoryImpl().approve(5, true);
+    const entity = await new QuestionRepositoryImpl().approve(5, { approvedOverMvi: true });
 
     expect(mocked.question.update.mock.calls[0][0].data).toEqual({
       validationStatus: 'approved',
       approvedOverMvi: true,
     });
     expect(entity.approvedOverMvi).toBe(true);
+  });
+
+  it('approve stores the VAK style chosen by the teacher (HU-42)', async () => {
+    mocked.question.update.mockResolvedValueOnce({ ...dbQuestion(5), vakStyle: 'Auditory' });
+
+    const entity = await new QuestionRepositoryImpl().approve(5, { approvedOverMvi: false, vakStyle: 'Auditory' });
+
+    expect(mocked.question.update.mock.calls[0][0].data).toEqual({
+      validationStatus: 'approved',
+      approvedOverMvi: false,
+      vakStyle: 'Auditory',
+    });
+    expect(entity.vakStyle).toBe('Auditory');
+  });
+
+  it('approve leaves the VAK style untouched when none is given', async () => {
+    mocked.question.update.mockResolvedValueOnce(dbQuestion(5));
+
+    await new QuestionRepositoryImpl().approve(5, { approvedOverMvi: false, vakStyle: null });
+
+    expect(mocked.question.update.mock.calls[0][0].data).not.toHaveProperty('vakStyle');
   });
 });

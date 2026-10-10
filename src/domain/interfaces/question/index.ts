@@ -1,4 +1,4 @@
-import { VakValue } from "../../constants/vak.constant.js";
+import { VakStyle, VakValue } from "../../constants/vak.constant.js";
 import { MviStatus, MviValidationRecord } from "../item-validation/index.js";
 
 /** A single option as produced by the AI generator (PASO 1). */
@@ -50,4 +50,12 @@ export interface UpdateMviValidationData {
   mviResult: MviValidationRecord | null;
   mviCatalogVersion: string | null;
   mviValidatedAt: Date;
+}
+
+/** Teacher decision written when a pending question is approved (HU-42, HU-60). */
+export interface ApproveQuestionData {
+  /** True when the question is approved despite a failed MVI diagnosis. */
+  approvedOverMvi?: boolean;
+  /** VAK style stated by the teacher; null or absent keeps the current style. */
+  vakStyle?: VakStyle | null;
 }

@@ -357,7 +357,7 @@ Email / password / roleId are **not** editable here. `schoolId` must be an exist
 | GET | `/my?status=&page=&limit=` | — | paginated own questions |
 | GET | `/my/validated-history` | — | paginated approved+rejected |
 | GET | `/:id` | — | `Question` with options |
-| PATCH | `/:id/approve` | — | `Question` (status=approved) |
+| PATCH | `/:id/approve` | `{ vakStyle? }` | `Question` (status=approved, `vakStyle` as stated) |
 | PATCH | `/:id/reject` | `{ rejectionReason }` | `Question` (status=rejected) |
 | POST | `/:id/validate` | — | `Question` with a fresh MVI diagnosis |
 | DELETE | `/:id` | — | `204` (soft delete) |
@@ -366,6 +366,7 @@ Email / password / roleId are **not** editable here. `schoolId` must be an exist
 - **Per-school bank:** generated questions get `schoolId` = the attributed teacher's school. A teacher without school gets `400 "Teacher must belong to a school to generate questions"` before anything starts.
 - `/:id`, `/:id/approve`, `/:id/reject`, `DELETE /:id`: teachers only for questions of **their own school** → otherwise `403 "Question does not belong to your school"`. Admins: any question. `Question` responses now include `schoolId: number | null`.
 - `status` filter ∈ `pending | approved | rejected` (omit for all).
+- **Approve with a VAK style (HU-42):** `PATCH /:id/approve` accepts an optional JSON body `{ "vakStyle": "Visual" | "Auditory" | "Kinesthetic" }`. When sent, the question joins the approved bank with that style (it replaces the generated `vakStyle`; options keep their own `vakValue`). When the body or `vakStyle` is omitted (or `null`), the current style is kept, so older clients keep working. Any other value → `400 "Invalid Vak Style. Allowed: Visual, Auditory, Kinesthetic"`. The new UI should make the style selector mandatory (preselect the generated `vakStyle` and block confirm until a style is chosen; HU-42 S2 is enforced in the UI). `approvedOverMvi` works exactly as before.
 - Generation can return `502` (Gemini failed) or `503` (couldn't produce a unique, non-redundant question after max attempts). Show a retry affordance. **Generation is slow** (AI + embedding round-trips) — show a spinner and allow ~10–30s.
 
 #### MVI diagnosis on questions (teacher/admin)
@@ -615,7 +616,7 @@ Notes:
 1. POST /api/questions/generate { vakStyle: "Visual" }
    → AI generates statement + 4 options, dedupes against existing, persists as pending.
 2. Review queue: GET /api/questions/my?status=pending
-3. Approve:  PATCH /api/questions/:id/approve
+3. Approve:  PATCH /api/questions/:id/approve { vakStyle }   (vakStyle optional, see HU-42)
    Reject:   PATCH /api/questions/:id/reject { rejectionReason }
 4. Audit:    GET /api/questions/my/validated-history
 ```

@@ -196,7 +196,28 @@ describe('QuestionController school-scoped question actions', () => {
   it('approve passes the authenticated requester', async () => {
     const { controller, useCases, res } = makeController();
     await controller.approve(teacherReq(), res, jest.fn());
-    expect(useCases.approve.execute).toHaveBeenCalledWith(5, requester);
+    expect(useCases.approve.execute).toHaveBeenCalledWith(5, requester, expect.objectContaining({ vakStyle: null }));
+  });
+
+  it('approve forwards the VAK style chosen by the teacher (HU-42)', async () => {
+    const { controller, useCases, res } = makeController();
+    await controller.approve(teacherReq({ body: { vakStyle: 'Auditory' } }), res, jest.fn());
+    expect(useCases.approve.execute).toHaveBeenCalledWith(5, requester, expect.objectContaining({ vakStyle: 'Auditory' }));
+    expect(res.json).toHaveBeenCalledWith(question);
+  });
+
+  it('approve keeps backward compatibility when no body is sent', async () => {
+    const { controller, useCases, res } = makeController();
+    await controller.approve(teacherReq({ body: undefined }), res, jest.fn());
+    expect(useCases.approve.execute).toHaveBeenCalledWith(5, requester, expect.objectContaining({ vakStyle: null }));
+  });
+
+  it('approve responds 400 for an invalid VAK style without calling the use case', async () => {
+    const { controller, useCases, res } = makeController();
+    await controller.approve(teacherReq({ body: { vakStyle: 'Tactile' } }), res, jest.fn());
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({ error: 'Invalid Vak Style. Allowed: Visual, Auditory, Kinesthetic' });
+    expect(useCases.approve.execute).not.toHaveBeenCalled();
   });
 
   it('reject passes the dto and the authenticated requester', async () => {

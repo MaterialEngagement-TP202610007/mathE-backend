@@ -4,6 +4,7 @@ import { PaginationDto } from "../../domain/dtos/shared/pagination.dto.js";
 import { GenerateQuestionDto } from "../../domain/dtos/question/generate-question.dto.js";
 import { ListQuestionsDto } from "../../domain/dtos/question/list-questions.dto.js";
 import { RejectQuestionDto } from "../../domain/dtos/question/reject-question.dto.js";
+import { ApproveQuestionDto } from "../../domain/dtos/question/approve-question.dto.js";
 import { ValidatedHistoryDto } from "../../domain/dtos/question/validated-history.dto.js";
 import {
   BulkGenerateQuestionsUseCase,
@@ -159,10 +160,14 @@ export class QuestionController {
     const id = Number(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid question id" });
 
+    const [error, dto] = ApproveQuestionDto.create(req.body);
+    if (error) return res.status(400).json({ error });
+
     try {
       const question = await this.approveQuestionUseCase.execute(
         id,
         toRequester(req),
+        dto!,
       );
       res.json(question);
     } catch (err) {

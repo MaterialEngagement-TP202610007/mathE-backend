@@ -4,6 +4,7 @@ import { QuestionRepository } from '../../../../../src/domain/repositories/quest
 import { SchoolAccessPolicy } from '../../../../../src/domain/policies/school-access.policy.js';
 import { Requester } from '../../../../../src/domain/interfaces/shared/requester.interface.js';
 import { ROLES } from '../../../../../src/domain/constants/roles.constant.js';
+import { ApproveQuestionDto } from '../../../../../src/domain/dtos/question/approve-question.dto.js';
 
 const admin: Requester = { id: 1, roleId: ROLES.ADMIN };
 
@@ -31,7 +32,7 @@ describe('ApproveQuestionUseCase MVI override flag', () => {
 
     await useCase.execute(5, admin);
 
-    expect(repo.approve).toHaveBeenCalledWith(5, true);
+    expect(repo.approve).toHaveBeenCalledWith(5, { approvedOverMvi: true, vakStyle: null });
   });
 
   it.each(['passed', 'unavailable', 'skipped', null])(
@@ -41,7 +42,7 @@ describe('ApproveQuestionUseCase MVI override flag', () => {
 
       await useCase.execute(5, admin);
 
-      expect(repo.approve).toHaveBeenCalledWith(5, false);
+      expect(repo.approve).toHaveBeenCalledWith(5, { approvedOverMvi: false, vakStyle: null });
     },
   );
 
@@ -50,5 +51,36 @@ describe('ApproveQuestionUseCase MVI override flag', () => {
 
     await expect(useCase.execute(5, admin)).rejects.toMatchObject({ statusCode: 400 });
     expect(repo.approve).not.toHaveBeenCalled();
+  });
+});
+
+describe('ApproveQuestionUseCase VAK style (HU-42)', () => {
+  function dto(body: object): ApproveQuestionDto {
+    const [, approveDto] = ApproveQuestionDto.create(body);
+    return approveDto!;
+  }
+
+  it('approves with the style the teacher selected', async () => {
+    const { repo, useCase } = makeUseCase(makeQuestion('passed'));
+
+    await useCase.execute(5, admin, dto({ vakStyle: 'Kinesthetic' }));
+
+    expect(repo.approve).toHaveBeenCalledWith(5, { approvedOverMvi: false, vakStyle: 'Kinesthetic' });
+  });
+
+  it('keeps the MVI override flag when a style is selected', async () => {
+    const { repo, useCase } = makeUseCase(makeQuestion('failed'));
+
+    await useCase.execute(5, admin, dto({ vakStyle: 'Auditory' }));
+
+    expect(repo.approve).toHaveBeenCalledWith(5, { approvedOverMvi: true, vakStyle: 'Auditory' });
+  });
+
+  it('keeps the current style when none is selected', async () => {
+    const { repo, useCase } = makeUseCase(makeQuestion(null));
+
+    await useCase.execute(5, admin, dto({}));
+
+    expect(repo.approve).toHaveBeenCalledWith(5, { approvedOverMvi: false, vakStyle: null });
   });
 });

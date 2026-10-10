@@ -286,13 +286,29 @@ export class QuestionRoutes {
      *         required: true
      *         schema: { type: integer }
      *         description: Question id.
+     *     requestBody:
+     *       required: false
+     *       description: >
+     *         HU-42: the VAK style the teacher assigns to the question. When present it
+     *         replaces the question's vakStyle (options keep their own vakValue). When the
+     *         body or vakStyle is omitted or null, the current style is kept.
+     *       content:
+     *         application/json:
+     *           schema:
+     *             type: object
+     *             properties:
+     *               vakStyle:
+     *                 type: string
+     *                 nullable: true
+     *                 enum: [Visual, Auditory, Kinesthetic]
      *     responses:
      *       200:
      *         description: >
-     *           Updated question with validationStatus=approved. approvedOverMvi is true when
-     *           the question was approved despite mviStatus=failed (approval is never blocked by MVI).
+     *           Updated question with validationStatus=approved and the stated vakStyle.
+     *           approvedOverMvi is true when the question was approved despite
+     *           mviStatus=failed (approval is never blocked by MVI).
      *       400:
-     *         description: Invalid id or question is not pending
+     *         description: Invalid id, invalid vakStyle, or question is not pending
      *       403:
      *         description: 'Teacher acting on another school''s question — { error: "Question does not belong to your school" }'
      *       404:

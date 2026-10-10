@@ -1,5 +1,6 @@
 import { QuestionEntity } from "../entities/question.entity.js";
 import {
+  ApproveQuestionData,
   CreateQuestionData,
   UpdateMviValidationData,
 } from "../interfaces/question/index.js";
@@ -70,10 +71,14 @@ export abstract class QuestionRepository {
 
   abstract findById(id: number): Promise<QuestionEntity | null>;
 
-  /** `approvedOverMvi` flags an approval given despite a failed MVI diagnosis. */
+  /**
+   * Marks a question approved. `approvedOverMvi` flags an approval given
+   * despite a failed MVI diagnosis; `vakStyle`, when set, replaces the
+   * question's style with the one stated by the teacher.
+   */
   abstract approve(
     id: number,
-    approvedOverMvi?: boolean,
+    decision?: ApproveQuestionData,
   ): Promise<QuestionEntity>;
 
   abstract updateMviValidation(
