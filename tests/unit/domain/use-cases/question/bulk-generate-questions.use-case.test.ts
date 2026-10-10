@@ -411,6 +411,41 @@ describe('BulkGenerateQuestionsUseCase AI availability (HU-47)', () => {
     expect(onAiRestored).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps a saved question successful when the restore callback throws (R3-003)', async () => {
+    generateUseCase.execute.mockResolvedValue(makeEntity(1));
+    tracker.recordSuccess.mockReturnValue(true);
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const onGenerated = jest.fn();
+    const onFailed = jest.fn();
+    const onAiRestored = jest.fn(() => {
+      throw new Error('sse write failed');
+    });
+
+    const questions = await useCase.execute(visualDto!, 1, 5, { onGenerated, onFailed, onAiRestored });
+
+    expect(questions).toHaveLength(1);
+    expect(onGenerated).toHaveBeenCalledTimes(1);
+    expect(onFailed).not.toHaveBeenCalled();
+    expect(onAiRestored).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('keeps reporting a validation failure when the restore callback throws (R3-003)', async () => {
+    generateUseCase.execute.mockRejectedValue(QuestionGenerationError.validationFailed('no valid draft'));
+    tracker.recordSuccess.mockReturnValue(true);
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const onFailed = jest.fn();
+    const onAiRestored = jest.fn(() => {
+      throw new Error('sse write failed');
+    });
+
+    await useCase.execute(visualDto!, 1, 5, { onGenerated: jest.fn(), onFailed, onAiRestored }).catch(() => undefined);
+
+    expect(onFailed).toHaveBeenCalledWith('validation_failed');
+    warn.mockRestore();
+  });
+
   it('does not signal a restoration when the AI was not down', async () => {
     generateUseCase.execute.mockResolvedValue(makeEntity(1));
     const onAiRestored = jest.fn();

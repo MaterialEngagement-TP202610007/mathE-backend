@@ -132,9 +132,19 @@ export class BulkGenerateQuestionsUseCase {
   /**
    * HU-47: a generated question, or a draft rejected by the checks, proves the
    * AI answered. When that ends an outage the caller announces the recovery.
+   * The announcement is best effort: a throwing callback is logged and never
+   * turns an already-saved question (or its real failure reason) into a failure.
    */
   private recordAiAnswered(onProgress?: QuestionGenerationProgress): void {
-    if (this.aiAvailability?.recordSuccess()) onProgress?.onAiRestored?.();
+    if (!this.aiAvailability?.recordSuccess()) return;
+    try {
+      onProgress?.onAiRestored?.();
+    } catch (err) {
+      console.warn(
+        "[ai-availability] restore notification failed:",
+        err instanceof Error ? err.message : String(err),
+      );
+    }
   }
 
     /** Once per batch: wake the validator, load its catalog and the school bank. */
