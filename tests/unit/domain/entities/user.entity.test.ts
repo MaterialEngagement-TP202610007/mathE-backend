@@ -27,6 +27,15 @@ describe('UserEntity.fromObject', () => {
     expect(entity.schoolName).toBeNull();
   });
 
+  it('defaults termsAcceptedAt to null for users registered before terms tracking', () => {
+    expect(UserEntity.fromObject(base).termsAcceptedAt).toBeNull();
+  });
+
+  it('maps termsAcceptedAt to a Date', () => {
+    const entity = UserEntity.fromObject({ ...base, termsAcceptedAt: '2026-10-10T12:00:00.000Z' });
+    expect(entity.termsAcceptedAt).toEqual(new Date('2026-10-10T12:00:00.000Z'));
+  });
+
   it('maps school.cenEdu to schoolName', () => {
     const entity = UserEntity.fromObject({ ...base, school: { cenEdu: 'Colegio Nacional' } });
     expect(entity.schoolName).toBe('Colegio Nacional');

@@ -8,6 +8,7 @@ const base = {
   birthDate: '1990-01-01',
   roleId: ROLES.TEACHER,
   schoolId: 5,
+  acceptTerms: true,
 };
 
 describe('RegisterUserDto.create', () => {
@@ -131,6 +132,22 @@ describe('RegisterUserDto.create', () => {
   it.each([0, -3, 1.5, 'abc'])('rejects non positive-integer schoolId %p', (schoolId) => {
     const [err] = RegisterUserDto.create({ ...base, schoolId });
     expect(err).toBe('Invalid School Id');
+  });
+
+  it.each([undefined, null, false, 'true', 1, 'yes'])(
+    'rejects registration when acceptTerms is %p (must be exactly true)',
+    (acceptTerms) => {
+      const [err, dto] = RegisterUserDto.create({ ...base, acceptTerms });
+      expect(err).toBe('Terms and privacy policy must be accepted');
+      expect(dto).toBeUndefined();
+    },
+  );
+
+  it('does not carry the acceptTerms flag; termsAcceptedAt is left for the use case', () => {
+    const [err, dto] = RegisterUserDto.create(base);
+    expect(err).toBeUndefined();
+    expect(dto).not.toHaveProperty('acceptTerms');
+    expect(dto!.termsAcceptedAt).toBeNull();
   });
 
   it('defaults phoneNumber to null when not provided', () => {

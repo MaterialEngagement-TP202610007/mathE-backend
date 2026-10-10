@@ -17,6 +17,7 @@ export class UserEntity {
     public schoolId: number | null,
     public deletedAt: Date | null,
     public schoolName: string | null = null,
+    public termsAcceptedAt: Date | null = null,
   ) {}
 
   static fromObject(object: { [key: string]: any }): UserEntity {
@@ -35,6 +36,7 @@ export class UserEntity {
       schoolId,
       deletedAt,
       school,
+      termsAcceptedAt,
     } = object;
 
     if (!id) throw CustomError.badRequest("Missing Id");
@@ -61,6 +63,7 @@ export class UserEntity {
       schoolId ?? null,
       deletedAt ? new Date(deletedAt) : null,
       school?.cenEdu ?? object.schoolName ?? null,
+      termsAcceptedAt ? new Date(termsAcceptedAt) : null,
     );
   }
 }

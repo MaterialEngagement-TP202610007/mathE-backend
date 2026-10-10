@@ -26,6 +26,7 @@ function makeReq(roleId: number): Request {
       birthDate: '2000-01-01',
       roleId,
       schoolId: 5,
+      acceptTerms: true,
     },
   } as unknown as Request;
 }

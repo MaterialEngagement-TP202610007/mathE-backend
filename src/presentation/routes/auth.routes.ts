@@ -132,7 +132,7 @@ export class AuthRoutes {
      *         application/json:
      *           schema:
      *             type: object
-     *             required: [password, email, name, birthDate, roleId, schoolId]
+     *             required: [password, email, name, birthDate, roleId, schoolId, acceptTerms]
      *             properties:
      *               password:
      *                 type: string
@@ -156,6 +156,12 @@ export class AuthRoutes {
      *               academicGradeId:
      *                 type: integer
      *                 nullable: true
+     *               acceptTerms:
+     *                 type: boolean
+     *                 enum: [true]
+     *                 description: >
+     *                   Must be exactly true (terms and privacy policy accepted). The server
+     *                   stores the acceptance time as the user's termsAcceptedAt.
      *     responses:
      *       201:
      *         description: >
@@ -165,7 +171,8 @@ export class AuthRoutes {
      *       400:
      *         description: >
      *           Validation error (including "Invalid Role Id", "Missing School Id",
-     *           "Invalid School Id", "School not found")
+     *           "Invalid School Id", "School not found",
+     *           "Terms and privacy policy must be accepted")
      *       429:
      *         description: Too many registration attempts — { error }
      */

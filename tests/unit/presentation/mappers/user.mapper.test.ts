@@ -17,6 +17,19 @@ describe('user mapper', () => {
     });
   });
 
+  describe('termsAcceptedAt', () => {
+    it('is exposed as an optional timestamp by every mapper (null when never recorded)', () => {
+      const acceptedAt = new Date('2026-10-10T12:00:00Z');
+      const accepted = makeUser();
+      accepted.termsAcceptedAt = acceptedAt;
+
+      expect(toPublicUser(accepted).termsAcceptedAt).toEqual(acceptedAt);
+      expect(toAuthUser(accepted).termsAcceptedAt).toEqual(acceptedAt);
+      expect(toPublicUserWithSchool(accepted).termsAcceptedAt).toEqual(acceptedAt);
+      expect(toAuthUser(makeUser()).termsAcceptedAt).toBeNull();
+    });
+  });
+
   describe('toPublicUserWithSchool', () => {
     it('strips the password, keeps the flat fields and adds the nested school', () => {
       const user = toPublicUserWithSchool(makeUser());

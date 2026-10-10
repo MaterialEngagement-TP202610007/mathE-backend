@@ -85,8 +85,8 @@ Body:
 ```
 - `200` → `LoginResponse` `{ user }` **+** `Set-Cookie: auth_token=...; HttpOnly; Secure; SameSite=Strict; Max-Age=604800; Path=/`
 - `400` → validation error `{ "error": "Invalid Email" }`
-- `400` → invalid credentials
-- `401` → inactive account — pending teacher: `"Account is inactive. Your teacher account is pending administrator approval."` (always prefixed `Account is inactive`)
+- `400` → `"Invalid credentials"` — unknown email or wrong password, also for inactive accounts (their state is never revealed without the right password)
+- `401` → inactive account, only after the password is verified — pending teacher: `"Account is inactive. Your teacher account is pending administrator approval."` (always prefixed `Account is inactive`)
 
 ### `POST /api/auth/logout`
 No body. Clears the `auth_token` cookie.
@@ -108,12 +108,15 @@ Body:
   "roleId": 3,
   "phoneNumber": "+593987654321",   // optional, E.164
   "schoolId": 1,                     // REQUIRED (students and teachers), from GET /api/schools
-  "academicGradeId": 2               // optional
+  "academicGradeId": 2,              // optional
+  "acceptTerms": true                // REQUIRED, must be exactly the boolean true
 }
 ```
 - `201` student → `{ "message": "User created successfully", "requiresApproval": false }`
 - `201` teacher → `{ "message": "User created successfully. Your teacher account is pending administrator approval.", "requiresApproval": true }`
-- `400` → validation error, including `"Missing School Id"`, `"Invalid School Id"`, `"School not found"`
+- `400` → validation error, including `"Missing School Id"`, `"Invalid School Id"`, `"School not found"`, `"Terms and privacy policy must be accepted"` (when `acceptTerms` is missing or not `true`)
+
+**Terms acceptance:** send `acceptTerms: true` only after the user ticks the terms and privacy policy checkbox. The server records the acceptance time as `termsAcceptedAt`, which appears (nullable; `null` for accounts created before it was tracked) in the user objects returned by `/api/auth/*` and `/api/users/*`.
 
 **Password rule:** min 8 chars, at least one letter and one number (`/^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,}$/`).
 **Phone rule:** E.164-ish `+?[1-9]\d{1,14}`.

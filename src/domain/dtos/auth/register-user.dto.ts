@@ -15,6 +15,8 @@ export class RegisterUserDto {
     public academicGradeId: number | null,
     public schoolId: number | null,
     public isActive: boolean,
+    /** Set by the register use case at the moment of acceptance; null until then. */
+    public termsAcceptedAt: Date | null,
   ) {}
 
   static create(object: { [key: string]: any }): [string?, RegisterUserDto?] {
@@ -27,6 +29,7 @@ export class RegisterUserDto {
       phoneNumber,
       academicGradeId,
       schoolId,
+      acceptTerms,
     } = object;
 
     if (!password) return ["Missing Password"];
@@ -34,6 +37,11 @@ export class RegisterUserDto {
     if (!name) return ["Missing Name"];
     if (!birthDate) return ["Missing Birth Date"];
     if (!roleId) return ["Missing Role Id"];
+
+    // Explicit consent (HU-02/HU-09): only a literal boolean true counts.
+    if (acceptTerms !== true) {
+      return ["Terms and privacy policy must be accepted"];
+    }
 
     if (!regularExps.password.test(password)) return ["Invalid Password"];
     if (!regularExps.email.test(email)) return ["Invalid Email"];
@@ -80,6 +88,7 @@ export class RegisterUserDto {
           : null,
         parsedSchoolId,
         isActive,
+        null,
       ),
     ];
   }

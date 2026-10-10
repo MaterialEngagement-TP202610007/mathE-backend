@@ -66,7 +66,7 @@ DONE without gaps: 03, 08, 18, 22, 23, 24, 25, 26, 27, 31, 33, 43, 45, 53, 55 (S
 
 ## Tasks
 Backend:
-- [ ] **BE1** Auth hardening: require and store terms acceptance (`termsAcceptedAt`) (HU-02/09); check password before activation state (HU-10).
+- [x] **BE1** Auth hardening: require and store terms acceptance (`termsAcceptedAt`) (HU-02/09); check password before activation state (HU-10).
 - [ ] **BE2** Questionnaire: exclude already-seen questions (HU-17); strict VAK label distribution check (HU-20); autosave answers + resume progress (HU-29); bounded retry on result save (HU-39); classifier timeout within 5 s (HU-52).
 - [ ] **BE3** Questions: approve with `vakStyle` (HU-42); `question_failed` reason `ai_unavailable` + AI health signal (HU-47).
 - [ ] **BE4** Reports: period filter `from/to` (HU-51); per-style student counts by grade (HU-48); avg response time + completion rate (HU-50); CSV export by grade/period (HU-49).
@@ -91,6 +91,7 @@ Backend: `pnpm exec tsc --noEmit`, `pnpm exec jest`. Frontend: `tsc -b`, `eslint
 - 2026-10-10: branches created in both repos from `origin/release`. Audit done (route: three delegated read-only explorers; trigger: 58 stories across two repos, far beyond inline budget).
 - Delivery forecast: well above 400 authored lines across both repos. Strategy `ask-on-risk`; chain strategy `feature-branch-chain` (user decision 2026-10-10).
 - Scope decision 2026-10-10: HU-01 confirmation email and HU-41 audio are out of the MVP.
+- 2026-10-10 BE1 done on `feat/hu-compliance-be1` (route: delegated writer). HU-10 RED `pnpm exec jest tests/unit/domain/use-cases/auth/login-user.use-case.test.ts` → Expected 400, Received 401; GREEN 9/9; commit `3aebfa4`. HU-02/09 RED focused jest (DTO, auth use cases, user entity, user mapper) → TS2339 `termsAcceptedAt` does not exist on `UserEntity`/`PublicUser`/`AuthUser`; GREEN 82/82; commit `feat(auth): require terms acceptance on registration` (the commit that checks BE1 off). Migration `20261010140205_add_terms_accepted_at_to_user` (additive `ADD COLUMN`, existing users NULL). Checks: `pnpm exec tsc --noEmit` clean; `pnpm exec jest` 59 suites, 560/560 passed. Contract: register requires `acceptTerms: true` (400 "Terms and privacy policy must be accepted" otherwise; English to match the DTO file); users expose nullable `termsAcceptedAt`; a wrong password always returns 400 "Invalid credentials", and the inactive 401 comes back only after the password checks out.
 
 ## Delivery
 - Tracker branch (draft, no-merge PR to `release`): `feat/hu-compliance-review` in each repo.
@@ -106,4 +107,4 @@ Backend: `pnpm exec tsc --noEmit`, `pnpm exec jest`. Frontend: `tsc -b`, `eslint
 | FE* | frontend agent session (brief) | separate repo and session, user request |
 
 ## Next step
-BE1 on `feat/hu-compliance-be1`; frontend phase A brief to the frontend agent.
+BE2 on `feat/hu-compliance-be2` (branched from `feat/hu-compliance-be1`); frontend phase A brief to the frontend agent (must send `acceptTerms: true` before BE1 deploys).
