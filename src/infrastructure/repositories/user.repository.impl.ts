@@ -33,6 +33,28 @@ export class UserRepositoryImpl implements UserRepository {
     return UserEntity.fromObject(user);
   }
 
+  /**
+   * HU-37 search: ILIKE on name/email (case-insensitive; Postgres ILIKE is not
+   * accent-insensitive, so "Maria" does not match "María") plus exact id.
+   */
+  private searchConditions(term: string) {
+    const conditions: (
+      | { name: { contains: string; mode: "insensitive" } }
+      | { email: { contains: string; mode: "insensitive" } }
+      | { id: number }
+    )[] = [
+      { name: { contains: term, mode: "insensitive" } },
+      { email: { contains: term, mode: "insensitive" } },
+    ];
+    if (/^\d+$/.test(term)) {
+      const id = Number(term);
+      if (Number.isSafeInteger(id) && id > 0 && id <= 2147483647) {
+        conditions.push({ id });
+      }
+    }
+    return conditions;
+  }
+
   async findAll(
     pagination: PaginationDto,
     filters: UserListFilters = {},
@@ -66,6 +88,9 @@ export class UserRepositoryImpl implements UserRepository {
             lte: filters.createdAtTo,
           }),
         },
+      }),
+      ...(filters.search !== undefined && {
+        OR: this.searchConditions(filters.search),
       }),
     };
 

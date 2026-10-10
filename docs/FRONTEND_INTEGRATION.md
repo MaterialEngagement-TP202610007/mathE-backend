@@ -344,6 +344,10 @@ Legend: 🔓 public · 🔑 auth required · roles in parentheses.
 | DELETE | `/:id` | Admin | soft-delete → `{message, user}` |
 | PATCH | `/:id/activate` | Admin | approve a pending **teacher** → `{message, user}`; `400 "Only teacher accounts require activation"` for students/admins |
 
+List filters (all user lists): `page`, `limit`, `isActive`, `academicGradeId`, `birthDateFrom/To`, `createdAtFrom/To`, and `search` (HU-37).
+- `search`: trimmed, max 100 chars (`400 "search must be at most 100 characters"`; a repeated param → `400 "search must be a single text value"`; blank is ignored). Matches the **name or email** partially and case-insensitively, or the **exact numeric id** when the term is a number (the platform has no separate student code; use the id). Not accent-insensitive: `Maria` does not match `María` (Postgres `ILIKE`). Combines with the other filters and pagination, e.g. `GET /api/users/students/by-school/4?search=perez&academicGradeId=2&page=1&limit=10`.
+- Teacher flow (HU-37): search here → pick a student → `GET /api/results/student/:studentId` for the history (empty list = "aún no tiene cuestionarios completados").
+
 Update profile body (all optional, ≥1 required):
 ```json
 { "name": "...", "birthDate": "2010-05-01", "phoneNumber": "+593...", "academicGradeId": 2, "schoolId": 1 }

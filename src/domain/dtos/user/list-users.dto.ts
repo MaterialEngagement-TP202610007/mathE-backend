@@ -6,7 +6,11 @@ export class ListUsersDto {
     public readonly birthDateTo?: Date,
     public readonly createdAtFrom?: Date,
     public readonly createdAtTo?: Date,
+    /** HU-37: free-text term matched against name, email or exact id. */
+    public readonly search?: string,
   ) {}
+
+  static readonly SEARCH_MAX_LENGTH = 100;
 
   static create(query: Record<string, any>): [string?, ListUsersDto?] {
     let isActive: boolean | undefined;
@@ -63,6 +67,20 @@ export class ListUsersDto {
       return ["createdAtFrom must be before createdAtTo"];
     }
 
+    let search: string | undefined;
+    if (query.search !== undefined) {
+      if (typeof query.search !== "string") {
+        return ["search must be a single text value"];
+      }
+      const trimmed = query.search.trim();
+      if (trimmed.length > ListUsersDto.SEARCH_MAX_LENGTH) {
+        return [
+          `search must be at most ${ListUsersDto.SEARCH_MAX_LENGTH} characters`,
+        ];
+      }
+      search = trimmed || undefined;
+    }
+
     return [
       undefined,
       new ListUsersDto(
@@ -72,6 +90,7 @@ export class ListUsersDto {
         birthDateTo,
         createdAtFrom,
         createdAtTo,
+        search,
       ),
     ];
   }

@@ -7,6 +7,11 @@ export interface UserListFilters {
   birthDateTo?: Date;
   createdAtFrom?: Date;
   createdAtTo?: Date;
+  /**
+   * HU-37: case-insensitive partial match on name or email, plus an exact id
+   * match when the term is a positive integer.
+   */
+  search?: string;
 }
 
 export interface CreateAdminData {

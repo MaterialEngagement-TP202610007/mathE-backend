@@ -51,3 +51,45 @@ describe('UserRepositoryImpl.findAll', () => {
     expect(result.items[0]).toMatchObject({ id: 5, schoolId: 4, schoolName: 'Colegio X' });
   });
 });
+
+describe('UserRepositoryImpl.findAll search (HU-37)', () => {
+  beforeEach(() => {
+    mocked.user.findMany.mockResolvedValue([row]);
+    mocked.user.count.mockResolvedValue(1);
+  });
+
+  it('matches name or email case-insensitively and keeps the other filters', async () => {
+    const [, pagination] = PaginationDto.create(1, 10);
+
+    await new UserRepositoryImpl().findAll(pagination!, { roleId: 3, schoolId: 4, search: 'ana' });
+
+    const args = mocked.user.findMany.mock.calls[0][0];
+    expect(args.where).toMatchObject({ deletedAt: null, roleId: 3, schoolId: 4 });
+    expect(args.where.OR).toEqual([
+      { name: { contains: 'ana', mode: 'insensitive' } },
+      { email: { contains: 'ana', mode: 'insensitive' } },
+    ]);
+    expect(mocked.user.count).toHaveBeenCalledWith({ where: args.where });
+  });
+
+  it('also matches the exact numeric id when the term is a number', async () => {
+    const [, pagination] = PaginationDto.create(1, 10);
+
+    await new UserRepositoryImpl().findAll(pagination!, { roleId: 3, search: '42' });
+
+    const args = mocked.user.findMany.mock.calls[0][0];
+    expect(args.where.OR).toEqual([
+      { name: { contains: '42', mode: 'insensitive' } },
+      { email: { contains: '42', mode: 'insensitive' } },
+      { id: 42 },
+    ]);
+  });
+
+  it('adds no OR clause without a search term', async () => {
+    const [, pagination] = PaginationDto.create(1, 10);
+
+    await new UserRepositoryImpl().findAll(pagination!, { roleId: 3 });
+
+    expect(mocked.user.findMany.mock.calls[0][0].where.OR).toBeUndefined();
+  });
+});

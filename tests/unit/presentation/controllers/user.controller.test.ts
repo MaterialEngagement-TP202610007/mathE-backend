@@ -96,6 +96,31 @@ describe('UserController.getStudentsBySchool', () => {
     expect(schoolId).toBe(4);
     expect(requester).toEqual({ id: 7, roleId: 2 });
   });
+
+  it('forwards the trimmed search term with the other filters (HU-37)', async () => {
+    const bySchool = { execute: jest.fn().mockResolvedValue({ items: [], total: 0, page: 1, limit: 10 }) };
+    const unused = {} as never;
+    const controller = new UserController(unused, unused, unused, bySchool as never, unused, unused, unused, unused);
+    const req = makeReq({ query: { search: ' Pérez ', academicGradeId: '2' } } as Partial<Request>);
+
+    await controller.getStudentsBySchool(req, makeRes(), jest.fn());
+
+    const [, , filters] = bySchool.execute.mock.calls[0];
+    expect(filters).toMatchObject({ search: 'Pérez', academicGradeId: 2 });
+  });
+
+  it('returns 400 when the search term is too long (HU-37)', async () => {
+    const bySchool = { execute: jest.fn() };
+    const unused = {} as never;
+    const controller = new UserController(unused, unused, unused, bySchool as never, unused, unused, unused, unused);
+    const res = makeRes();
+
+    await controller.getStudentsBySchool(makeReq({ query: { search: 'x'.repeat(101) } } as Partial<Request>), res, jest.fn());
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({ error: 'search must be at most 100 characters' });
+    expect(bySchool.execute).not.toHaveBeenCalled();
+  });
 });
 
 describe('UserController.getTeachers', () => {

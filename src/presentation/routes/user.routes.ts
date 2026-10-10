@@ -111,8 +111,16 @@ export class UserRoutes {
      *       - in: query
      *         name: createdAtTo
      *         schema: { type: string, format: date-time }
+     *       - in: query
+     *         name: search
+     *         schema: { type: string, maxLength: 100 }
+     *         description: >
+     *           HU-37. Trimmed term matched against the student name or email
+     *           (partial, case-insensitive; not accent-insensitive) or the exact
+     *           numeric student id. Blank is ignored. Combines with the other filters.
      *     responses:
      *       200: { description: Paginated student list }
+     *       400: { description: "Invalid query filter (e.g. 'search must be at most 100 characters')" }
      */
     router.get(
       "/students",
@@ -189,9 +197,16 @@ export class UserRoutes {
      *       - in: query
      *         name: createdAtTo
      *         schema: { type: string, format: date-time }
+     *       - in: query
+     *         name: search
+     *         schema: { type: string, maxLength: 100 }
+     *         description: >
+     *           HU-37. Trimmed term matched against the student name or email
+     *           (partial, case-insensitive; not accent-insensitive) or the exact
+     *           numeric student id. Blank is ignored. Combines with the other filters.
      *     responses:
      *       200: { description: Paginated student list }
-     *       400: { description: Invalid School Id }
+     *       400: { description: "Invalid School Id, or invalid query filter (e.g. 'search must be at most 100 characters')" }
      *       403: { description: "Teacher requesting another school — { error: 'You can only access data from your own school' }" }
      */
     router.get(
