@@ -8,7 +8,7 @@ import { EmbeddingAdapter } from "../../adapters/embedding.adapter.js";
 import { GenerateQuestionDto } from "../../dtos/question/generate-question.dto.js";
 import { QuestionEntity } from "../../entities/question.entity.js";
 import { GeneratedQuestion } from "../../interfaces/question/index.js";
-import { VAK_VALUES } from "../../constants/vak.constant.js";
+import { VAK_VALUES, VakStyle, VakValue } from "../../constants/vak.constant.js";
 import {
   buildQuestionGenerationPrompt,
   buildQuestionRevisionPrompt,
@@ -60,6 +60,12 @@ interface RejectedAttempt {
 }
 
 const DEFAULT_RETRY_BASE_DELAY_MS = 1000;
+
+const VAK_VALUE_BY_STYLE: Record<VakStyle, VakValue> = {
+  Visual: "V",
+  Auditory: "A",
+  Kinesthetic: "K",
+};
 
 const NOT_VALIDATED: Omit<MviOutcome, "mviStatus"> = {
   mviResult: null,
@@ -135,7 +141,7 @@ export class GenerateQuestionUseCase {
         continue;
       }
 
-      if (!this.isValid(generated)) continue;
+      if (!this.isValid(generated, dto.vakStyle)) continue;
       if (lastRejected && !sameVakValues(lastRejected.generated, generated)) continue;
 
       if (!validator) {
@@ -295,14 +301,21 @@ export class GenerateQuestionUseCase {
     }
   }
 
-  private isValid(q: GeneratedQuestion): boolean {
+  /**
+   * A valid draft has 4 options distributed by VAK label (HU-20): 2 options
+   * with the question's own style and 1 with each of the other two styles.
+   */
+  private isValid(q: GeneratedQuestion, vakStyle: VakStyle): boolean {
     if (!q.statement || q.statement.trim().length === 0) return false;
     if (!Array.isArray(q.options) || q.options.length !== 4) return false;
     if (q.options.some((o) => !o.text || !VAK_VALUES.includes(o.vakValue))) {
       return false;
     }
-    const present = new Set(q.options.map((o) => o.vakValue));
-    return VAK_VALUES.every((v) => present.has(v));
+    const own = VAK_VALUE_BY_STYLE[vakStyle];
+    return VAK_VALUES.every((v) => {
+      const count = q.options.filter((o) => o.vakValue === v).length;
+      return count === (v === own ? 2 : 1);
+    });
   }
 }
 

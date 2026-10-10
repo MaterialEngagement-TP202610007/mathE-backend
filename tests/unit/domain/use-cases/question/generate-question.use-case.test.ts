@@ -194,6 +194,55 @@ describe('GenerateQuestionUseCase', () => {
     expect(aiGenerator.generateQuestion).toHaveBeenCalledTimes(3);
   });
 
+  describe('VAK option distribution (HU-20)', () => {
+    const withValues = (values: Array<'V' | 'A' | 'K'>) => ({
+      statement: 'Imagina que preparas una exposición en clase',
+      options: values.map((vakValue, i) => ({ text: `opción ${i + 1}`, vakValue })),
+    });
+
+    it('rejects a Visual draft whose doubled label is not V and retries', async () => {
+      aiGenerator.generateQuestion
+        .mockResolvedValueOnce(withValues(['V', 'A', 'K', 'A']))
+        .mockResolvedValueOnce(withValues(['V', 'A', 'K', 'V']));
+      repo.createWithOptionsAndEmbedding.mockResolvedValueOnce(makeEntity());
+
+      await useCase.execute(visualDto!);
+
+      expect(aiGenerator.generateQuestion).toHaveBeenCalledTimes(2);
+      const saved = repo.createWithOptionsAndEmbedding.mock.calls[0][0];
+      expect(saved.options.map((o) => o.vakValue)).toEqual(['V', 'A', 'K', 'V']);
+    });
+
+    it('rejects a draft with three options of the question style', async () => {
+      aiGenerator.generateQuestion.mockResolvedValue(withValues(['V', 'V', 'V', 'A']));
+
+      await expect(useCase.execute(visualDto!)).rejects.toMatchObject({ statusCode: 503 });
+      expect(repo.createWithOptionsAndEmbedding).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['Auditory', ['A', 'V', 'K', 'A']],
+      ['Kinesthetic', ['K', 'K', 'V', 'A']],
+    ] as const)('accepts a %s draft with 2 options of its own label and 1 of each other', async (style, values) => {
+      const [, dto] = GenerateQuestionDto.create({ vakStyle: style, teacherId: 1 });
+      aiGenerator.generateQuestion.mockResolvedValueOnce(withValues([...values]));
+      repo.createWithOptionsAndEmbedding.mockResolvedValueOnce(makeEntity());
+
+      await useCase.execute(dto!);
+
+      expect(aiGenerator.generateQuestion).toHaveBeenCalledTimes(1);
+      expect(repo.createWithOptionsAndEmbedding).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects an Auditory draft that doubles the Visual label', async () => {
+      const [, dto] = GenerateQuestionDto.create({ vakStyle: 'Auditory', teacherId: 1 });
+      aiGenerator.generateQuestion.mockResolvedValue(withValues(['V', 'A', 'K', 'V']));
+
+      await expect(useCase.execute(dto!)).rejects.toMatchObject({ statusCode: 503 });
+      expect(aiGenerator.generateQuestion).toHaveBeenCalledTimes(3);
+    });
+  });
+
   it('saves the question without an embedding when embedding fails', async () => {
     jest.spyOn(console, 'error').mockImplementation(() => {});
     aiGenerator.generateQuestion.mockResolvedValueOnce(validGenerated);
