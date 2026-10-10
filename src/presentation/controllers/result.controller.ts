@@ -12,7 +12,12 @@ import { GetSchoolStatsUseCase } from "../../domain/use-cases/result/get-school-
 import { GetStatsByGradeUseCase } from "../../domain/use-cases/result/get-stats-by-grade.use-case.js";
 import { GetUserStatsUseCase } from "../../domain/use-cases/result/get-user-stats.use-case.js";
 import { GetUserEvolutionUseCase } from "../../domain/use-cases/result/get-user-evolution.use-case.js";
+import { ExportResultsUseCase } from "../../domain/use-cases/result/export-results.use-case.js";
 import { toRequester } from "../mappers/requester.mapper.js";
+import {
+  resultsCsvFilename,
+  toResultsCsv,
+} from "../mappers/result-csv.mapper.js";
 import { ReportPeriod } from "../../domain/interfaces/result/index.js";
 
 /** Only the bounds that were set, so an open range stays `{}`. */
@@ -34,6 +39,7 @@ export class ResultController {
     private readonly getStatsByGradeUseCase: GetStatsByGradeUseCase,
     private readonly getUserStatsUseCase: GetUserStatsUseCase,
     private readonly getUserEvolutionUseCase: GetUserEvolutionUseCase,
+    private readonly exportResultsUseCase: ExportResultsUseCase,
     /** Clock for relative report periods (HU-51); injectable for tests. */
     private readonly now: () => Date = () => new Date(),
   ) {}
@@ -170,6 +176,45 @@ export class ResultController {
         periodOf(period!),
       );
       res.json(stats);
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  /** HU-49: CSV download of a school's (or grade's) results in a period. */
+  exportCsv = async (req: Request, res: Response, next: NextFunction) => {
+    if (req.query.schoolId === undefined || req.query.schoolId === "") {
+      return res.status(400).json({ error: "schoolId is required" });
+    }
+    const schoolId = Number(req.query.schoolId);
+    if (isNaN(schoolId)) {
+      return res.status(400).json({ error: "Invalid schoolId" });
+    }
+    const gradeId =
+      req.query.gradeId !== undefined && req.query.gradeId !== ""
+        ? Number(req.query.gradeId)
+        : undefined;
+    if (gradeId !== undefined && isNaN(gradeId)) {
+      return res.status(400).json({ error: "Invalid gradeId" });
+    }
+    const [periodError, period] = this.parsePeriod(req);
+    if (periodError) return res.status(400).json({ error: periodError });
+
+    try {
+      const report = await this.exportResultsUseCase.execute(
+        {
+          schoolId,
+          ...(gradeId !== undefined && { gradeId }),
+          ...periodOf(period!),
+        },
+        toRequester(req),
+      );
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${resultsCsvFilename(report)}"`,
+      );
+      res.status(200).send(toResultsCsv(report.rows));
     } catch (err) {
       next(err);
     }

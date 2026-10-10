@@ -530,6 +530,7 @@ Only `questionId` is required; the behavioural metrics are nullable but **feed t
 |--------|------|-------|-------|
 | GET | `/` | Teacher, Admin | paginated; filters `studentId, gradeId, schoolId, classifierType` (teacher + foreign `schoolId` → `403`) |
 | GET | `/my` | Student | own results (paginated + filtered — see below) |
+| GET | `/export` | Teacher, Admin | CSV download by school/grade/period (HU-49, see below) |
 | GET | `/questionnaire/:questionnaireId` | Student(own), Teacher, Admin | result for a questionnaire |
 | GET | `/:id` | Student(own), Teacher, Admin | single result |
 | PATCH | `/:id/correct-label` | Teacher, Admin | `{ vakLabel }` — pilot ground-truth |
@@ -590,6 +591,18 @@ interface GradeVakStats {
 ```
 - `styleCounts` counts each evaluated student **once**, by the predominant style of their **latest result in the period**. Mixed profiles count under their predominant style. The three counts sum to `evaluatedStudents`.
 - Every grade (filtered by `level`) is always listed. A grade with no results in the period has `evaluatedStudents: 0`, all counts `0` and `null` averages → show "No hay datos disponibles para este grado" (HU-36/48 S2).
+
+#### `GET /api/results/export` — CSV export (HU-49)
+Query: `schoolId` (**required**), `gradeId` (optional), and the HU-51 `period` / `from` / `to`. Same school access as the stats (teachers: own school only → `403`).
+
+Response `200`:
+- `Content-Type: text/csv; charset=utf-8`
+- `Content-Disposition: attachment; filename="reporte-estilos-colegio-<schoolId>[-grado-<gradeId>]-<from>-<to>.csv"` (dates `YYYY-MM-DD`; an open bound uses the first/last exported result date)
+- Body: UTF-8 with BOM (Excel shows accents), comma separated, CRLF line endings, values with commas/quotes/line breaks quoted, cells starting with `= + - @` prefixed with `'`. Spanish headers: `Grado, Nivel, ID estudiante, Nombre del estudiante, Fecha del resultado, Estilo predominante, Confianza (%), Visual (%), Auditivo (%), Kinestésico (%), Perfil mixto, Estilo secundario, Clasificador`. Styles in Spanish (`Visual`, `Auditivo`, `Kinestésico`), percentages 0-100 with up to 2 decimals, `Perfil mixto` = `Sí`/`No`. Ordered by grade, student name, date. Sections are not modelled; no student code exists, so the student id is used. No email, password or MVI data.
+
+Errors (`{ error }` JSON): `400 "schoolId is required" | "Invalid schoolId" | "Invalid gradeId"` or a period error, `403`, `404 "No results to export for the selected filters"` → show "No hay datos para exportar" (HU-49 S2).
+
+Download it with the bearer token (not a plain link), e.g. `fetch(url, { headers: { Authorization } })` → `res.blob()` → object URL; on non-2xx read the JSON error. The CORS config does not expose `Content-Disposition` yet, so a cross-origin frontend cannot read it: build the same file name client-side from the params (or ask for `exposedHeaders: ["Content-Disposition"]` in the server CORS config).
 
 #### Report period filter (HU-51)
 `GET /api/results`, `GET /stats/school/:schoolId` and `GET /stats/school/:schoolId/by-grade` accept the same optional query params. Without them every result is included (unchanged behaviour).

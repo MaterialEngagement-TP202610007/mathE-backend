@@ -132,6 +132,39 @@ export interface GradeVakStats {
   styleCounts: VakStyleCounts;
 }
 
+/** HU-49: what a teacher exports (school required, grade and period optional). */
+export interface ResultExportFilters extends ReportPeriod {
+  schoolId: number;
+  gradeId?: number;
+}
+
+/** HU-49: one exported result. Only report columns, never account or MVI data. */
+export interface ResultExportRow {
+  gradeName: string | null;
+  gradeLevel: string | null;
+  studentId: number;
+  studentName: string;
+  /** `resultDate`, or `createdAt` for legacy rows without one. */
+  resultDate: Date;
+  predominantStyle: string;
+  predominantConfidence: number | null;
+  visualProbability: number | null;
+  auditoryProbability: number | null;
+  kinestheticProbability: number | null;
+  isMixedProfile: boolean;
+  secondaryStyle: string | null;
+  classifierType: string | null;
+}
+
+export interface ResultExport {
+  schoolId: number;
+  gradeId: number | null;
+  /** Requested bounds, or the first/last exported result date when open. */
+  from: Date;
+  to: Date;
+  rows: ResultExportRow[];
+}
+
 export interface UserResultStats {
   userId: number;
   total: number;

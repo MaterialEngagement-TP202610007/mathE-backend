@@ -15,6 +15,7 @@ import { GetSchoolStatsUseCase } from "../../domain/use-cases/result/get-school-
 import { GetStatsByGradeUseCase } from "../../domain/use-cases/result/get-stats-by-grade.use-case.js";
 import { GetUserStatsUseCase } from "../../domain/use-cases/result/get-user-stats.use-case.js";
 import { GetUserEvolutionUseCase } from "../../domain/use-cases/result/get-user-evolution.use-case.js";
+import { ExportResultsUseCase } from "../../domain/use-cases/result/export-results.use-case.js";
 
 export class ResultRoutes {
   static get routes(): Router {
@@ -33,6 +34,7 @@ export class ResultRoutes {
       new GetStatsByGradeUseCase(resultRepository, schoolAccessPolicy),
       new GetUserStatsUseCase(resultRepository),
       new GetUserEvolutionUseCase(resultRepository),
+      new ExportResultsUseCase(resultRepository, schoolAccessPolicy),
     );
 
     router.use(authMiddleware);
@@ -253,6 +255,55 @@ export class ResultRoutes {
       "/stats/school/:schoolId/by-grade",
       roleGuard(ROLES.TEACHER, ROLES.ADMIN),
       controller.getStatsByGrade,
+    );
+
+    /**
+     * @openapi
+     * /api/results/export:
+     *   get:
+     *     tags: [Results]
+     *     summary: Download a CSV of learning-style results by school, grade and period (HU-49). Admin (any school) or Teacher (own school only).
+     *     description: >
+     *       UTF-8 CSV with a BOM (Excel-friendly), comma separated, CRLF line endings, Spanish headers:
+     *       Grado, Nivel, ID estudiante, Nombre del estudiante, Fecha del resultado, Estilo predominante,
+     *       Confianza (%), Visual (%), Auditivo (%), Kinestésico (%), Perfil mixto, Estilo secundario, Clasificador.
+     *       One row per result, ordered by grade, student name and date. Sections are not modelled.
+     *       No account (email, password) or MVI data is included.
+     *     security: [{ bearerAuth: [] }]
+     *     parameters:
+     *       - in: query
+     *         name: schoolId
+     *         required: true
+     *         schema: { type: integer }
+     *       - in: query
+     *         name: gradeId
+     *         schema: { type: integer }
+     *         description: Only students of this academic grade
+     *       - in: query
+     *         name: period
+     *         schema: { type: string, enum: [week, month, quarter, year] }
+     *         description: "HU-51. Relative range ending now. An explicit from/to overrides that bound."
+     *       - in: query
+     *         name: from
+     *         schema: { type: string, format: date }
+     *       - in: query
+     *         name: to
+     *         schema: { type: string, format: date }
+     *         description: A date-only value covers the whole day (UTC).
+     *     responses:
+     *       200:
+     *         description: 'CSV attachment. Content-Disposition: attachment; filename="reporte-estilos-colegio-<schoolId>[-grado-<gradeId>]-<from>-<to>.csv" (dates YYYY-MM-DD; open bounds use the first/last exported result date)'
+     *         content:
+     *           text/csv:
+     *             schema: { type: string }
+     *       400: { description: "schoolId is required, Invalid schoolId, Invalid gradeId, or an invalid period" }
+     *       403: { description: "Teacher requesting another school — { error: 'You can only access data from your own school' }" }
+     *       404: { description: "{ error: 'No results to export for the selected filters' }" }
+     */
+    router.get(
+      "/export",
+      roleGuard(ROLES.TEACHER, ROLES.ADMIN),
+      controller.exportCsv,
     );
 
     /**

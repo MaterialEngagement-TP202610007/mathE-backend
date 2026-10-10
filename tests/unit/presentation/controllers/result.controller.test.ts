@@ -16,7 +16,7 @@ describe('ResultController student result listings', () => {
     studentResults = { execute: jest.fn().mockResolvedValue({ items: [], total: 0, page: 1, limit: 10 }) };
     const unused = {} as never;
     controller = new ResultController(
-      unused, unused, studentResults as never, unused, unused, unused, unused, unused, unused,
+      unused, unused, studentResults as never, unused, unused, unused, unused, unused, unused, unused,
     );
   });
 
@@ -78,7 +78,7 @@ describe('ResultController school-scoped endpoints', () => {
     const unused = {} as never;
     const controller = new ResultController(
       unused, unused, unused, allResults as never, unused, schoolStats as never, byGrade as never, unused, unused,
-      () => NOW,
+      unused, () => NOW,
     );
     return { controller, schoolStats, byGrade, allResults };
   }
@@ -123,7 +123,7 @@ describe('ResultController report period (HU-51)', () => {
     const unused = {} as never;
     const controller = new ResultController(
       unused, unused, unused, allResults as never, unused, schoolStats as never, byGrade as never, unused, unused,
-      () => NOW,
+      unused, () => NOW,
     );
     return { controller, schoolStats, byGrade, allResults };
   }
@@ -177,5 +177,96 @@ describe('ResultController report period (HU-51)', () => {
     expect(schoolStats.execute).not.toHaveBeenCalled();
     expect(byGrade.execute).not.toHaveBeenCalled();
     expect(allResults.execute).not.toHaveBeenCalled();
+  });
+});
+
+describe('ResultController CSV export (HU-49)', () => {
+  const teacher = { id: 7, roleId: 2 };
+  const exported = {
+    schoolId: 3,
+    gradeId: null,
+    from: new Date('2026-09-10T12:00:00.000Z'),
+    to: new Date('2026-10-10T12:00:00.000Z'),
+    rows: [
+      {
+        gradeName: '1ro Primaria', gradeLevel: 'Primaria', studentId: 12, studentName: 'Ana',
+        resultDate: new Date('2026-09-20T10:00:00.000Z'), predominantStyle: 'Visual', predominantConfidence: 70,
+        visualProbability: 70, auditoryProbability: 20, kinestheticProbability: 10, isMixedProfile: false,
+        secondaryStyle: 'Auditory', classifierType: 'xgboost',
+      },
+    ],
+  };
+
+  function makeController() {
+    const exportResults = { execute: jest.fn().mockResolvedValue(exported) };
+    const unused = {} as never;
+    const controller = new ResultController(
+      unused, unused, unused, unused, unused, unused, unused, unused, unused,
+      exportResults as never, () => NOW,
+    );
+    return { controller, exportResults };
+  }
+
+  function makeCsvRes() {
+    const res = makeRes();
+    res.setHeader = jest.fn().mockReturnValue(res);
+    res.send = jest.fn().mockReturnValue(res);
+    return res;
+  }
+
+  it('sends a UTF-8 CSV attachment for the school, grade and period', async () => {
+    const { controller, exportResults } = makeController();
+    const res = makeCsvRes();
+    const req = { params: {}, query: { schoolId: '3', gradeId: '4', period: 'month' }, user: teacher } as unknown as Request;
+
+    await controller.exportCsv(req, res, jest.fn());
+
+    const [filters, requester] = exportResults.execute.mock.calls[0];
+    expect(filters).toEqual({
+      schoolId: 3,
+      gradeId: 4,
+      from: new Date('2026-09-10T12:00:00.000Z'),
+      to: NOW,
+    });
+    expect(requester).toEqual(teacher);
+    expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/csv; charset=utf-8');
+    expect(res.setHeader).toHaveBeenCalledWith(
+      'Content-Disposition',
+      'attachment; filename="reporte-estilos-colegio-3-2026-09-10-2026-10-10.csv"',
+    );
+    const body = (res.send as jest.Mock).mock.calls[0][0] as string;
+    expect(body.startsWith('\uFEFFGrado,')).toBe(true);
+    expect(body).toContain('1ro Primaria,Primaria,12,Ana,2026-09-20,Visual,70');
+  });
+
+  it.each([
+    [{}, 'schoolId is required'],
+    [{ schoolId: 'abc' }, 'Invalid schoolId'],
+    [{ schoolId: '3', gradeId: 'x' }, 'Invalid gradeId'],
+    [{ schoolId: '3', period: 'decade' }, 'period must be one of: week, month, quarter, year'],
+  ])('returns 400 for %p', async (query, message) => {
+    const { controller, exportResults } = makeController();
+    const res = makeCsvRes();
+    const req = { params: {}, query, user: teacher } as unknown as Request;
+
+    await controller.exportCsv(req, res, jest.fn());
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({ error: message });
+    expect(exportResults.execute).not.toHaveBeenCalled();
+  });
+
+  it('passes use case errors (e.g. 404 no data) to the error handler', async () => {
+    const { controller, exportResults } = makeController();
+    const error = new Error('No results to export for the selected filters');
+    exportResults.execute.mockRejectedValue(error);
+    const res = makeCsvRes();
+    const next = jest.fn();
+    const req = { params: {}, query: { schoolId: '3' }, user: teacher } as unknown as Request;
+
+    await controller.exportCsv(req, res, next);
+
+    expect(next).toHaveBeenCalledWith(error);
+    expect(res.send).not.toHaveBeenCalled();
   });
 });

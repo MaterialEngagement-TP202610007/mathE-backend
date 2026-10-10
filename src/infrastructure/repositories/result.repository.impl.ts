@@ -7,6 +7,8 @@ import {
   GradeVakStats,
   Granularity,
   ReportPeriod,
+  ResultExportFilters,
+  ResultExportRow,
   ResultListFilters,
   SaveResultData,
   SchoolResultStats,
@@ -362,6 +364,65 @@ export class ResultRepositoryImpl implements ResultRepository {
     );
 
     return stats;
+  }
+
+  async findForExport(filters: ResultExportFilters): Promise<ResultExportRow[]> {
+    const rows = await prisma.result.findMany({
+      where: {
+        deletedAt: null,
+        predominantStyle: { not: null as null },
+        student: {
+          schoolId: filters.schoolId,
+          deletedAt: null,
+          ...(filters.gradeId !== undefined && {
+            academicGradeId: filters.gradeId,
+          }),
+        },
+        ...resultDateWhere(filters),
+      },
+      // Report columns only: no account (email, password) or MVI data.
+      select: {
+        resultDate: true,
+        createdAt: true,
+        predominantStyle: true,
+        predominantConfidence: true,
+        visualProbability: true,
+        auditoryProbability: true,
+        kinestheticProbability: true,
+        isMixedProfile: true,
+        secondaryStyle: true,
+        classifierType: true,
+        student: {
+          select: {
+            id: true,
+            name: true,
+            academicGrade: { select: { name: true, level: true } },
+          },
+        },
+      },
+      orderBy: [
+        { student: { academicGrade: { order: "asc" } } },
+        { student: { name: "asc" } },
+        { resultDate: { sort: "asc", nulls: "first" } },
+        { createdAt: "asc" },
+      ],
+    });
+
+    return rows.map((row) => ({
+      gradeName: row.student.academicGrade?.name ?? null,
+      gradeLevel: row.student.academicGrade?.level ?? null,
+      studentId: row.student.id,
+      studentName: row.student.name,
+      resultDate: row.resultDate ?? row.createdAt,
+      predominantStyle: row.predominantStyle!,
+      predominantConfidence: row.predominantConfidence,
+      visualProbability: row.visualProbability,
+      auditoryProbability: row.auditoryProbability,
+      kinestheticProbability: row.kinestheticProbability,
+      isMixedProfile: row.isMixedProfile,
+      secondaryStyle: row.secondaryStyle,
+      classifierType: row.classifierType,
+    }));
   }
 
   async getUserStats(userId: number): Promise<UserResultStats> {

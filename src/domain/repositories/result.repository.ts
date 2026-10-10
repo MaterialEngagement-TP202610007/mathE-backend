@@ -5,6 +5,8 @@ import {
   GradeVakStats,
   Granularity,
   ReportPeriod,
+  ResultExportFilters,
+  ResultExportRow,
   ResultListFilters,
   SaveResultData,
   SchoolResultStats,
@@ -46,6 +48,11 @@ export abstract class ResultRepository {
     level?: string,
     period?: ReportPeriod,
   ): Promise<GradeVakStats[]>;
+
+  /** HU-49: results to export, ordered by grade, student name and date. */
+  abstract findForExport(
+    filters: ResultExportFilters,
+  ): Promise<ResultExportRow[]>;
 
   abstract getUserStats(userId: number): Promise<UserResultStats>;
 

@@ -283,4 +283,101 @@ describe('ResultRepositoryImpl filters', () => {
       expect(questionnaireCount).not.toHaveBeenCalled();
     });
   });
+
+  describe('findForExport (HU-49)', () => {
+    beforeEach(() => findMany.mockReset());
+
+    it('selects only report columns for the school, grade and period, ordered by grade and student', async () => {
+      findMany.mockResolvedValue([
+        {
+          resultDate: null,
+          createdAt: new Date('2026-09-02T08:00:00.000Z'),
+          predominantStyle: 'Visual',
+          predominantConfidence: 70,
+          visualProbability: 70,
+          auditoryProbability: 20,
+          kinestheticProbability: 10,
+          isMixedProfile: false,
+          secondaryStyle: 'Auditory',
+          classifierType: 'xgboost',
+          student: { id: 12, name: 'Ana', academicGrade: { name: '1ro Primaria', level: 'Primaria' } },
+        },
+        {
+          resultDate: new Date('2026-09-03T08:00:00.000Z'),
+          createdAt: new Date('2026-09-03T08:00:00.000Z'),
+          predominantStyle: 'Auditory',
+          predominantConfidence: null,
+          visualProbability: null,
+          auditoryProbability: null,
+          kinestheticProbability: null,
+          isMixedProfile: true,
+          secondaryStyle: null,
+          classifierType: null,
+          student: { id: 13, name: 'Beto', academicGrade: null },
+        },
+      ]);
+
+      const rows = await new ResultRepositoryImpl().findForExport({ schoolId: 8, gradeId: 3, from, to });
+
+      const args = findMany.mock.calls[0][0];
+      expect(args.where).toEqual({
+        deletedAt: null,
+        predominantStyle: { not: null },
+        student: { schoolId: 8, deletedAt: null, academicGradeId: 3 },
+        ...periodWhere,
+      });
+      expect(args.select.student).toEqual({
+        select: { id: true, name: true, academicGrade: { select: { name: true, level: true } } },
+      });
+      expect(JSON.stringify(args.select)).not.toMatch(/password|email|mvi/i);
+      expect(args.orderBy).toEqual([
+        { student: { academicGrade: { order: 'asc' } } },
+        { student: { name: 'asc' } },
+        { resultDate: { sort: 'asc', nulls: 'first' } },
+        { createdAt: 'asc' },
+      ]);
+      expect(rows).toEqual([
+        {
+          gradeName: '1ro Primaria',
+          gradeLevel: 'Primaria',
+          studentId: 12,
+          studentName: 'Ana',
+          resultDate: new Date('2026-09-02T08:00:00.000Z'),
+          predominantStyle: 'Visual',
+          predominantConfidence: 70,
+          visualProbability: 70,
+          auditoryProbability: 20,
+          kinestheticProbability: 10,
+          isMixedProfile: false,
+          secondaryStyle: 'Auditory',
+          classifierType: 'xgboost',
+        },
+        {
+          gradeName: null,
+          gradeLevel: null,
+          studentId: 13,
+          studentName: 'Beto',
+          resultDate: new Date('2026-09-03T08:00:00.000Z'),
+          predominantStyle: 'Auditory',
+          predominantConfidence: null,
+          visualProbability: null,
+          auditoryProbability: null,
+          kinestheticProbability: null,
+          isMixedProfile: true,
+          secondaryStyle: null,
+          classifierType: null,
+        },
+      ]);
+    });
+
+    it('omits the grade and date conditions when not requested', async () => {
+      findMany.mockResolvedValue([]);
+
+      await new ResultRepositoryImpl().findForExport({ schoolId: 8 });
+
+      const { where } = findMany.mock.calls[0][0];
+      expect(where.student).toEqual({ schoolId: 8, deletedAt: null });
+      expect(where).not.toHaveProperty('OR');
+    });
+  });
 });
