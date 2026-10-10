@@ -35,6 +35,11 @@ export class NotificationRoutes {
      *     description: >
      *       Opens a persistent Server-Sent Events connection. The server pushes
      *       a `notification` event whenever a background job completes for this user.
+     *       Each user only receives their own events. Students receive
+     *       `{ type: "result_available", resultId, questionnaireId }` right after a
+     *       questionnaire result is stored (HU-35); teachers receive question
+     *       generation events. Delivery is best effort; the persisted
+     *       notifications stay the source of truth.
      *       Connect with EventSource and withCredentials=true (cookie auth).
      *     security: [{ bearerAuth: [] }]
      *     responses:

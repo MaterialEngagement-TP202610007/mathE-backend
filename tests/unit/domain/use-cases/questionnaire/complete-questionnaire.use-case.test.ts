@@ -5,6 +5,7 @@ import { MLDatasetRepository } from '../../../../../src/domain/repositories/ml-d
 import { MLModelRepository } from '../../../../../src/domain/repositories/ml-model.repository.js';
 import { ResultRepository } from '../../../../../src/domain/repositories/result.repository.js';
 import { LambdaClassifierAdapter } from '../../../../../src/domain/adapters/lambda-classifier.adapter.js';
+import { RealtimeNotifier } from '../../../../../src/domain/adapters/realtime-notifier.adapter.js';
 import { VakFeedbackAdapter } from '../../../../../src/domain/adapters/vak-feedback.adapter.js';
 import { QuestionnaireEntity } from '../../../../../src/domain/entities/questionnaire.entity.js';
 import { ResultEntity } from '../../../../../src/domain/entities/result.entity.js';
@@ -439,5 +440,91 @@ describe('CompleteQuestionnaireUseCase', () => {
     await expect(
       useCase.execute(QUESTIONNAIRE_ID, STUDENT_ID, makeDto([{ selectedOptionId: null }])),
     ).resolves.toMatchObject({ resultId: 99 });
+  });
+});
+
+describe('CompleteQuestionnaireUseCase live result push (HU-35 S1)', () => {
+  let questionnaireRepo: jest.Mocked<QuestionnaireRepository>;
+  let resultRepo: jest.Mocked<ResultRepository>;
+  let notifier: jest.Mocked<RealtimeNotifier>;
+  let useCase: CompleteQuestionnaireUseCase;
+
+  beforeEach(() => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    questionnaireRepo = makeQuestionnaireRepo();
+    resultRepo = makeResultRepo();
+    notifier = { notify: jest.fn() } as jest.Mocked<RealtimeNotifier>;
+    useCase = new CompleteQuestionnaireUseCase(
+      questionnaireRepo,
+      makeMlDatasetRepo(),
+      makeMlModelRepo(),
+      resultRepo,
+      { classify: jest.fn().mockResolvedValue(LAMBDA_OUTPUT) } as jest.Mocked<LambdaClassifierAdapter>,
+      { generateFeedback: jest.fn().mockResolvedValue('AI feedback') } as jest.Mocked<VakFeedbackAdapter>,
+      {},
+      notifier,
+    );
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('pushes result_available to the student once the result is saved', async () => {
+    questionnaireRepo.findById.mockResolvedValueOnce(makeQuestionnaire('in_progress'));
+
+    const result = await useCase.execute(QUESTIONNAIRE_ID, STUDENT_ID, makeDto());
+
+    expect(result.resultId).toBe(99);
+    expect(notifier.notify).toHaveBeenCalledTimes(1);
+    expect(notifier.notify).toHaveBeenCalledWith(STUDENT_ID, {
+      type: 'result_available',
+      resultId: 99,
+      questionnaireId: QUESTIONNAIRE_ID,
+    });
+    expect(resultRepo.saveWithNotification.mock.invocationCallOrder[0])
+      .toBeLessThan(notifier.notify.mock.invocationCallOrder[0]);
+  });
+
+  it('never fails the completion when the push throws', async () => {
+    questionnaireRepo.findById.mockResolvedValueOnce(makeQuestionnaire('in_progress'));
+    notifier.notify.mockImplementation(() => {
+      throw new Error('socket closed');
+    });
+
+    const result = await useCase.execute(QUESTIONNAIRE_ID, STUDENT_ID, makeDto());
+
+    expect(result.resultId).toBe(99);
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining('result_available'),
+      'socket closed',
+    );
+  });
+
+  it('does not push again when the result already existed (client retry)', async () => {
+    questionnaireRepo.findById.mockResolvedValueOnce(makeQuestionnaire('completed'));
+    resultRepo.findByQuestionnaire.mockResolvedValueOnce(makeResult({ id: 77 }));
+
+    await useCase.execute(QUESTIONNAIRE_ID, STUDENT_ID, makeDto());
+
+    expect(notifier.notify).not.toHaveBeenCalled();
+  });
+
+  it('does not push when saving the result fails', async () => {
+    const failing = new CompleteQuestionnaireUseCase(
+      questionnaireRepo,
+      makeMlDatasetRepo(),
+      makeMlModelRepo(),
+      resultRepo,
+      { classify: jest.fn().mockResolvedValue(LAMBDA_OUTPUT) } as jest.Mocked<LambdaClassifierAdapter>,
+      { generateFeedback: jest.fn().mockResolvedValue('AI feedback') } as jest.Mocked<VakFeedbackAdapter>,
+      { saveRetryDelaysMs: [], sleep: jest.fn().mockResolvedValue(undefined) },
+      notifier,
+    );
+    questionnaireRepo.findById.mockResolvedValueOnce(makeQuestionnaire('in_progress'));
+    resultRepo.saveWithNotification.mockRejectedValue(new Error('db down'));
+
+    await expect(failing.execute(QUESTIONNAIRE_ID, STUDENT_ID, makeDto())).rejects.toMatchObject({ statusCode: 503 });
+    expect(notifier.notify).not.toHaveBeenCalled();
   });
 });

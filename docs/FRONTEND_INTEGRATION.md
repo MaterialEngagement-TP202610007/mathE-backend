@@ -676,6 +676,15 @@ interface ResultCorrectionAudit {
 | PATCH | `/read-all` | `{ updated: number }` |
 | PATCH | `/:id/read` | updated `Notification` |
 
+#### Live `result_available` on the SSE stream (HU-35)
+`GET /api/notifications/stream` (SSE, any authenticated role, own stream only — students included) now also receives, right after a questionnaire result is stored:
+```
+event: notification
+data: {"type":"result_available","resultId":99,"questionnaireId":12}
+```
+- Sent once per newly stored result, to the student who completed the questionnaire; a repeated `PATCH .../complete` that returns an already stored result does not push again.
+- Best effort: if the student has no open stream (or the push fails) nothing is lost. The persisted notification (`type: "result_available"`, `resultId`) is created in the same transaction as the result, so `GET /api/notifications` and `/unread-count` remain the source of truth. On the event, refresh the unread count / notification list; when the student opens the result, mark that notification read with `PATCH /api/notifications/:id/read` (HU-35 S2).
+
 ### ML Dataset — `/api/ml-dataset` (all 🔑, Teacher/Admin)
 | Method | Path | Notes |
 |--------|------|-------|
@@ -734,6 +743,9 @@ interface School {
    → Render the VAK result screen from this payload directly.
 
    (If the student quits early: PATCH /api/questionnaires/:id/abandon)
+
+   → The student also gets an SSE `notification` { type: "result_available",
+     resultId, questionnaireId } on GET /api/notifications/stream (HU-35).
 
 4. Later, results are retrievable:
    GET /api/results/my            (list)

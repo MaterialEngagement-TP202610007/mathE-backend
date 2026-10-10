@@ -13,9 +13,15 @@ jest.mock('../../../../src/domain/use-cases/questionnaire/save-questionnaire-pro
   SaveQuestionnaireProgressUseCase: jest.fn().mockImplementation(() => ({ execute: mockSaveProgressExecute })),
 }));
 
+jest.mock('../../../../src/domain/use-cases/questionnaire/complete-questionnaire.use-case.js', () => ({
+  CompleteQuestionnaireUseCase: jest.fn().mockImplementation(() => ({ execute: jest.fn() })),
+}));
+
 import { Request, Response } from 'express';
 import { QuestionnaireRoutes } from '../../../../src/presentation/routes/questionnaire.routes.js';
 import { ROLES } from '../../../../src/domain/constants/roles.constant.js';
+import { CompleteQuestionnaireUseCase } from '../../../../src/domain/use-cases/questionnaire/complete-questionnaire.use-case.js';
+import { SseRealtimeNotifierAdapterImpl } from '../../../../src/infrastructure/adapters/sse-realtime-notifier.adapter.impl.js';
 
 type Handler = (req: Request, res: Response, next: jest.Mock) => unknown;
 interface Layer { route?: { path: string; methods: Record<string, boolean>; stack: { handle: Handler }[] } }
@@ -77,5 +83,15 @@ describe('QuestionnaireRoutes PUT /:id/answers (HU-29 S1)', () => {
     );
     expect(res.json).toHaveBeenCalledWith(saved);
     expect(next).not.toHaveBeenCalled();
+  });
+});
+
+describe('QuestionnaireRoutes completion wiring (HU-35 S1)', () => {
+  it('gives the completion use case the SSE notifier for result_available', () => {
+    void QuestionnaireRoutes.routes;
+
+    const ctor = CompleteQuestionnaireUseCase as unknown as jest.Mock;
+    const args = ctor.mock.calls[ctor.mock.calls.length - 1];
+    expect(args[7]).toBeInstanceOf(SseRealtimeNotifierAdapterImpl);
   });
 });

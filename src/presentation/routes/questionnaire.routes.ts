@@ -24,6 +24,8 @@ import { MLModelRepositoryImpl } from "../../infrastructure/repositories/ml-mode
 import { FallbackQuestionsAdapterImpl } from "../../infrastructure/adapters/fallback-questions.adapter.impl.js";
 import { LambdaClassifierAdapterImpl } from "../../infrastructure/adapters/lambda-classifier.adapter.impl.js";
 import { GeminiVakFeedbackAdapterImpl } from "../../infrastructure/adapters/gemini-vak-feedback.adapter.impl.js";
+import { SseRealtimeNotifierAdapterImpl } from "../../infrastructure/adapters/sse-realtime-notifier.adapter.impl.js";
+import { sseNotificationService } from "../../infrastructure/services/sse-notification.service.js";
 
 export class QuestionnaireRoutes {
   static get routes(): Router {
@@ -56,6 +58,8 @@ export class QuestionnaireRoutes {
         resultRepository,
         lambdaAdapter,
         feedbackAdapter,
+        {},
+        new SseRealtimeNotifierAdapterImpl(sseNotificationService),
       ),
       new AbandonQuestionnaireUseCase(questionnaireRepository),
       new GetActiveQuestionnaireUseCase(questionnaireRepository),
@@ -252,6 +256,9 @@ export class QuestionnaireRoutes {
      *       returns that result (200, same shape). If it is completed but the result
      *       was never saved (previous attempt failed), classification is resumed from
      *       the persisted answers. A concurrent duplicate submit returns 409.
+     *       HU-35: once a new result is stored, the student also receives an SSE
+     *       `notification` event { type: "result_available", resultId, questionnaireId }
+     *       on /api/notifications/stream (best effort; never fails the completion).
      *     security: [{ bearerAuth: [] }]
      *     parameters:
      *       - in: path

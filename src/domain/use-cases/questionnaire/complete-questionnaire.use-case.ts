@@ -4,6 +4,7 @@ import { MLModelRepository } from "../../repositories/ml-model.repository.js";
 import { ResultRepository } from "../../repositories/result.repository.js";
 import { LambdaClassifierAdapter } from "../../adapters/lambda-classifier.adapter.js";
 import { VakFeedbackAdapter } from "../../adapters/vak-feedback.adapter.js";
+import { RealtimeNotifier } from "../../adapters/realtime-notifier.adapter.js";
 import { CompleteQuestionnaireDto } from "../../dtos/questionnaire/complete-questionnaire.dto.js";
 import { CustomError } from "../../error/custom-error.js";
 import { ResultEntity } from "../../entities/result.entity.js";
@@ -38,6 +39,8 @@ export class CompleteQuestionnaireUseCase {
     private readonly lambdaClassifierAdapter: LambdaClassifierAdapter,
     private readonly vakFeedbackAdapter: VakFeedbackAdapter,
     private readonly config: CompleteQuestionnaireConfig = {},
+    /** HU-35 S1: live `result_available` push; optional and best effort. */
+    private readonly notifier?: RealtimeNotifier,
   ) {}
 
   /**
@@ -214,12 +217,38 @@ export class CompleteQuestionnaireUseCase {
     });
     if (saved.alreadyStored) return this.toResponse(saved.result);
 
+    this.notifyResultAvailable(studentId, saved.result.id, id);
+
     return {
       resultId: saved.result.id,
       ...classification,
       aiFeedback,
       feedbackSource,
     };
+  }
+
+  /**
+   * HU-35 S1: the result and its `result_available` notification are already
+   * stored; a live push is a bonus and must never fail the completion.
+   */
+  private notifyResultAvailable(
+    studentId: number,
+    resultId: number,
+    questionnaireId: number,
+  ): void {
+    if (!this.notifier) return;
+    try {
+      this.notifier.notify(studentId, {
+        type: "result_available",
+        resultId,
+        questionnaireId,
+      });
+    } catch (err) {
+      console.error(
+        `[CompleteQuestionnaire] result_available push failed for result ${resultId}:`,
+        errorMessage(err),
+      );
+    }
   }
 
   /**
