@@ -18,7 +18,7 @@
 | Date format | ISO 8601 strings in responses (`2026-06-04T12:00:00.000Z`) |
 
 ### CORS — enabled with credentials
-The server enables CORS with `credentials: true`, origin from env `CORS_ORIGIN` (default `http://localhost:5173`, comma-separated list supported). The auth cookie only flows if the frontend sends requests with credentials included.
+The server enables CORS with `credentials: true`, origin from env `CORS_ORIGIN` (default `http://localhost:5173`, comma-separated list supported). The auth cookie only flows if the frontend sends requests with credentials included. `Content-Disposition` is listed in `exposedHeaders` so download file names are readable.
 
 **Frontend MUST send credentials on every request:**
 - `fetch`: `credentials: "include"`
@@ -85,8 +85,8 @@ Body:
 ```
 - `200` → `LoginResponse` `{ user }` **+** `Set-Cookie: auth_token=...; HttpOnly; Secure; SameSite=Strict; Max-Age=604800; Path=/`
 - `400` → validation error `{ "error": "Invalid Email" }`
-- `400` → invalid credentials
-- `401` → inactive account — pending teacher: `"Account is inactive. Your teacher account is pending administrator approval."` (always prefixed `Account is inactive`)
+- `400` → `"Invalid credentials"` — unknown email or wrong password, also for inactive accounts (their state is never revealed without the right password)
+- `401` → inactive account, only after the password is verified — pending teacher: `"Account is inactive. Your teacher account is pending administrator approval."` (always prefixed `Account is inactive`)
 
 ### `POST /api/auth/logout`
 No body. Clears the `auth_token` cookie.
@@ -108,12 +108,15 @@ Body:
   "roleId": 3,
   "phoneNumber": "+593987654321",   // optional, E.164
   "schoolId": 1,                     // REQUIRED (students and teachers), from GET /api/schools
-  "academicGradeId": 2               // optional
+  "academicGradeId": 2,              // optional
+  "acceptTerms": true                // REQUIRED, must be exactly the boolean true
 }
 ```
 - `201` student → `{ "message": "User created successfully", "requiresApproval": false }`
 - `201` teacher → `{ "message": "User created successfully. Your teacher account is pending administrator approval.", "requiresApproval": true }`
-- `400` → validation error, including `"Missing School Id"`, `"Invalid School Id"`, `"School not found"`
+- `400` → validation error, including `"Missing School Id"`, `"Invalid School Id"`, `"School not found"`, `"Terms and privacy policy must be accepted"` (when `acceptTerms` is missing or not `true`)
+
+**Terms acceptance:** send `acceptTerms: true` only after the user ticks the terms and privacy policy checkbox. The server records the acceptance time as `termsAcceptedAt`, which appears (nullable; `null` for accounts created before it was tracked) in the user objects returned by `/api/auth/*` and `/api/users/*`.
 
 **Password rule:** min 8 chars, at least one letter and one number (`/^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,}$/`).
 **Phone rule:** E.164-ish `+?[1-9]\d{1,14}`.
@@ -217,6 +220,10 @@ interface Result {
   feedbackSource: string | null;           // "gemini" | "predefined"
   createdAt: string;
   updatedAt: string;
+  // HU-44, Teacher/Admin responses only (absent for students):
+  correctedVakLabel?: "Visual" | "Auditory" | "Kinesthetic" | null;
+  correctedAt?: string | null;
+  correctedBy?: { id: number; name: string } | null;
 }
 
 // Returned by POST .../complete (slimmer than full Result)
@@ -341,6 +348,10 @@ Legend: 🔓 public · 🔑 auth required · roles in parentheses.
 | DELETE | `/:id` | Admin | soft-delete → `{message, user}` |
 | PATCH | `/:id/activate` | Admin | approve a pending **teacher** → `{message, user}`; `400 "Only teacher accounts require activation"` for students/admins |
 
+List filters (all user lists): `page`, `limit`, `isActive`, `academicGradeId`, `birthDateFrom/To`, `createdAtFrom/To`, and `search` (HU-37).
+- `search`: trimmed, max 100 chars (`400 "search must be at most 100 characters"`; a repeated param → `400 "search must be a single text value"`; blank is ignored). Matches the **name or email** partially and case-insensitively, or the **exact numeric id** when the term is a number (the platform has no separate student code; use the id). Not accent-insensitive: `Maria` does not match `María` (Postgres `ILIKE`). Combines with the other filters and pagination, e.g. `GET /api/users/students/by-school/4?search=perez&academicGradeId=2&page=1&limit=10`.
+- Teacher flow (HU-37): search here → pick a student → `GET /api/results/student/:studentId` for the history (empty list = "aún no tiene cuestionarios completados").
+
 Update profile body (all optional, ≥1 required):
 ```json
 { "name": "...", "birthDate": "2010-05-01", "phoneNumber": "+593...", "academicGradeId": 2, "schoolId": 1 }
@@ -354,7 +365,7 @@ Email / password / roleId are **not** editable here. `schoolId` must be an exist
 | GET | `/my?status=&page=&limit=` | — | paginated own questions |
 | GET | `/my/validated-history` | — | paginated approved+rejected |
 | GET | `/:id` | — | `Question` with options |
-| PATCH | `/:id/approve` | — | `Question` (status=approved) |
+| PATCH | `/:id/approve` | `{ vakStyle? }` | `Question` (status=approved, `vakStyle` as stated) |
 | PATCH | `/:id/reject` | `{ rejectionReason }` | `Question` (status=rejected) |
 | POST | `/:id/validate` | — | `Question` with a fresh MVI diagnosis |
 | DELETE | `/:id` | — | `204` (soft delete) |
@@ -363,7 +374,34 @@ Email / password / roleId are **not** editable here. `schoolId` must be an exist
 - **Per-school bank:** generated questions get `schoolId` = the attributed teacher's school. A teacher without school gets `400 "Teacher must belong to a school to generate questions"` before anything starts.
 - `/:id`, `/:id/approve`, `/:id/reject`, `DELETE /:id`: teachers only for questions of **their own school** → otherwise `403 "Question does not belong to your school"`. Admins: any question. `Question` responses now include `schoolId: number | null`.
 - `status` filter ∈ `pending | approved | rejected` (omit for all).
+- **Approve with a VAK style (HU-42):** `PATCH /:id/approve` accepts an optional JSON body `{ "vakStyle": "Visual" | "Auditory" | "Kinesthetic" }`. When sent, the question joins the approved bank with that style (it replaces the generated `vakStyle`; options keep their own `vakValue`). When the body or `vakStyle` is omitted (or `null`), the current style is kept, so older clients keep working. Any other value → `400 "Invalid Vak Style. Allowed: Visual, Auditory, Kinesthetic"`. The stated style must match the options' VAK distribution (HU-20: the label that appears twice among the 4 options); otherwise → `400 "Selected style <style> does not match the options' VAK distribution (<doubled style>). Reject the question instead."`, so the UI should preselect the generated style and suggest rejecting when the teacher disagrees. Legacy questions whose options have no clear 2-1-1 distribution accept any valid style. The new UI should make the style selector mandatory (preselect the generated `vakStyle` and block confirm until a style is chosen; HU-42 S2 is enforced in the UI). `approvedOverMvi` works exactly as before.
 - Generation can return `502` (Gemini failed) or `503` (couldn't produce a unique, non-redundant question after max attempts). Show a retry affordance. **Generation is slow** (AI + embedding round-trips) — show a spinner and allow ~10–30s.
+
+#### AI generation availability (HU-47)
+Generation runs in the background; progress arrives on the SSE stream `GET /api/notifications/stream` as `notification` events:
+
+| `type` | Payload | Meaning |
+|--------|---------|---------|
+| `question_generated` | `{ type, questionId, vakStyle }` | unchanged |
+| `question_failed` | `{ type, vakStyle, reason }` | one question failed. `reason` is new (existing keys unchanged) |
+| `ai_service_restored` | `{ type, since }` (`since` ISO date) | **new**: a generation succeeded after an AI outage |
+
+`reason` values:
+- `ai_unavailable`: every call to the AI service failed (network, 5xx, quota, timeout). **This is the outage alert.**
+- `validation_failed`: the AI answered, but no draft passed the checks (e.g. VAK option distribution).
+- `mvi_rejected`: MVI in gate mode blocked every attempt.
+- `internal_error`: anything else (e.g. database error before or while saving).
+
+`ai_service_restored` goes to the teacher whose generation succeeded and to every teacher who received an `ai_unavailable` failure during that outage (sent once per outage).
+
+`GET /api/health` (public) now also returns the last known state, without calling the AI service:
+```json
+{ "status": "ok", "db": "up", "aiGeneration": { "status": "unavailable", "since": "2026-10-10T10:00:00.000Z" } }
+```
+- `aiGeneration.status` ∈ `available | unavailable | unknown` (`unknown` = no generation since the server started; `since` is then `null`). It never changes `status` or the HTTP code.
+- The state comes from real generation outcomes only and is kept in memory per server instance (it resets to `unknown` on restart).
+
+**UI suggestion (phase B):** on `question_failed` with `reason: "ai_unavailable"` (or `aiGeneration.status === "unavailable"` when the teacher opens the question screens), show a banner: "The AI question service is unavailable. New questions cannot be generated for now; questionnaires keep using the existing approved question bank." On `ai_service_restored` (or health back to `available`), replace it with "The AI question service is available again. You can resume generating questions." Other reasons keep the current generic failure toast with a retry.
 
 #### MVI diagnosis on questions (teacher/admin)
 
@@ -427,8 +465,52 @@ Every question returned by `/api/questions/*` carries the diagnosis of MVI (the 
 | POST | `/` | Student | — | `201` `CreateQuestionnaireResponse` (10 questions) |
 | GET | `/` | Student | — | paginated own questionnaires |
 | GET | `/:id` | Student, Teacher, Admin | — | `Questionnaire` |
-| PATCH | `/:id/complete` | Student | `{ totalTimeSeconds?, completionPercentage? }` | `CompleteQuestionnaireResult` |
+| GET | `/active` | Student | — | `ActiveQuestionnaireResponse` (questions + saved answers + resume position), `404` if none |
+| PUT | `/:id/answers` | Student | `{ answers: ProgressAnswer[] }` (1–10) | `SaveProgressResponse` |
+| PATCH | `/:id/complete` | Student | `{ completionPercentage, answers[10] }` | `CompleteQuestionnaireResult` |
 | PATCH | `/:id/abandon` | Student | — | `Questionnaire` (status=abandoned) |
+
+New questionnaires avoid questions the student already received in earlier questionnaires (HU-17). When a style has too few unseen questions left, the remaining slots reuse already-seen questions of that style, so creation never fails because of this rule.
+
+#### Progressive save and resume (HU-29)
+Save answers while the student moves through the quiz, then resume after a reload or a new login.
+
+```ts
+// PUT /api/questionnaires/:id/answers — body
+interface ProgressAnswer {
+  questionId: number;
+  selectedOptionId: number | null;  // null = not answered yet / skipped
+  questionTimeSeconds?: number;     // default 0
+  numberOfChanges?: number;         // default 0
+  timesReviewed?: number;           // default 0
+}
+
+// Saved answer as returned by the backend (never includes VAK labels)
+interface SavedAnswer {
+  questionId: number;
+  selectedOptionId: number | null;
+  questionTimeSeconds: number;
+  numberOfChanges: number;
+  timesReviewed: number;
+}
+
+// PUT /api/questionnaires/:id/answers — 200
+interface SaveProgressResponse {
+  questionnaireId: number;
+  answers: SavedAnswer[];           // every answer saved so far
+}
+
+// GET /api/questionnaires/active — 200
+interface ActiveQuestionnaireResponse extends CreateQuestionnaireResponse {
+  answers: SavedAnswer[];           // saved progress ([] when nothing saved)
+  answeredCount: number;            // questions with a non-null saved option
+  resumeIndex: number;              // 0-based index in `questions` to show first
+}
+```
+- Upsert per question: send one or several answers (for example on each "Siguiente"); saving a question again replaces its previous answer. Send the cumulative behaviour metrics for that question, not deltas.
+- `resumeIndex` is the first question without a saved option, or the last question (`questions.length - 1`) when every question has one.
+- Errors: `400` invalid id/body, a question or option outside this questionnaire, the same question twice in one request, or questionnaire not `in_progress`; `403` student role required or another student's questionnaire; `404` questionnaire not found; `409` the questionnaire was completed or abandoned while saving.
+- `PATCH /:id/complete` is unchanged: it still requires all 10 answers and replaces the saved drafts, so no answer is duplicated. Rebuild the full answer list from local state plus `answers` from `GET /active`.
 
 ### Answers — `/api/questionnaires/:id/answers` (all 🔑)
 | Method | Path | Roles | Body | Returns |
@@ -454,11 +536,14 @@ Only `questionId` is required; the behavioural metrics are nullable but **feed t
 ### Results — `/api/results` (all 🔑)
 | Method | Path | Roles | Notes |
 |--------|------|-------|-------|
-| GET | `/` | Teacher, Admin | paginated; filters `studentId, gradeId, schoolId, classifierType` (teacher + foreign `schoolId` → `403`) |
+| GET | `/` | Teacher, Admin | paginated; filters `studentId, gradeId, schoolId, classifierType, labelStatus` (HU-44) (teacher + foreign `schoolId` → `403`) |
 | GET | `/my` | Student | own results (paginated + filtered — see below) |
+| GET | `/export` | Teacher, Admin | CSV download by school/grade/period (HU-49, see below) |
+| GET | `/stats/school/:schoolId/stability` | Teacher, Admin | stability monitor per student (HU-38, see below) |
+| GET | `/stats/user/:userId` | Student(own), Teacher, Admin | `{ userId, total, predominantStyle, profile: "Estable" \| "Variable" \| null }` — `profile` is `null` with fewer than two results (HU-38) |
 | GET | `/questionnaire/:questionnaireId` | Student(own), Teacher, Admin | result for a questionnaire |
 | GET | `/:id` | Student(own), Teacher, Admin | single result |
-| PATCH | `/:id/correct-label` | Teacher, Admin | `{ vakLabel }` — pilot ground-truth |
+| PATCH | `/:id/correct-label` | Teacher, Admin | `{ vakLabel }` — pilot ground-truth; returns `correctedVakLabel`, `correctedAt`, `correctedBy` (HU-44) |
 
 #### `GET /api/results/my` — query params
 | Param | Type | Default | Description |
@@ -480,10 +565,108 @@ Returns `Paginated<Result>`. Invalid date strings return `400 { "error": "Invali
 | `gradeId` | integer | Filter by academic grade |
 | `schoolId` | integer | Filter by school (teachers: own school only, else `403`) |
 | `classifierType` | string | Filter by classifier, e.g. `xgboost` |
+| `period`, `from`, `to` | see below | HU-51 report period |
 
 `GET /stats/school/:schoolId` and `GET /stats/school/:schoolId/by-grade`: teachers only for their own school → otherwise `403 { "error": "You can only access data from your own school" }`; admins any school.
 
-`correct-label` body: `{ "vakLabel": "Visual" | "Auditory" | "Kinesthetic" }`. Sets `correctedVakLabel` on the result and marks the matching ML dataset row `labelSource=teacher_validated`.
+#### `GET /stats/school/:schoolId` — response (HU-50)
+```ts
+interface SchoolResultStats {
+  schoolId: number;
+  evaluatedStudents: number;               // students with a result in the period
+  mostCommonStyle: string | null;
+  avgPredominantConfidence: number | null;
+  startedQuestionnaires: number;           // new: started in the period, any status
+  completedQuestionnaires: number;         // new: of those, completed
+  completionRate: number | null;           // new: completed / started, 0..1 (null when started = 0)
+  avgResponseTimeSeconds: number | null;   // new: mean seconds per question (null when completed = 0)
+}
+```
+- Questionnaires are scoped to the school's students and matched by `startTime` in the HU-51 period; `in_progress` and `abandoned` ones count as started but not completed.
+- `avgResponseTimeSeconds` is the average of the ML dataset `avgQuestionTime` stored when each questionnaire is completed (mean of the answers' `questionTimeSeconds`).
+- **HU-50 S2:** when `completedQuestionnaires === 0` show "Datos insuficientes" instead of the cards (`avgResponseTimeSeconds` is `null`; `completionRate` is `0` if some were started, `null` if none).
+
+#### `GET /stats/school/:schoolId/by-grade` — response (HU-48)
+```ts
+interface GradeVakStats {
+  gradeId: number;
+  gradeName: string;            // "1ro Primaria"
+  level: string;                // "Primaria" | "Secundaria"
+  evaluatedStudents: number;    // students with at least one result in the period
+  avgVisualProbability: number | null;      // 0-100, null when no results
+  avgAuditoryProbability: number | null;
+  avgKinestheticProbability: number | null;
+  styleCounts: { Visual: number; Auditory: number; Kinesthetic: number }; // HU-48, new
+}
+```
+- `styleCounts` counts each evaluated student **once**, by the predominant style of their **latest result in the period**. Mixed profiles count under their predominant style. The three counts sum to `evaluatedStudents`.
+- Every grade (filtered by `level`) is always listed. A grade with no results in the period has `evaluatedStudents: 0`, all counts `0` and `null` averages → show "No hay datos disponibles para este grado" (HU-36/48 S2).
+
+#### `GET /api/results/export` — CSV export (HU-49)
+Query: `schoolId` (**required**), `gradeId` (optional), and the HU-51 `period` / `from` / `to`. Same school access as the stats (teachers: own school only → `403`).
+
+Response `200`:
+- `Content-Type: text/csv; charset=utf-8`
+- `Content-Disposition: attachment; filename="reporte-estilos-colegio-<schoolId>[-grado-<gradeId>]-<from>-<to>.csv"` (dates `YYYY-MM-DD`; an open bound uses the first/last exported result date)
+- Body: UTF-8 with BOM (Excel shows accents), comma separated, CRLF line endings, values with commas/quotes/line breaks quoted, cells starting with `= + - @` prefixed with `'`. Spanish headers: `Grado, Nivel, ID estudiante, Nombre del estudiante, Fecha del resultado, Estilo predominante, Confianza (%), Visual (%), Auditivo (%), Kinestésico (%), Perfil mixto, Estilo secundario, Clasificador`. Styles in Spanish (`Visual`, `Auditivo`, `Kinestésico`), percentages 0-100 with up to 2 decimals, `Perfil mixto` = `Sí`/`No`. Ordered by grade, student name, date. Sections are not modelled; no student code exists, so the student id is used. No email, password or MVI data.
+
+Errors (`{ error }` JSON): `400 "schoolId is required" | "Invalid schoolId" | "Invalid gradeId"` or a period error, `403`, `404 "No results to export for the selected filters"` → show "No hay datos para exportar" (HU-49 S2).
+
+Download it with the bearer token (not a plain link), e.g. `fetch(url, { headers: { Authorization } })` → `res.blob()` → object URL; on non-2xx read the JSON error. The CORS config exposes `Content-Disposition` (`exposedHeaders`), so a cross-origin frontend can read the file name with `res.headers.get("Content-Disposition")`; building the same name client-side from the params remains a valid fallback.
+
+#### `GET /stats/school/:schoolId/stability` — stability monitor (HU-38)
+Query: `gradeId` (optional) and the HU-51 `period` / `from` / `to`. Same school access as the other stats (teachers: own school only → `403`).
+
+```ts
+interface SchoolStabilityReport {
+  schoolId: number;
+  gradeId: number | null;
+  summary: { students: number; stable: number; variable: number; insufficientData: number };
+  students: Array<{
+    studentId: number;
+    studentName: string;
+    gradeId: number | null;
+    gradeName: string | null;
+    resultsCount: number;            // classified results in the period
+    firstStyle: "Visual" | "Auditory" | "Kinesthetic";
+    lastStyle: "Visual" | "Auditory" | "Kinesthetic";
+    changes: number;                 // predominant-style changes between consecutive results
+    profile: "stable" | "variable" | null;
+    lastResultDate: string;          // ISO
+  }>;
+}
+```
+- `profile`: `"stable"` when the most frequent style covers at least 60% of the student's results in the period, `"variable"` otherwise, `null` when the student has a **single result** → show "No hay comparativa disponible aún" (HU-38 S2). This is the same rule as `GET /stats/user/:userId` (which keeps its Spanish values `"Estable" | "Variable"`, and now also returns `null` for a single result instead of `"Estable"`).
+- Ordered by grade, student name and id. Students without results in the period are not listed; an empty period returns `students: []` and a zero summary.
+- Errors: `400 "Invalid schoolId" | "Invalid gradeId"` or a period error, `403`.
+
+#### Report period filter (HU-51)
+`GET /api/results`, `GET /stats/school/:schoolId`, `GET /stats/school/:schoolId/by-grade`, `GET /stats/school/:schoolId/stability` and `GET /export` accept the same optional query params. Without them every result is included (unchanged behaviour).
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `period` | `week` \| `month` \| `quarter` \| `year` | Range ending **now** (server clock): last 7 days, 1 month, 3 months, 1 year |
+| `from` | ISO date or timestamp | Results dated on or after this instant, e.g. `2026-09-01` |
+| `to` | ISO date or timestamp | Results dated on or before this instant; a date-only value covers the whole day (UTC) |
+
+- Combine freely: when `period` and `from`/`to` are both sent, the explicit bound wins for that side.
+- Results are matched by `resultDate` (rows without one fall back to `createdAt`).
+- Errors (`400 { error }`): `"period must be one of: week, month, quarter, year"`, `"Invalid from date"`, `"Invalid to date"`, `"from must be before or equal to to"`.
+- **Empty range (HU-51 S2):** the response keeps its normal shape with zero/empty data (`items: []`, `total: 0`; school stats `evaluatedStudents: 0`, `mostCommonStyle: null`; every grade with `evaluatedStudents: 0`). Show "No hay resultados en ese rango".
+
+#### Label correction (HU-44)
+`correct-label` body: `{ "vakLabel": "Visual" | "Auditory" | "Kinesthetic" }`. Sets `correctedVakLabel` on the result, records **who** (the authenticated teacher/admin) and **when** (`correctedAt`, server clock), and marks the matching ML dataset row `labelSource=teacher_validated`. A later correction overwrites label, corrector and date. Errors: `400 "Missing vakLabel" | "vakLabel must be one of: Visual, Auditory, Kinesthetic"`, `404 "Result not found"`.
+
+Teacher/admin responses carry the correction audit (also after a reload):
+```ts
+interface ResultCorrectionAudit {
+  correctedVakLabel: "Visual" | "Auditory" | "Kinesthetic" | null; // null = not corrected yet
+  correctedAt: string | null;                                       // ISO
+  correctedBy: { id: number; name: string } | null;
+}
+```
+- Returned by `PATCH /:id/correct-label`, `GET /:id`, `GET /questionnaire/:questionnaireId`, `GET /` and `GET /student/:studentId` for Teacher/Admin. Student responses (`/my`, own `/:id`, own `/questionnaire/:id`) do **not** include these fields.
+- Labeling view (HU-44 S1/S2): list with `GET /api/results?schoolId=<id>&labelStatus=uncorrected` (to label) or `labelStatus=corrected` (already labeled, show the current label with the option to change it); combine with `gradeId`, `studentId`, `classifierType` and the HU-51 period. Invalid value → `400 "labelStatus must be one of: corrected, uncorrected"`.
 
 ### Notifications — `/api/notifications` (all 🔑, Student only)
 | Method | Path | Returns |
@@ -492,6 +675,15 @@ Returns `Paginated<Result>`. Invalid date strings return `400 { "error": "Invali
 | GET | `/unread-count` | `{ count: number }` |
 | PATCH | `/read-all` | `{ updated: number }` |
 | PATCH | `/:id/read` | updated `Notification` |
+
+#### Live `result_available` on the SSE stream (HU-35)
+`GET /api/notifications/stream` (SSE, any authenticated role, own stream only — students included) now also receives, right after a questionnaire result is stored:
+```
+event: notification
+data: {"type":"result_available","resultId":99,"questionnaireId":12}
+```
+- Sent once per newly stored result, to the student who completed the questionnaire; a repeated `PATCH .../complete` that returns an already stored result does not push again.
+- Best effort: if the student has no open stream (or the push fails) nothing is lost. The persisted notification (`type: "result_available"`, `resultId`) is created in the same transaction as the result, so `GET /api/notifications` and `/unread-count` remain the source of truth. On the event, refresh the unread count / notification list; when the student opens the result, mark that notification read with `PATCH /api/notifications/:id/read` (HU-35 S2).
 
 ### ML Dataset — `/api/ml-dataset` (all 🔑, Teacher/Admin)
 | Method | Path | Notes |
@@ -534,19 +726,26 @@ interface School {
    → start a client-side timer; render questions in given `order`.
 
 2. For each question the student answers:
-   POST /api/questionnaires/:id/answers
-   body: { questionId, selectedOptionId, navigationSequence,
-           questionTimeSeconds, numberOfChanges, numberOfClicks, timesReviewed }
-   → Track behaviour locally and send on answer/next. These metrics feed the ML model.
+   PUT /api/questionnaires/:id/answers
+   body: { answers: [{ questionId, selectedOptionId,
+                       questionTimeSeconds, numberOfChanges, timesReviewed }] }
+   → Track behaviour locally and save on answer/next (HU-29). These metrics feed the ML model.
+   → On app load, GET /api/questionnaires/active returns the saved answers and
+     `resumeIndex`: offer "continue" (jump to resumeIndex) or "start new"
+     (PATCH .../abandon, then POST /api/questionnaires).
 
 3. When the student finishes:
    PATCH /api/questionnaires/:id/complete
-   body: { totalTimeSeconds, completionPercentage }
+   body: { completionPercentage, answers: [10 × { questionId, selectedOptionId,
+           questionTimeSeconds, numberOfChanges, timesReviewed }] }
    → returns CompleteQuestionnaireResult: predominantStyle, probabilities,
      isMixedProfile, aiFeedback (Spanish text), classifierType, feedbackSource.
    → Render the VAK result screen from this payload directly.
 
    (If the student quits early: PATCH /api/questionnaires/:id/abandon)
+
+   → The student also gets an SSE `notification` { type: "result_available",
+     resultId, questionnaireId } on GET /api/notifications/stream (HU-35).
 
 4. Later, results are retrievable:
    GET /api/results/my            (list)
@@ -555,14 +754,16 @@ interface School {
 ```
 Notes:
 - The `complete` call is where classification + AI feedback happen (Lambda/XGBoost with `simple_score` fallback, Gemini feedback with predefined fallback). It may take a few seconds — show a loading state.
-- The questionnaire-taking question payload hides the question's `vakStyle`, but each **option includes its `vakValue`** (`V`/`A`/`K`) label.
+- The classifier call gives up within 4.5 s by default (`LAMBDA_DEADLINE_MS`), then `simple_score` is used (`classifierType: "simple_score"`): show the result as provisional in that case (HU-52).
+- If the result cannot be stored, the backend retries twice and then answers `503` with a student-readable `error` ("Your answers were saved, but your result could not be stored right now. Please submit again in a few moments to get your result."). Show it with a retry button that repeats the same `PATCH .../complete`: it is idempotent and resumes from the stored answers (HU-39).
+- The questionnaire-taking payload hides the question's `vakStyle` and each option's `vakValue` (options are `{ id, text }` only).
 
 ### B. Teacher authors & validates questions
 ```
 1. POST /api/questions/generate { vakStyle: "Visual" }
    → AI generates statement + 4 options, dedupes against existing, persists as pending.
 2. Review queue: GET /api/questions/my?status=pending
-3. Approve:  PATCH /api/questions/:id/approve
+3. Approve:  PATCH /api/questions/:id/approve { vakStyle }   (vakStyle optional, see HU-42)
    Reject:   PATCH /api/questions/:id/reject { rejectionReason }
 4. Audit:    GET /api/questions/my/validated-history
 ```

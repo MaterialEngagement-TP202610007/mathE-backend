@@ -1,4 +1,4 @@
-import { VakValue } from "../../constants/vak.constant.js";
+import { VakStyle, VakValue } from "../../constants/vak.constant.js";
 import { MviStatus, MviValidationRecord } from "../item-validation/index.js";
 
 /** A single option as produced by the AI generator (PASO 1). */
@@ -51,3 +51,23 @@ export interface UpdateMviValidationData {
   mviCatalogVersion: string | null;
   mviValidatedAt: Date;
 }
+
+/** Teacher decision written when a pending question is approved (HU-42, HU-60). */
+export interface ApproveQuestionData {
+  /** True when the question is approved despite a failed MVI diagnosis. */
+  approvedOverMvi?: boolean;
+  /** VAK style stated by the teacher; null or absent keeps the current style. */
+  vakStyle?: VakStyle | null;
+}
+
+/**
+ * Why one question generation failed (HU-47), sent with the `question_failed`
+ * SSE event: `ai_unavailable` when every AI call failed, `validation_failed`
+ * when no draft passed the checks, `mvi_rejected` when MVI (gate mode) blocked
+ * every attempt, `internal_error` for anything else (e.g. persistence).
+ */
+export type QuestionFailureReason =
+  | "ai_unavailable"
+  | "validation_failed"
+  | "mvi_rejected"
+  | "internal_error";

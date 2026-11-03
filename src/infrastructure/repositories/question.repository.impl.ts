@@ -7,6 +7,7 @@ import {
 } from "../../domain/repositories/question.repository.js";
 import { QuestionEntity } from "../../domain/entities/question.entity.js";
 import {
+  ApproveQuestionData,
   CreateQuestionData,
   UpdateMviValidationData,
 } from "../../domain/interfaces/question/index.js";
@@ -92,6 +93,7 @@ export class QuestionRepositoryImpl implements QuestionRepository {
     vakStyle: string,
     limit: number,
     schoolId: number,
+    excludeIds: number[] = [],
   ): Promise<ApprovedQuestionSlim[]> {
     // Uniform random sample over the WHOLE eligible pool: load only candidate
     // ids (a school bank is small), sample them in memory, then load the picks.
@@ -102,6 +104,7 @@ export class QuestionRepositoryImpl implements QuestionRepository {
         origin: "ai_generated",
         deletedAt: null,
         schoolId,
+        ...(excludeIds.length > 0 ? { id: { notIn: excludeIds } } : {}),
       },
       select: { id: true },
     });
@@ -210,11 +213,15 @@ export class QuestionRepositoryImpl implements QuestionRepository {
 
   async approve(
     id: number,
-    approvedOverMvi = false,
+    { approvedOverMvi = false, vakStyle = null }: ApproveQuestionData = {},
   ): Promise<QuestionEntity> {
     const question = await prisma.question.update({
       where: { id },
-      data: { validationStatus: "approved", approvedOverMvi },
+      data: {
+        validationStatus: "approved",
+        approvedOverMvi,
+        ...(vakStyle ? { vakStyle } : {}),
+      },
       include: { options: true },
     });
 

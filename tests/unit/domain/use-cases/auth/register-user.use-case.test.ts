@@ -50,6 +50,7 @@ function makeDto(roleId: number = ROLES.TEACHER) {
     birthDate: '1990-01-01',
     roleId,
     schoolId: 5,
+    acceptTerms: true,
   });
   return dto!;
 }
@@ -126,6 +127,39 @@ describe('RegisterUserUseCase', () => {
     await useCase.execute(makeDto(ROLES.TEACHER));
 
     expect(repo.create.mock.calls[0][0]).toMatchObject({ roleId: ROLES.TEACHER, isActive: false });
+  });
+
+  it('persists termsAcceptedAt with the injected clock time', async () => {
+    const acceptedAt = new Date('2026-10-10T12:00:00Z');
+    useCase = new RegisterUserUseCase(repo, passwordAdapter, schoolRepo, { now: () => acceptedAt });
+    repo.findByEmail.mockResolvedValueOnce(null);
+    repo.create.mockResolvedValueOnce(makeEntity());
+
+    await useCase.execute(makeDto());
+
+    expect(repo.create.mock.calls[0][0].termsAcceptedAt).toEqual(acceptedAt);
+  });
+
+  it('defaults termsAcceptedAt to the current time when no clock is injected', async () => {
+    repo.findByEmail.mockResolvedValueOnce(null);
+    repo.create.mockResolvedValueOnce(makeEntity());
+    const before = Date.now();
+
+    await useCase.execute(makeDto());
+
+    const stored = repo.create.mock.calls[0][0].termsAcceptedAt;
+    expect(stored).toBeInstanceOf(Date);
+    expect(stored!.getTime()).toBeGreaterThanOrEqual(before);
+    expect(stored!.getTime()).toBeLessThanOrEqual(Date.now());
+  });
+
+  it('does not set termsAcceptedAt when registration is rejected', async () => {
+    const dto = makeDto();
+    repo.findByEmail.mockResolvedValueOnce(makeEntity());
+
+    await expect(useCase.execute(dto)).rejects.toThrow();
+
+    expect(dto.termsAcceptedAt).toBeNull();
   });
 
   it('returns the created user entity', async () => {

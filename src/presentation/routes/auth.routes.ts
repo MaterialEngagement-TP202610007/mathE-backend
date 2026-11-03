@@ -65,10 +65,12 @@ export class AuthRoutes {
      *             description: auth_token=<jwt>; HttpOnly; Secure; SameSite=None; Max-Age=<SESSION_TTL_HOURS * 3600>; Path=/
      *             schema: { type: string }
      *       400:
-     *         description: Validation error
+     *         description: >
+     *           Validation error, or "Invalid credentials" for an unknown email or a wrong
+     *           password (also for inactive accounts, so their state is never revealed)
      *       401:
      *         description: >
-     *           Inactive account. Pending teachers get "Account is inactive. Your teacher
+     *           Inactive account, returned only after the password is verified. Pending teachers get "Account is inactive. Your teacher
      *           account is pending administrator approval."; any other inactive account gets
      *           "Account is inactive. Contact an administrator." (both start with "Account is inactive").
      *       429:
@@ -130,7 +132,7 @@ export class AuthRoutes {
      *         application/json:
      *           schema:
      *             type: object
-     *             required: [password, email, name, birthDate, roleId, schoolId]
+     *             required: [password, email, name, birthDate, roleId, schoolId, acceptTerms]
      *             properties:
      *               password:
      *                 type: string
@@ -154,6 +156,12 @@ export class AuthRoutes {
      *               academicGradeId:
      *                 type: integer
      *                 nullable: true
+     *               acceptTerms:
+     *                 type: boolean
+     *                 enum: [true]
+     *                 description: >
+     *                   Must be exactly true (terms and privacy policy accepted). The server
+     *                   stores the acceptance time as the user's termsAcceptedAt.
      *     responses:
      *       201:
      *         description: >
@@ -163,7 +171,8 @@ export class AuthRoutes {
      *       400:
      *         description: >
      *           Validation error (including "Invalid Role Id", "Missing School Id",
-     *           "Invalid School Id", "School not found")
+     *           "Invalid School Id", "School not found",
+     *           "Terms and privacy policy must be accepted")
      *       429:
      *         description: Too many registration attempts — { error }
      */

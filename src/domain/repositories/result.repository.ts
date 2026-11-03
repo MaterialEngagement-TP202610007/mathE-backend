@@ -4,9 +4,14 @@ import {
   EvolutionDataPoint,
   GradeVakStats,
   Granularity,
+  ReportPeriod,
+  ResultExportFilters,
+  ResultExportRow,
   ResultListFilters,
   SaveResultData,
   SchoolResultStats,
+  StabilityFilters,
+  StabilityResultRow,
   StudentResultFilters,
   UserResultStats,
 } from "../interfaces/result/index.js";
@@ -35,12 +40,29 @@ export abstract class ResultRepository {
 
   abstract correctLabel(data: CorrectResultLabelData): Promise<ResultEntity>;
 
-  abstract getSchoolStats(schoolId: number): Promise<SchoolResultStats>;
+  abstract getSchoolStats(
+    schoolId: number,
+    period?: ReportPeriod,
+  ): Promise<SchoolResultStats>;
 
   abstract getStatsByGrade(
     schoolId: number,
     level?: string,
+    period?: ReportPeriod,
   ): Promise<GradeVakStats[]>;
+
+  /** HU-49: results to export, ordered by grade, student name and date. */
+  abstract findForExport(
+    filters: ResultExportFilters,
+  ): Promise<ResultExportRow[]>;
+
+  /**
+   * HU-38: classified results of a school (optionally one grade) in the
+   * period, grouped by student (grade order, name, id) and oldest first.
+   */
+  abstract findForStability(
+    filters: StabilityFilters,
+  ): Promise<StabilityResultRow[]>;
 
   abstract getUserStats(userId: number): Promise<UserResultStats>;
 

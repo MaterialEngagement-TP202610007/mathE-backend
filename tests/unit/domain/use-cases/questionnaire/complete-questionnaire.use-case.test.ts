@@ -5,6 +5,7 @@ import { MLDatasetRepository } from '../../../../../src/domain/repositories/ml-d
 import { MLModelRepository } from '../../../../../src/domain/repositories/ml-model.repository.js';
 import { ResultRepository } from '../../../../../src/domain/repositories/result.repository.js';
 import { LambdaClassifierAdapter } from '../../../../../src/domain/adapters/lambda-classifier.adapter.js';
+import { RealtimeNotifier } from '../../../../../src/domain/adapters/realtime-notifier.adapter.js';
 import { VakFeedbackAdapter } from '../../../../../src/domain/adapters/vak-feedback.adapter.js';
 import { QuestionnaireEntity } from '../../../../../src/domain/entities/questionnaire.entity.js';
 import { ResultEntity } from '../../../../../src/domain/entities/result.entity.js';
@@ -259,15 +260,82 @@ describe('CompleteQuestionnaireUseCase', () => {
     expect(result.resultId).toBe(77);
   });
 
-  it('rethrows the save error when no result exists afterwards', async () => {
-    questionnaireRepo.findById.mockResolvedValueOnce(makeQuestionnaire('in_progress'));
-    const saveError = new Error('db down');
-    resultRepo.saveWithNotification.mockRejectedValueOnce(saveError);
-    resultRepo.findByQuestionnaire.mockResolvedValueOnce(null);
+  describe('when persisting the result fails (HU-39 S2)', () => {
+    let sleep: jest.Mock;
+    let retrying: CompleteQuestionnaireUseCase;
 
-    await expect(
-      useCase.execute(QUESTIONNAIRE_ID, STUDENT_ID, makeDto()),
-    ).rejects.toBe(saveError);
+    beforeEach(() => {
+      sleep = jest.fn().mockResolvedValue(undefined);
+      retrying = new CompleteQuestionnaireUseCase(
+        questionnaireRepo, mlDatasetRepo, mlModelRepo, resultRepo, lambda, feedback,
+        { saveRetryDelaysMs: [200, 400], sleep },
+      );
+      questionnaireRepo.findById.mockResolvedValueOnce(makeQuestionnaire('in_progress'));
+    });
+
+    it('retries the save with backoff and returns the result once it succeeds', async () => {
+      resultRepo.saveWithNotification
+        .mockRejectedValueOnce(new Error('db down'))
+        .mockResolvedValueOnce(makeResult({ id: 99 }));
+
+      const result = await retrying.execute(QUESTIONNAIRE_ID, STUDENT_ID, makeDto());
+
+      expect(result.resultId).toBe(99);
+      expect(resultRepo.saveWithNotification).toHaveBeenCalledTimes(2);
+      expect(sleep.mock.calls.map(([ms]) => ms)).toEqual([200]);
+    });
+
+    it('gives up after two retries with a 503 the student can understand', async () => {
+      resultRepo.saveWithNotification.mockRejectedValue(new Error('db down'));
+
+      const error = await retrying.execute(QUESTIONNAIRE_ID, STUDENT_ID, makeDto()).catch((e) => e);
+
+      expect(error).toBeInstanceOf(CustomError);
+      expect(error.statusCode).toBe(503);
+      expect(error.message).toMatch(/answers were saved/i);
+      expect(error.message).toMatch(/submit again/i);
+      expect(resultRepo.saveWithNotification).toHaveBeenCalledTimes(3);
+      expect(sleep.mock.calls.map(([ms]) => ms)).toEqual([200, 400]);
+    });
+
+    it('stops retrying as soon as a concurrent request has stored the result', async () => {
+      resultRepo.saveWithNotification.mockRejectedValue(new Error('unique constraint'));
+      resultRepo.findByQuestionnaire
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(makeResult());
+
+      const result = await retrying.execute(QUESTIONNAIRE_ID, STUDENT_ID, makeDto());
+
+      expect(result.resultId).toBe(77);
+      expect(resultRepo.saveWithNotification).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps retrying and ends with the 503 when the lookup for a stored result also fails', async () => {
+      resultRepo.saveWithNotification.mockRejectedValue(new Error('db down'));
+      resultRepo.findByQuestionnaire.mockRejectedValue(new Error('db down'));
+
+      const error = await retrying.execute(QUESTIONNAIRE_ID, STUDENT_ID, makeDto()).catch((e) => e);
+
+      expect(error).toBeInstanceOf(CustomError);
+      expect(error.statusCode).toBe(503);
+      expect(error.message).toMatch(/answers were saved/i);
+      expect(resultRepo.saveWithNotification).toHaveBeenCalledTimes(3);
+      expect(sleep.mock.calls.map(([ms]) => ms)).toEqual([200, 400]);
+    });
+
+    it('lets a re-submission resume from the persisted answers after giving up', async () => {
+      resultRepo.saveWithNotification.mockRejectedValue(new Error('db down'));
+      await expect(retrying.execute(QUESTIONNAIRE_ID, STUDENT_ID, makeDto())).rejects.toMatchObject({ statusCode: 503 });
+
+      questionnaireRepo.findById.mockResolvedValueOnce(makeQuestionnaire('completed'));
+      mlDatasetRepo.findByQuestionnaire.mockResolvedValueOnce({ visualScore: 6, auditoryScore: 3, kinestheticScore: 1 } as never);
+      resultRepo.saveWithNotification.mockReset().mockResolvedValueOnce(makeResult({ id: 101 }));
+
+      const result = await retrying.execute(QUESTIONNAIRE_ID, STUDENT_ID, makeDto());
+
+      expect(result.resultId).toBe(101);
+      expect(questionnaireRepo.completeWithAnswersAndDataset).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('falls back to simple_score when the Lambda classifier throws', async () => {
@@ -372,5 +440,91 @@ describe('CompleteQuestionnaireUseCase', () => {
     await expect(
       useCase.execute(QUESTIONNAIRE_ID, STUDENT_ID, makeDto([{ selectedOptionId: null }])),
     ).resolves.toMatchObject({ resultId: 99 });
+  });
+});
+
+describe('CompleteQuestionnaireUseCase live result push (HU-35 S1)', () => {
+  let questionnaireRepo: jest.Mocked<QuestionnaireRepository>;
+  let resultRepo: jest.Mocked<ResultRepository>;
+  let notifier: jest.Mocked<RealtimeNotifier>;
+  let useCase: CompleteQuestionnaireUseCase;
+
+  beforeEach(() => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    questionnaireRepo = makeQuestionnaireRepo();
+    resultRepo = makeResultRepo();
+    notifier = { notify: jest.fn() } as jest.Mocked<RealtimeNotifier>;
+    useCase = new CompleteQuestionnaireUseCase(
+      questionnaireRepo,
+      makeMlDatasetRepo(),
+      makeMlModelRepo(),
+      resultRepo,
+      { classify: jest.fn().mockResolvedValue(LAMBDA_OUTPUT) } as jest.Mocked<LambdaClassifierAdapter>,
+      { generateFeedback: jest.fn().mockResolvedValue('AI feedback') } as jest.Mocked<VakFeedbackAdapter>,
+      {},
+      notifier,
+    );
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('pushes result_available to the student once the result is saved', async () => {
+    questionnaireRepo.findById.mockResolvedValueOnce(makeQuestionnaire('in_progress'));
+
+    const result = await useCase.execute(QUESTIONNAIRE_ID, STUDENT_ID, makeDto());
+
+    expect(result.resultId).toBe(99);
+    expect(notifier.notify).toHaveBeenCalledTimes(1);
+    expect(notifier.notify).toHaveBeenCalledWith(STUDENT_ID, {
+      type: 'result_available',
+      resultId: 99,
+      questionnaireId: QUESTIONNAIRE_ID,
+    });
+    expect(resultRepo.saveWithNotification.mock.invocationCallOrder[0])
+      .toBeLessThan(notifier.notify.mock.invocationCallOrder[0]);
+  });
+
+  it('never fails the completion when the push throws', async () => {
+    questionnaireRepo.findById.mockResolvedValueOnce(makeQuestionnaire('in_progress'));
+    notifier.notify.mockImplementation(() => {
+      throw new Error('socket closed');
+    });
+
+    const result = await useCase.execute(QUESTIONNAIRE_ID, STUDENT_ID, makeDto());
+
+    expect(result.resultId).toBe(99);
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining('result_available'),
+      'socket closed',
+    );
+  });
+
+  it('does not push again when the result already existed (client retry)', async () => {
+    questionnaireRepo.findById.mockResolvedValueOnce(makeQuestionnaire('completed'));
+    resultRepo.findByQuestionnaire.mockResolvedValueOnce(makeResult({ id: 77 }));
+
+    await useCase.execute(QUESTIONNAIRE_ID, STUDENT_ID, makeDto());
+
+    expect(notifier.notify).not.toHaveBeenCalled();
+  });
+
+  it('does not push when saving the result fails', async () => {
+    const failing = new CompleteQuestionnaireUseCase(
+      questionnaireRepo,
+      makeMlDatasetRepo(),
+      makeMlModelRepo(),
+      resultRepo,
+      { classify: jest.fn().mockResolvedValue(LAMBDA_OUTPUT) } as jest.Mocked<LambdaClassifierAdapter>,
+      { generateFeedback: jest.fn().mockResolvedValue('AI feedback') } as jest.Mocked<VakFeedbackAdapter>,
+      { saveRetryDelaysMs: [], sleep: jest.fn().mockResolvedValue(undefined) },
+      notifier,
+    );
+    questionnaireRepo.findById.mockResolvedValueOnce(makeQuestionnaire('in_progress'));
+    resultRepo.saveWithNotification.mockRejectedValue(new Error('db down'));
+
+    await expect(failing.execute(QUESTIONNAIRE_ID, STUDENT_ID, makeDto())).rejects.toMatchObject({ statusCode: 503 });
+    expect(notifier.notify).not.toHaveBeenCalled();
   });
 });

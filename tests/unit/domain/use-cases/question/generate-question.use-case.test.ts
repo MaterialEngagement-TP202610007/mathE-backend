@@ -9,6 +9,8 @@ import { EmbeddingAdapter } from '../../../../../src/domain/adapters/embedding.a
 import { AIImageGeneratorAdapter } from '../../../../../src/domain/adapters/ai-image-generator.adapter.js';
 import { ImageStorageAdapter } from '../../../../../src/domain/adapters/image-storage.adapter.js';
 import { ItemValidatorAdapter } from '../../../../../src/domain/adapters/item-validator.adapter.js';
+import { QuestionGenerationError } from '../../../../../src/domain/use-cases/question/question-generation.error.js';
+import { CustomError } from '../../../../../src/domain/error/custom-error.js';
 import type {
   ItemValidationBatch,
   ItemViolation,
@@ -190,8 +192,71 @@ describe('GenerateQuestionUseCase', () => {
     const invalid = { statement: '', options: [] };
     aiGenerator.generateQuestion.mockResolvedValue(invalid as any);
 
-    await expect(useCase.execute(visualDto!)).rejects.toMatchObject({ statusCode: 503 });
+    await expect(useCase.execute(visualDto!)).rejects.toMatchObject({ statusCode: 503, reason: 'validation_failed' });
     expect(aiGenerator.generateQuestion).toHaveBeenCalledTimes(3);
+  });
+
+  it('keeps the AI status code when every AI call fails (HU-47)', async () => {
+    const quiet = new GenerateQuestionUseCase(
+      repo, aiGenerator, embeddingAdapter, imageGenerator, imageStorage,
+      { maxAttempts: 2, sleep: jest.fn().mockResolvedValue(undefined) },
+    );
+    aiGenerator.generateQuestion.mockRejectedValue(CustomError.gatewayTimeout('Gemini chat timed out'));
+
+    await expect(quiet.execute(visualDto!)).rejects.toMatchObject({
+      statusCode: 504,
+      reason: 'ai_unavailable',
+      message: 'Gemini chat timed out',
+    });
+  });
+
+  describe('VAK option distribution (HU-20)', () => {
+    const withValues = (values: Array<'V' | 'A' | 'K'>) => ({
+      statement: 'Imagina que preparas una exposición en clase',
+      options: values.map((vakValue, i) => ({ text: `opción ${i + 1}`, vakValue })),
+    });
+
+    it('rejects a Visual draft whose doubled label is not V and retries', async () => {
+      aiGenerator.generateQuestion
+        .mockResolvedValueOnce(withValues(['V', 'A', 'K', 'A']))
+        .mockResolvedValueOnce(withValues(['V', 'A', 'K', 'V']));
+      repo.createWithOptionsAndEmbedding.mockResolvedValueOnce(makeEntity());
+
+      await useCase.execute(visualDto!);
+
+      expect(aiGenerator.generateQuestion).toHaveBeenCalledTimes(2);
+      const saved = repo.createWithOptionsAndEmbedding.mock.calls[0][0];
+      expect(saved.options.map((o) => o.vakValue)).toEqual(['V', 'A', 'K', 'V']);
+    });
+
+    it('rejects a draft with three options of the question style', async () => {
+      aiGenerator.generateQuestion.mockResolvedValue(withValues(['V', 'V', 'V', 'A']));
+
+      await expect(useCase.execute(visualDto!)).rejects.toMatchObject({ statusCode: 503 });
+      expect(repo.createWithOptionsAndEmbedding).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['Auditory', ['A', 'V', 'K', 'A']],
+      ['Kinesthetic', ['K', 'K', 'V', 'A']],
+    ] as const)('accepts a %s draft with 2 options of its own label and 1 of each other', async (style, values) => {
+      const [, dto] = GenerateQuestionDto.create({ vakStyle: style, teacherId: 1 });
+      aiGenerator.generateQuestion.mockResolvedValueOnce(withValues([...values]));
+      repo.createWithOptionsAndEmbedding.mockResolvedValueOnce(makeEntity());
+
+      await useCase.execute(dto!);
+
+      expect(aiGenerator.generateQuestion).toHaveBeenCalledTimes(1);
+      expect(repo.createWithOptionsAndEmbedding).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects an Auditory draft that doubles the Visual label', async () => {
+      const [, dto] = GenerateQuestionDto.create({ vakStyle: 'Auditory', teacherId: 1 });
+      aiGenerator.generateQuestion.mockResolvedValue(withValues(['V', 'A', 'K', 'V']));
+
+      await expect(useCase.execute(dto!)).rejects.toMatchObject({ statusCode: 503 });
+      expect(aiGenerator.generateQuestion).toHaveBeenCalledTimes(3);
+    });
   });
 
   it('saves the question without an embedding when embedding fails', async () => {
@@ -241,7 +306,10 @@ describe('GenerateQuestionUseCase', () => {
         .mockRejectedValueOnce(new Error('second'))
         .mockRejectedValueOnce(lastError);
 
-      await expect(useCase.execute(visualDto!)).rejects.toBe(lastError);
+      const error = await useCase.execute(visualDto!).catch((e) => e);
+
+      expect(error).toBeInstanceOf(QuestionGenerationError);
+      expect(error).toMatchObject({ reason: 'ai_unavailable', message: 'still failing', originalError: lastError });
       expect(sleep).toHaveBeenCalledTimes(2);
       expect(repo.createWithOptionsAndEmbedding).not.toHaveBeenCalled();
     });
@@ -550,6 +618,7 @@ describe('GenerateQuestionUseCase', () => {
 
       await expect(build('gate').execute(visualDto!)).rejects.toMatchObject({
         statusCode: 503,
+        reason: 'mvi_rejected',
         message: 'Generated Visual question did not pass MVI after 3 attempts',
       });
       expect(repo.createWithOptionsAndEmbedding).not.toHaveBeenCalled();

@@ -6,15 +6,66 @@ import {
   EvolutionDataPoint,
   GradeVakStats,
   Granularity,
+  ReportPeriod,
+  ResultExportFilters,
+  ResultExportRow,
   ResultListFilters,
   SaveResultData,
   SchoolResultStats,
+  StabilityFilters,
+  StabilityResultRow,
   StudentResultFilters,
   UserResultStats,
+  VakStyleCounts,
 } from "../../domain/interfaces/result/index.js";
+import { stabilityProfile } from "../../domain/use-cases/result/stability-profile.js";
 import { PaginationDto } from "../../domain/dtos/shared/pagination.dto.js";
 import { PaginatedResult } from "../../domain/interfaces/shared/paginated-result.interface.js";
 import { CustomError } from "../../domain/error/custom-error.js";
+
+/** HU-44: load only the corrector's id and name with a result. */
+const withCorrector = {
+  correctingTeacher: { select: { id: true, name: true } },
+} as const;
+
+/**
+ * HU-51: match results whose `resultDate` falls in the period. Legacy rows
+ * without a `resultDate` fall back to `createdAt`. Empty when the period is open.
+ */
+function resultDateWhere(period: ReportPeriod = {}) {
+  if (!period.from && !period.to) return {};
+  const range = {
+    ...(period.from && { gte: period.from }),
+    ...(period.to && { lte: period.to }),
+  };
+  return {
+    OR: [{ resultDate: range }, { resultDate: null, createdAt: range }],
+  };
+}
+
+const emptyStyleCounts = (): VakStyleCounts => ({
+  Visual: 0,
+  Auditory: 0,
+  Kinesthetic: 0,
+});
+
+/**
+ * HU-48: keeps the first row per student (rows come newest first) and counts
+ * students by that result's predominant style.
+ */
+function latestStyleCounts(
+  rows: { studentId: number; predominantStyle: string | null }[],
+): { evaluatedStudents: number; styleCounts: VakStyleCounts } {
+  const latest = new Map<number, string | null>();
+  for (const row of rows) {
+    if (!latest.has(row.studentId)) latest.set(row.studentId, row.predominantStyle);
+  }
+  const styleCounts = emptyStyleCounts();
+  for (const style of latest.values()) {
+    if (style && style in styleCounts) styleCounts[style as keyof VakStyleCounts]++;
+  }
+  return { evaluatedStudents: latest.size, styleCounts };
+}
 
 export class ResultRepositoryImpl implements ResultRepository {
   async saveWithNotification(data: SaveResultData): Promise<ResultEntity> {
@@ -57,6 +108,7 @@ export class ResultRepositoryImpl implements ResultRepository {
   async findById(id: number): Promise<ResultEntity | null> {
     const result = await prisma.result.findFirst({
       where: { id, deletedAt: null },
+      include: withCorrector,
     });
     return result ? ResultEntity.fromObject(result) : null;
   }
@@ -66,6 +118,7 @@ export class ResultRepositoryImpl implements ResultRepository {
   ): Promise<ResultEntity | null> {
     const result = await prisma.result.findFirst({
       where: { questionnaireId, deletedAt: null },
+      include: withCorrector,
     });
     return result ? ResultEntity.fromObject(result) : null;
   }
@@ -96,6 +149,7 @@ export class ResultRepositoryImpl implements ResultRepository {
     const [rows, total] = await Promise.all([
       prisma.result.findMany({
         where,
+        include: withCorrector,
         skip: (page - 1) * limit,
         take: limit,
         orderBy: { createdAt: "desc" },
@@ -121,6 +175,11 @@ export class ResultRepositoryImpl implements ResultRepository {
       ...(filters.classifierType !== undefined && {
         classifierType: filters.classifierType,
       }),
+      ...resultDateWhere({ from: filters.startDate, to: filters.endDate }),
+      ...(filters.labelStatus === "corrected" && {
+        correctedVakLabel: { not: null as null },
+      }),
+      ...(filters.labelStatus === "uncorrected" && { correctedVakLabel: null }),
       // Both conditions target the same relation — merge them into one object.
       ...((filters.gradeId !== undefined || filters.schoolId !== undefined) && {
         student: {
@@ -136,6 +195,7 @@ export class ResultRepositoryImpl implements ResultRepository {
     const [rows, total] = await Promise.all([
       prisma.result.findMany({
         where,
+        include: withCorrector,
         skip: (page - 1) * limit,
         take: limit,
         orderBy: { createdAt: "desc" },
@@ -151,7 +211,10 @@ export class ResultRepositoryImpl implements ResultRepository {
     };
   }
 
-  async getSchoolStats(schoolId: number): Promise<SchoolResultStats> {
+  async getSchoolStats(
+    schoolId: number,
+    period: ReportPeriod = {},
+  ): Promise<SchoolResultStats> {
     const studentIds = await prisma.user
       .findMany({
         where: { schoolId, deletedAt: null },
@@ -165,6 +228,10 @@ export class ResultRepositoryImpl implements ResultRepository {
         evaluatedStudents: 0,
         mostCommonStyle: null,
         avgPredominantConfidence: null,
+        startedQuestionnaires: 0,
+        completedQuestionnaires: 0,
+        completionRate: null,
+        avgResponseTimeSeconds: null,
       };
     }
 
@@ -172,9 +239,32 @@ export class ResultRepositoryImpl implements ResultRepository {
       deletedAt: null,
       predominantStyle: { not: null as null },
       studentId: { in: studentIds },
+      ...resultDateWhere(period),
     };
 
-    const [distinctStudents, styleGroups, agg] = await Promise.all([
+    // HU-50: questionnaires are scoped by when they were started.
+    const startedWhere = {
+      deletedAt: null,
+      studentId: { in: studentIds },
+      ...(period.from || period.to
+        ? {
+            startTime: {
+              ...(period.from && { gte: period.from }),
+              ...(period.to && { lte: period.to }),
+            },
+          }
+        : {}),
+    };
+    const completedWhere = { ...startedWhere, status: "completed" };
+
+    const [
+      distinctStudents,
+      styleGroups,
+      agg,
+      startedQuestionnaires,
+      completedQuestionnaires,
+      timing,
+    ] = await Promise.all([
       prisma.result.findMany({
         where: baseWhere,
         select: { studentId: true },
@@ -190,6 +280,12 @@ export class ResultRepositoryImpl implements ResultRepository {
         where: baseWhere,
         _avg: { predominantConfidence: true },
       }),
+      prisma.questionnaire.count({ where: startedWhere }),
+      prisma.questionnaire.count({ where: completedWhere }),
+      prisma.mLDataset.aggregate({
+        where: { questionnaire: completedWhere },
+        _avg: { avgQuestionTime: true },
+      }),
     ]);
 
     return {
@@ -197,12 +293,21 @@ export class ResultRepositoryImpl implements ResultRepository {
       evaluatedStudents: distinctStudents.length,
       mostCommonStyle: styleGroups[0]?.predominantStyle ?? null,
       avgPredominantConfidence: agg._avg.predominantConfidence,
+      startedQuestionnaires,
+      completedQuestionnaires,
+      completionRate:
+        startedQuestionnaires > 0
+          ? completedQuestionnaires / startedQuestionnaires
+          : null,
+      avgResponseTimeSeconds:
+        completedQuestionnaires > 0 ? timing._avg.avgQuestionTime : null,
     };
   }
 
   async getStatsByGrade(
     schoolId: number,
     level?: string,
+    period: ReportPeriod = {},
   ): Promise<GradeVakStats[]> {
     const grades = await prisma.academicGrade.findMany({
       where: level ? { level } : undefined,
@@ -227,6 +332,7 @@ export class ResultRepositoryImpl implements ResultRepository {
             avgVisualProbability: null,
             avgAuditoryProbability: null,
             avgKinestheticProbability: null,
+            styleCounts: emptyStyleCounts(),
           } satisfies GradeVakStats;
         }
 
@@ -234,13 +340,18 @@ export class ResultRepositoryImpl implements ResultRepository {
           deletedAt: null,
           predominantStyle: { not: null as null },
           studentId: { in: studentIds },
+          ...resultDateWhere(period),
         };
 
-        const [distinctStudents, agg] = await Promise.all([
+        const [studentResults, agg] = await Promise.all([
           prisma.result.findMany({
             where: baseWhere,
-            select: { studentId: true },
-            distinct: ["studentId"],
+            select: { studentId: true, predominantStyle: true },
+            // Postgres sorts NULLs first on DESC; legacy rows without resultDate go last.
+            orderBy: [
+              { resultDate: { sort: "desc", nulls: "last" } },
+              { createdAt: "desc" },
+            ],
           }),
           prisma.result.aggregate({
             where: baseWhere,
@@ -252,19 +363,131 @@ export class ResultRepositoryImpl implements ResultRepository {
           }),
         ]);
 
+        const { evaluatedStudents, styleCounts } =
+          latestStyleCounts(studentResults);
+
         return {
           gradeId: grade.id,
           gradeName: grade.name,
           level: grade.level,
-          evaluatedStudents: distinctStudents.length,
+          evaluatedStudents,
           avgVisualProbability: agg._avg.visualProbability,
           avgAuditoryProbability: agg._avg.auditoryProbability,
           avgKinestheticProbability: agg._avg.kinestheticProbability,
+          styleCounts,
         } satisfies GradeVakStats;
       }),
     );
 
     return stats;
+  }
+
+  async findForExport(filters: ResultExportFilters): Promise<ResultExportRow[]> {
+    const rows = await prisma.result.findMany({
+      where: {
+        deletedAt: null,
+        predominantStyle: { not: null as null },
+        student: {
+          schoolId: filters.schoolId,
+          deletedAt: null,
+          ...(filters.gradeId !== undefined && {
+            academicGradeId: filters.gradeId,
+          }),
+        },
+        ...resultDateWhere(filters),
+      },
+      // Report columns only: no account (email, password) or MVI data.
+      select: {
+        resultDate: true,
+        createdAt: true,
+        predominantStyle: true,
+        predominantConfidence: true,
+        visualProbability: true,
+        auditoryProbability: true,
+        kinestheticProbability: true,
+        isMixedProfile: true,
+        secondaryStyle: true,
+        classifierType: true,
+        student: {
+          select: {
+            id: true,
+            name: true,
+            academicGrade: { select: { name: true, level: true } },
+          },
+        },
+      },
+      orderBy: [
+        { student: { academicGrade: { order: "asc" } } },
+        { student: { name: "asc" } },
+        { resultDate: { sort: "asc", nulls: "first" } },
+        { createdAt: "asc" },
+      ],
+    });
+
+    return rows.map((row) => ({
+      gradeName: row.student.academicGrade?.name ?? null,
+      gradeLevel: row.student.academicGrade?.level ?? null,
+      studentId: row.student.id,
+      studentName: row.student.name,
+      resultDate: row.resultDate ?? row.createdAt,
+      predominantStyle: row.predominantStyle!,
+      predominantConfidence: row.predominantConfidence,
+      visualProbability: row.visualProbability,
+      auditoryProbability: row.auditoryProbability,
+      kinestheticProbability: row.kinestheticProbability,
+      isMixedProfile: row.isMixedProfile,
+      secondaryStyle: row.secondaryStyle,
+      classifierType: row.classifierType,
+    }));
+  }
+
+  async findForStability(
+    filters: StabilityFilters,
+  ): Promise<StabilityResultRow[]> {
+    const rows = await prisma.result.findMany({
+      where: {
+        deletedAt: null,
+        predominantStyle: { not: null as null },
+        student: {
+          schoolId: filters.schoolId,
+          deletedAt: null,
+          ...(filters.gradeId !== undefined && {
+            academicGradeId: filters.gradeId,
+          }),
+        },
+        ...resultDateWhere(filters),
+      },
+      // Only what the monitor shows: no account or MVI data.
+      select: {
+        resultDate: true,
+        createdAt: true,
+        predominantStyle: true,
+        student: {
+          select: {
+            id: true,
+            name: true,
+            academicGradeId: true,
+            academicGrade: { select: { name: true } },
+          },
+        },
+      },
+      orderBy: [
+        { student: { academicGrade: { order: "asc" } } },
+        { student: { name: "asc" } },
+        { studentId: "asc" },
+        { resultDate: { sort: "asc", nulls: "first" } },
+        { createdAt: "asc" },
+      ],
+    });
+
+    return rows.map((row) => ({
+      studentId: row.student.id,
+      studentName: row.student.name,
+      gradeId: row.student.academicGradeId,
+      gradeName: row.student.academicGrade?.name ?? null,
+      predominantStyle: row.predominantStyle as StabilityResultRow["predominantStyle"],
+      resultDate: row.resultDate ?? row.createdAt,
+    }));
   }
 
   async getUserStats(userId: number): Promise<UserResultStats> {
@@ -290,9 +513,13 @@ export class ResultRepositoryImpl implements ResultRepository {
       | "Auditory"
       | "Kinesthetic"
       | null;
-    const topCount = topGroup?._count.predominantStyle ?? 0;
-    const profile: "Estable" | "Variable" =
-      predominantStyle && topCount / total >= 0.6 ? "Estable" : "Variable";
+    const topCount = predominantStyle
+      ? (topGroup?._count.predominantStyle ?? 0)
+      : 0;
+    // HU-38: shared rule; a single result has no profile (null), not "Estable".
+    const shared = stabilityProfile(topCount, total);
+    const profile =
+      shared === null ? null : shared === "stable" ? "Estable" : "Variable";
 
     return { userId, total, predominantStyle, profile };
   }
@@ -386,7 +613,9 @@ export class ResultRepositoryImpl implements ResultRepository {
         data: {
           correctedVakLabel: data.vakLabel,
           correctingTeacherId: data.teacherId,
+          correctedAt: data.correctedAt,
         },
+        include: withCorrector,
       });
 
       await tx.mLDataset.updateMany({

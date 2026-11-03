@@ -1,5 +1,6 @@
 import { QuestionEntity } from "../entities/question.entity.js";
 import {
+  ApproveQuestionData,
   CreateQuestionData,
   UpdateMviValidationData,
 } from "../interfaces/question/index.js";
@@ -45,12 +46,14 @@ export abstract class QuestionRepository {
   /**
    * Returns up to `limit` questions sampled uniformly at random among the
    * approved, AI-generated, non-deleted questions of a VAK style that belong
-   * to `schoolId`. Options are stripped of vakValue (not safe to expose).
+   * to `schoolId`, leaving out `excludeIds` (questions the student already
+   * received). Options are stripped of vakValue (not safe to expose).
    */
   abstract findApprovedByStyle(
     vakStyle: string,
     limit: number,
     schoolId: number,
+    excludeIds?: number[],
   ): Promise<ApprovedQuestionSlim[]>;
 
   abstract findByTeacher(
@@ -68,10 +71,14 @@ export abstract class QuestionRepository {
 
   abstract findById(id: number): Promise<QuestionEntity | null>;
 
-  /** `approvedOverMvi` flags an approval given despite a failed MVI diagnosis. */
+  /**
+   * Marks a question approved. `approvedOverMvi` flags an approval given
+   * despite a failed MVI diagnosis; `vakStyle`, when set, replaces the
+   * question's style with the one stated by the teacher.
+   */
   abstract approve(
     id: number,
-    approvedOverMvi?: boolean,
+    decision?: ApproveQuestionData,
   ): Promise<QuestionEntity>;
 
   abstract updateMviValidation(

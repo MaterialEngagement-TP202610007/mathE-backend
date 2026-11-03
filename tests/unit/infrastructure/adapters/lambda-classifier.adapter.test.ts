@@ -1,7 +1,8 @@
 jest.mock('../../../../src/config/envs.js', () => ({
   envs: {
     LAMBDA_URL: 'https://lambda.example.com/predict',
-    LAMBDA_TIMEOUT_MS: 7000,
+    LAMBDA_TIMEOUT_MS: 4000,
+    LAMBDA_DEADLINE_MS: 4500,
   },
 }));
 
@@ -181,6 +182,85 @@ describe('LambdaClassifierAdapterImpl', () => {
       fetchMock.mockRejectedValueOnce(Object.assign(new Error('timeout'), { name: 'TimeoutError' }));
 
       await expect(adapter().classify({ features })).rejects.toMatchObject({ statusCode: 504 });
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(sleep).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('overall deadline (HU-52: simple_score fallback within 5 s)', () => {
+    let clock: number;
+    let sleep: jest.Mock;
+    let timeoutSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      clock = 0;
+      sleep = jest.fn(async (ms: number) => {
+        clock += ms;
+      });
+      timeoutSpy = jest.spyOn(AbortSignal, 'timeout');
+    });
+
+    afterEach(() => {
+      timeoutSpy.mockRestore();
+    });
+
+    const adapter = () =>
+      new LambdaClassifierAdapterImpl({ sleep, random: () => 0.999, now: () => clock });
+
+    it('caps a per-request timeout configured above the deadline (e.g. a legacy 7000 ms)', async () => {
+      const mutableEnvs = envs as { LAMBDA_TIMEOUT_MS: number };
+      mutableEnvs.LAMBDA_TIMEOUT_MS = 7000;
+      try {
+        fetchMock.mockResolvedValueOnce(jsonResponse(lambdaBody()));
+
+        await adapter().classify({ features });
+
+        expect(timeoutSpy.mock.calls[0][0]).toBe(4500);
+      } finally {
+        mutableEnvs.LAMBDA_TIMEOUT_MS = 4000;
+      }
+    });
+
+    it('caps each attempt at the remaining budget and cancels retries past the deadline', async () => {
+      // Every attempt is throttled just before its own timeout fires.
+      fetchMock.mockImplementation(async () => {
+        const lastTimeout = timeoutSpy.mock.calls.at(-1)![0] as number;
+        clock += lastTimeout - 1;
+        return jsonResponse({ message: 'Service Unavailable' }, 503);
+      });
+
+      await expect(adapter().classify({ features })).rejects.toMatchObject({ statusCode: 502 });
+
+      expect(clock).toBeLessThanOrEqual(4500);
+      const timeouts = timeoutSpy.mock.calls.map(([ms]) => ms);
+      expect(timeouts[0]).toBe(4000);
+      for (const ms of timeouts) expect(ms).toBeLessThanOrEqual(4500);
+    });
+
+    it('still retries a fast throttle when the budget allows it', async () => {
+      fetchMock
+        .mockImplementationOnce(async () => {
+          clock += 50;
+          return jsonResponse({}, 503);
+        })
+        .mockResolvedValueOnce(jsonResponse(lambdaBody()));
+
+      const result = await adapter().classify({ features });
+
+      expect(result.predominantStyle).toBe('Kinesthetic');
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      // 4500 budget - 50 ms first call - 749 ms backoff.
+      expect(timeoutSpy.mock.calls[1][0]).toBe(3701);
+    });
+
+    it('does not retry when the backoff alone would overrun the deadline', async () => {
+      fetchMock.mockImplementationOnce(async () => {
+        clock += 3900;
+        return jsonResponse({}, 429);
+      });
+
+      await expect(adapter().classify({ features })).rejects.toMatchObject({ statusCode: 429 });
 
       expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(sleep).not.toHaveBeenCalled();

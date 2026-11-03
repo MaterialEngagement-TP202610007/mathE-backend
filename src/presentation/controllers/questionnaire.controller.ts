@@ -7,6 +7,8 @@ import { ListQuestionnairesUseCase } from "../../domain/use-cases/questionnaire/
 import { CompleteQuestionnaireUseCase } from "../../domain/use-cases/questionnaire/complete-questionnaire.use-case.js";
 import { AbandonQuestionnaireUseCase } from "../../domain/use-cases/questionnaire/abandon-questionnaire.use-case.js";
 import { GetActiveQuestionnaireUseCase } from "../../domain/use-cases/questionnaire/get-active-questionnaire.use-case.js";
+import { SaveQuestionnaireProgressUseCase } from "../../domain/use-cases/questionnaire/save-questionnaire-progress.use-case.js";
+import { SaveQuestionnaireProgressDto } from "../../domain/dtos/questionnaire/save-questionnaire-progress.dto.js";
 
 export class QuestionnaireController {
   constructor(
@@ -16,6 +18,7 @@ export class QuestionnaireController {
     private readonly completeQuestionnaireUseCase: CompleteQuestionnaireUseCase,
     private readonly abandonQuestionnaireUseCase: AbandonQuestionnaireUseCase,
     private readonly getActiveQuestionnaireUseCase: GetActiveQuestionnaireUseCase,
+    private readonly saveQuestionnaireProgressUseCase: SaveQuestionnaireProgressUseCase,
   ) {}
 
   private parsePagination(req: Request): [string?, PaginationDto?] {
@@ -76,6 +79,26 @@ export class QuestionnaireController {
 
     try {
       const result = await this.completeQuestionnaireUseCase.execute(
+        id,
+        req.user!.id,
+        dto!,
+      );
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  saveProgress = async (req: Request, res: Response, next: NextFunction) => {
+    const id = Number(req.params.id);
+    if (isNaN(id))
+      return res.status(400).json({ error: "Invalid questionnaire id" });
+
+    const [error, dto] = SaveQuestionnaireProgressDto.create(req.body);
+    if (error) return res.status(400).json({ error });
+
+    try {
+      const result = await this.saveQuestionnaireProgressUseCase.execute(
         id,
         req.user!.id,
         dto!,

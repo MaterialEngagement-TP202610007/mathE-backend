@@ -6,6 +6,46 @@ export interface AnswerInput {
   timesReviewed: number;
 }
 
+/** Parses `answers[index]`; shared by completion and the progressive save. */
+export function parseAnswerInput(
+  a: { [key: string]: any } | null | undefined,
+  index: number,
+): [string?, AnswerInput?] {
+  const i = index;
+  if (!a || !a.questionId || isNaN(Number(a.questionId)))
+    return [`answers[${i}].questionId is required and must be a number`];
+
+  const selectedOptionId =
+    a.selectedOptionId !== undefined && a.selectedOptionId !== null
+      ? Number(a.selectedOptionId)
+      : null;
+  if (selectedOptionId !== null && isNaN(selectedOptionId))
+    return [`answers[${i}].selectedOptionId must be a number or null`];
+
+  const questionTimeSeconds = Number(a.questionTimeSeconds ?? 0);
+  if (isNaN(questionTimeSeconds) || questionTimeSeconds < 0)
+    return [`answers[${i}].questionTimeSeconds must be a non-negative number`];
+
+  const numberOfChanges = Number(a.numberOfChanges ?? 0);
+  if (isNaN(numberOfChanges) || numberOfChanges < 0)
+    return [`answers[${i}].numberOfChanges must be a non-negative integer`];
+
+  const timesReviewed = Number(a.timesReviewed ?? 0);
+  if (isNaN(timesReviewed) || timesReviewed < 0)
+    return [`answers[${i}].timesReviewed must be a non-negative integer`];
+
+  return [
+    undefined,
+    {
+      questionId: Number(a.questionId),
+      selectedOptionId,
+      questionTimeSeconds,
+      numberOfChanges,
+      timesReviewed,
+    },
+  ];
+}
+
 export class CompleteQuestionnaireDto {
   private constructor(
     public completionPercentage: number,
@@ -26,37 +66,9 @@ export class CompleteQuestionnaireDto {
 
     const parsedAnswers: AnswerInput[] = [];
     for (let i = 0; i < answers.length; i++) {
-      const a = answers[i];
-
-      if (!a.questionId || isNaN(Number(a.questionId)))
-        return [`answers[${i}].questionId is required and must be a number`];
-
-      const selectedOptionId =
-        a.selectedOptionId !== undefined && a.selectedOptionId !== null
-          ? Number(a.selectedOptionId)
-          : null;
-      if (selectedOptionId !== null && isNaN(selectedOptionId))
-        return [`answers[${i}].selectedOptionId must be a number or null`];
-
-      const questionTimeSeconds = Number(a.questionTimeSeconds ?? 0);
-      if (isNaN(questionTimeSeconds) || questionTimeSeconds < 0)
-        return [`answers[${i}].questionTimeSeconds must be a non-negative number`];
-
-      const numberOfChanges = Number(a.numberOfChanges ?? 0);
-      if (isNaN(numberOfChanges) || numberOfChanges < 0)
-        return [`answers[${i}].numberOfChanges must be a non-negative integer`];
-
-      const timesReviewed = Number(a.timesReviewed ?? 0);
-      if (isNaN(timesReviewed) || timesReviewed < 0)
-        return [`answers[${i}].timesReviewed must be a non-negative integer`];
-
-      parsedAnswers.push({
-        questionId: Number(a.questionId),
-        selectedOptionId,
-        questionTimeSeconds,
-        numberOfChanges,
-        timesReviewed,
-      });
+      const [error, parsed] = parseAnswerInput(answers[i], i);
+      if (error) return [error];
+      parsedAnswers.push(parsed!);
     }
 
     return [undefined, new CompleteQuestionnaireDto(cp, parsedAnswers)];

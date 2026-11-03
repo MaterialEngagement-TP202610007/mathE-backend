@@ -20,9 +20,11 @@ model Result {
   aiFeedback     String? @db.Text
   feedbackSource String? @db.VarChar(50) // 'gemini' | 'predefined'
 
-  // Pilot phase label correction
-  correctedVakLabel   String? @db.VarChar(20)
+  // Pilot phase label correction (HU-44): label, who (correctingTeacher, FK
+  // to User with ON DELETE SET NULL) and when.
+  correctedVakLabel   String?   @db.VarChar(20)
   correctingTeacherId Int?
+  correctedAt         DateTime?
 
   resultDate DateTime?
 

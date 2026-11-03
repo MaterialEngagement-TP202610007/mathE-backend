@@ -19,12 +19,14 @@ export class LoginUserUseCase {
     const user = await this.userRepository.findByEmail(dto.email);
     if (!user) throw CustomError.badRequest("Invalid credentials");
 
+    // Verify the password first so a wrong password always yields the same
+    // generic error and never reveals that an account is inactive or pending.
+    const valid = this.passwordAdapter.compare(dto.password, user.password);
+    if (!valid) throw CustomError.badRequest("Invalid credentials");
+
     if (!user.isActive) {
       throw CustomError.unauthorized(inactiveAccountMessage(user));
     }
-
-    const valid = this.passwordAdapter.compare(dto.password, user.password);
-    if (!valid) throw CustomError.badRequest("Invalid credentials");
 
     const token = await this.tokenAdapter.generate({
       id: user.id,

@@ -15,6 +15,8 @@ import { GetSchoolStatsUseCase } from "../../domain/use-cases/result/get-school-
 import { GetStatsByGradeUseCase } from "../../domain/use-cases/result/get-stats-by-grade.use-case.js";
 import { GetUserStatsUseCase } from "../../domain/use-cases/result/get-user-stats.use-case.js";
 import { GetUserEvolutionUseCase } from "../../domain/use-cases/result/get-user-evolution.use-case.js";
+import { ExportResultsUseCase } from "../../domain/use-cases/result/export-results.use-case.js";
+import { GetSchoolStabilityUseCase } from "../../domain/use-cases/result/get-school-stability.use-case.js";
 
 export class ResultRoutes {
   static get routes(): Router {
@@ -33,6 +35,8 @@ export class ResultRoutes {
       new GetStatsByGradeUseCase(resultRepository, schoolAccessPolicy),
       new GetUserStatsUseCase(resultRepository),
       new GetUserEvolutionUseCase(resultRepository),
+      new ExportResultsUseCase(resultRepository, schoolAccessPolicy),
+      new GetSchoolStabilityUseCase(resultRepository, schoolAccessPolicy),
     );
 
     router.use(authMiddleware);
@@ -64,8 +68,31 @@ export class ResultRoutes {
      *       - in: query
      *         name: classifierType
      *         schema: { type: string }
+     *       - in: query
+     *         name: period
+     *         schema: { type: string, enum: [week, month, quarter, year] }
+     *         description: "HU-51. Relative range ending now (last 7 days, 1 month, 3 months, 1 year). An explicit from/to overrides that bound."
+     *       - in: query
+     *         name: from
+     *         schema: { type: string, format: date }
+     *         description: HU-51. Include results dated on or after this ISO date/timestamp.
+     *       - in: query
+     *         name: to
+     *         schema: { type: string, format: date }
+     *         description: HU-51. Include results dated on or before this ISO date/timestamp (a date-only value covers the whole day, UTC).
+     *       - in: query
+     *         name: labelStatus
+     *         schema: { type: string, enum: [corrected, uncorrected] }
+     *         description: >
+     *           HU-44 labeling view. corrected = a teacher already set correctedVakLabel;
+     *           uncorrected = still to label. Omitted = both.
      *     responses:
-     *       200: { description: Paginated results }
+     *       200:
+     *         description: >
+     *           Paginated results. Each item includes the HU-44 correction audit:
+     *           correctedVakLabel (string | null), correctedAt (ISO | null) and
+     *           correctedBy ({ id, name } | null).
+     *       400: { description: "Invalid period, from/to, from > to, or labelStatus must be one of: corrected, uncorrected" }
      *       403: { description: "Teacher requesting another school — { error: 'You can only access data from your own school' }" }
      */
     router.get(
@@ -144,9 +171,35 @@ export class ResultRoutes {
      *         name: schoolId
      *         required: true
      *         schema: { type: integer }
+     *       - in: query
+     *         name: period
+     *         schema: { type: string, enum: [week, month, quarter, year] }
+     *         description: "HU-51. Relative range ending now (last 7 days, 1 month, 3 months, 1 year). An explicit from/to overrides that bound."
+     *       - in: query
+     *         name: from
+     *         schema: { type: string, format: date }
+     *         description: HU-51. Include results dated on or after this ISO date/timestamp.
+     *       - in: query
+     *         name: to
+     *         schema: { type: string, format: date }
+     *         description: HU-51. Include results dated on or before this ISO date/timestamp (a date-only value covers the whole day, UTC).
      *     responses:
-     *       200: { description: School stats }
-     *       400: { description: Invalid schoolId }
+     *       200:
+     *         description: "School stats for the period (zero counts and null averages when the range has no data)"
+     *         content:
+     *           application/json:
+     *             schema:
+     *               type: object
+     *               properties:
+     *                 schoolId: { type: integer }
+     *                 evaluatedStudents: { type: integer }
+     *                 mostCommonStyle: { type: string, nullable: true }
+     *                 avgPredominantConfidence: { type: number, nullable: true }
+     *                 startedQuestionnaires: { type: integer, description: "HU-50. Questionnaires started in the period (any status)" }
+     *                 completedQuestionnaires: { type: integer, description: "HU-50. Started questionnaires that were completed" }
+     *                 completionRate: { type: number, nullable: true, description: "HU-50. completed / started (0..1); null when nothing was started" }
+     *                 avgResponseTimeSeconds: { type: number, nullable: true, description: "HU-50. Mean seconds per question over completed questionnaires (ML dataset avgQuestionTime); null when none completed" }
+     *       400: { description: "Invalid schoolId, period, from/to, or from > to" }
      *       403: { description: "Teacher requesting another school — { error: 'You can only access data from your own school' }" }
      */
     router.get(
@@ -171,15 +224,147 @@ export class ResultRoutes {
      *         name: level
      *         schema: { type: string, enum: [Primaria, Secundaria] }
      *         description: Filter grades by education level
+     *       - in: query
+     *         name: period
+     *         schema: { type: string, enum: [week, month, quarter, year] }
+     *         description: "HU-51. Relative range ending now (last 7 days, 1 month, 3 months, 1 year). An explicit from/to overrides that bound."
+     *       - in: query
+     *         name: from
+     *         schema: { type: string, format: date }
+     *         description: HU-51. Include results dated on or after this ISO date/timestamp.
+     *       - in: query
+     *         name: to
+     *         schema: { type: string, format: date }
+     *         description: HU-51. Include results dated on or before this ISO date/timestamp (a date-only value covers the whole day, UTC).
      *     responses:
-     *       200: { description: Array of per-grade VAK stats }
-     *       400: { description: Invalid schoolId or level }
+     *       200:
+     *         description: "Array of per-grade VAK stats for the period (every grade is listed; evaluatedStudents 0 when it has no results in range)"
+     *         content:
+     *           application/json:
+     *             schema:
+     *               type: array
+     *               items:
+     *                 type: object
+     *                 properties:
+     *                   gradeId: { type: integer }
+     *                   gradeName: { type: string }
+     *                   level: { type: string }
+     *                   evaluatedStudents: { type: integer }
+     *                   avgVisualProbability: { type: number, nullable: true }
+     *                   avgAuditoryProbability: { type: number, nullable: true }
+     *                   avgKinestheticProbability: { type: number, nullable: true }
+     *                   styleCounts:
+     *                     type: object
+     *                     description: "HU-48. Students per predominant style of their latest result in the period (mixed profiles count under their predominant style); sums to evaluatedStudents."
+     *                     properties:
+     *                       Visual: { type: integer }
+     *                       Auditory: { type: integer }
+     *                       Kinesthetic: { type: integer }
+     *       400: { description: "Invalid schoolId, level, period, from/to, or from > to" }
      *       403: { description: "Teacher requesting another school — { error: 'You can only access data from your own school' }" }
      */
     router.get(
       "/stats/school/:schoolId/by-grade",
       roleGuard(ROLES.TEACHER, ROLES.ADMIN),
       controller.getStatsByGrade,
+    );
+
+    /**
+     * @openapi
+     * /api/results/stats/school/{schoolId}/stability:
+     *   get:
+     *     tags: [Results]
+     *     summary: Stability monitor — how each student's VAK classification varied in the period (HU-38). Admin (any school) or Teacher (own school only).
+     *     description: >
+     *       One entry per student with classified results in the period, ordered by grade, name and id.
+     *       `changes` counts predominant-style changes between consecutive results (oldest first).
+     *       `profile` is "stable" when the most frequent style covers at least 60% of the student's
+     *       results, "variable" otherwise, and null when the student has a single result (no
+     *       comparison available yet). No account or MVI data is included.
+     *     security: [{ bearerAuth: [] }]
+     *     parameters:
+     *       - in: path
+     *         name: schoolId
+     *         required: true
+     *         schema: { type: integer }
+     *       - in: query
+     *         name: gradeId
+     *         schema: { type: integer }
+     *         description: Only students of this academic grade
+     *       - in: query
+     *         name: period
+     *         schema: { type: string, enum: [week, month, quarter, year] }
+     *         description: "HU-51. Relative range ending now. An explicit from/to overrides that bound."
+     *       - in: query
+     *         name: from
+     *         schema: { type: string, format: date }
+     *       - in: query
+     *         name: to
+     *         schema: { type: string, format: date }
+     *         description: A date-only value covers the whole day (UTC).
+     *     responses:
+     *       200:
+     *         description: >
+     *           { schoolId, gradeId | null, summary: { students, stable, variable, insufficientData },
+     *           students: [{ studentId, studentName, gradeId, gradeName, resultsCount, firstStyle,
+     *           lastStyle, changes, profile: "stable" | "variable" | null, lastResultDate }] }.
+     *           An empty period returns students [] and a zero summary.
+     *       400: { description: "Invalid schoolId, Invalid gradeId, or an invalid period" }
+     *       403: { description: "Teacher requesting another school — { error: 'You can only access data from your own school' }" }
+     */
+    router.get(
+      "/stats/school/:schoolId/stability",
+      roleGuard(ROLES.TEACHER, ROLES.ADMIN),
+      controller.getSchoolStability,
+    );
+
+    /**
+     * @openapi
+     * /api/results/export:
+     *   get:
+     *     tags: [Results]
+     *     summary: Download a CSV of learning-style results by school, grade and period (HU-49). Admin (any school) or Teacher (own school only).
+     *     description: >
+     *       UTF-8 CSV with a BOM (Excel-friendly), comma separated, CRLF line endings, Spanish headers:
+     *       Grado, Nivel, ID estudiante, Nombre del estudiante, Fecha del resultado, Estilo predominante,
+     *       Confianza (%), Visual (%), Auditivo (%), Kinestésico (%), Perfil mixto, Estilo secundario, Clasificador.
+     *       One row per result, ordered by grade, student name and date. Sections are not modelled.
+     *       No account (email, password) or MVI data is included.
+     *     security: [{ bearerAuth: [] }]
+     *     parameters:
+     *       - in: query
+     *         name: schoolId
+     *         required: true
+     *         schema: { type: integer }
+     *       - in: query
+     *         name: gradeId
+     *         schema: { type: integer }
+     *         description: Only students of this academic grade
+     *       - in: query
+     *         name: period
+     *         schema: { type: string, enum: [week, month, quarter, year] }
+     *         description: "HU-51. Relative range ending now. An explicit from/to overrides that bound."
+     *       - in: query
+     *         name: from
+     *         schema: { type: string, format: date }
+     *       - in: query
+     *         name: to
+     *         schema: { type: string, format: date }
+     *         description: A date-only value covers the whole day (UTC).
+     *     responses:
+     *       200:
+     *         description: 'CSV attachment. Content-Disposition: attachment; filename="reporte-estilos-colegio-<schoolId>[-grado-<gradeId>]-<from>-<to>.csv" (dates YYYY-MM-DD; open bounds use the first/last exported result date)'
+     *         content:
+     *           text/csv:
+     *             schema: { type: string }
+     *       400: { description: "schoolId is required, Invalid schoolId, Invalid gradeId, or an invalid period" }
+     *       403: { description: "Teacher requesting another school — { error: 'You can only access data from your own school' }" }
+     *       404: { description: "{ error: 'No results to export for the selected filters' }" }
+     */
+    router.get(
+      "/export",
+      roleGuard(ROLES.TEACHER, ROLES.ADMIN),
+      controller.exportCsv,
     );
 
     /**
@@ -195,7 +380,10 @@ export class ResultRoutes {
      *         required: true
      *         schema: { type: integer }
      *     responses:
-     *       200: { description: User stats summary }
+     *       200:
+     *         description: >
+     *           { userId, total, predominantStyle, profile: "Estable" | "Variable" | null }.
+     *           HU-38: profile is null with fewer than two results (no comparison yet).
      *       400: { description: Invalid userId }
      *       403: { description: Student accessing another user's stats }
      *       404: { description: User not found }
@@ -296,7 +484,10 @@ export class ResultRoutes {
      *         required: true
      *         schema: { type: integer }
      *     responses:
-     *       200: { description: Result detail }
+     *       200:
+     *         description: >
+     *           Result detail. Teachers/admins also get the HU-44 correction audit
+     *           (correctedVakLabel, correctedAt, correctedBy { id, name } | null); students do not.
      *       403: { description: Result does not belong to you }
      *       404: { description: Not found }
      */
@@ -315,6 +506,8 @@ export class ResultRoutes {
      *     description: >
      *       Updates correctedVakLabel on the Result and sets vakLabel + labelSource=teacher_validated
      *       on the corresponding MLDataset row. Used during the pilot phase to build Ground Truth.
+     *       HU-44: also records who corrected (the authenticated user) and when (correctedAt).
+     *       A later correction overwrites label, corrector and date.
      *     security: [{ bearerAuth: [] }]
      *     parameters:
      *       - in: path
@@ -333,7 +526,9 @@ export class ResultRoutes {
      *                 type: string
      *                 enum: [Visual, Auditory, Kinesthetic]
      *     responses:
-     *       200: { description: Result with corrected label }
+     *       200:
+     *         description: >
+     *           Result with correctedVakLabel, correctedAt (ISO) and correctedBy { id, name }.
      *       400: { description: Invalid vakLabel }
      *       404: { description: Result not found }
      */

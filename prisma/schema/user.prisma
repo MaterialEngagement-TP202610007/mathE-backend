@@ -7,6 +7,10 @@ model User {
   phoneNumber String?  @db.VarChar(20)
   isActive    Boolean  @default(true)
 
+  // Consent: when the user accepted the terms and privacy policy (null for
+  // accounts created before acceptance was tracked).
+  termsAcceptedAt DateTime?
+
   // Audit
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt

@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response } from "express";
 import { PaginationDto } from "../../domain/dtos/shared/pagination.dto.js";
 import { CorrectResultLabelDto } from "../../domain/dtos/result/correct-result-label.dto.js";
+import { ReportPeriodDto } from "../../domain/dtos/result/report-period.dto.js";
 import { StudentResultsFilterDto } from "../../domain/dtos/result/student-results-filter.dto.js";
 import { GetResultUseCase } from "../../domain/use-cases/result/get-result.use-case.js";
 import { GetResultByQuestionnaireUseCase } from "../../domain/use-cases/result/get-result-by-questionnaire.use-case.js";
@@ -11,7 +12,30 @@ import { GetSchoolStatsUseCase } from "../../domain/use-cases/result/get-school-
 import { GetStatsByGradeUseCase } from "../../domain/use-cases/result/get-stats-by-grade.use-case.js";
 import { GetUserStatsUseCase } from "../../domain/use-cases/result/get-user-stats.use-case.js";
 import { GetUserEvolutionUseCase } from "../../domain/use-cases/result/get-user-evolution.use-case.js";
+import { ExportResultsUseCase } from "../../domain/use-cases/result/export-results.use-case.js";
+import { GetSchoolStabilityUseCase } from "../../domain/use-cases/result/get-school-stability.use-case.js";
 import { toRequester } from "../mappers/requester.mapper.js";
+import {
+  toResultPageResponse,
+  toResultResponse,
+} from "../mappers/result.mapper.js";
+import {
+  resultsCsvFilename,
+  toResultsCsv,
+} from "../mappers/result-csv.mapper.js";
+import {
+  RESULT_LABEL_STATUSES,
+  ReportPeriod,
+  ResultLabelStatus,
+} from "../../domain/interfaces/result/index.js";
+
+/** Only the bounds that were set, so an open range stays `{}`. */
+function periodOf(dto: ReportPeriodDto): ReportPeriod {
+  return {
+    ...(dto.from && { from: dto.from }),
+    ...(dto.to && { to: dto.to }),
+  };
+}
 
 export class ResultController {
   constructor(
@@ -24,7 +48,15 @@ export class ResultController {
     private readonly getStatsByGradeUseCase: GetStatsByGradeUseCase,
     private readonly getUserStatsUseCase: GetUserStatsUseCase,
     private readonly getUserEvolutionUseCase: GetUserEvolutionUseCase,
+    private readonly exportResultsUseCase: ExportResultsUseCase,
+    private readonly getSchoolStabilityUseCase: GetSchoolStabilityUseCase,
+    /** Clock for relative report periods (HU-51); injectable for tests. */
+    private readonly now: () => Date = () => new Date(),
   ) {}
+
+  private parsePeriod(req: Request): [string?, ReportPeriodDto?] {
+    return ReportPeriodDto.create(req.query, this.now());
+  }
 
   private parsePagination(req: Request): [string?, PaginationDto?] {
     const page = req.query.page ? Number(req.query.page) : 1;
@@ -42,7 +74,7 @@ export class ResultController {
         req.user!.id,
         req.user!.roleId!,
       );
-      res.json(result);
+      res.json(toResultResponse(result, req.user!.roleId));
     } catch (err) {
       next(err);
     }
@@ -63,7 +95,7 @@ export class ResultController {
         req.user!.id,
         req.user!.roleId!,
       );
-      res.json(result);
+      res.json(toResultResponse(result, req.user!.roleId));
     } catch (err) {
       next(err);
     }
@@ -82,7 +114,7 @@ export class ResultController {
         pagination!,
         filters,
       );
-      res.json(result);
+      res.json(toResultPageResponse(result, req.user!.roleId));
     } catch (err) {
       next(err);
     }
@@ -101,14 +133,32 @@ export class ResultController {
       : undefined;
     const classifierType = req.query.classifierType as string | undefined;
 
+    const labelStatus = req.query.labelStatus as string | undefined;
+    if (
+      labelStatus !== undefined &&
+      !RESULT_LABEL_STATUSES.includes(labelStatus as ResultLabelStatus)
+    ) {
+      return res.status(400).json({
+        error: `labelStatus must be one of: ${RESULT_LABEL_STATUSES.join(", ")}`,
+      });
+    }
+
+    const [periodError, period] = this.parsePeriod(req);
+    if (periodError) return res.status(400).json({ error: periodError });
+
     try {
       const result = await this.getAllResultsUseCase.execute(pagination!, {
         studentId: !isNaN(studentId!) ? studentId : undefined,
         gradeId: !isNaN(gradeId!) ? gradeId : undefined,
         schoolId: !isNaN(schoolId!) ? schoolId : undefined,
         classifierType,
+        startDate: period!.from,
+        endDate: period!.to,
+        ...(labelStatus !== undefined && {
+          labelStatus: labelStatus as ResultLabelStatus,
+        }),
       }, toRequester(req));
-      res.json(result);
+      res.json(toResultPageResponse(result, req.user!.roleId));
     } catch (err) {
       next(err);
     }
@@ -119,10 +169,13 @@ export class ResultController {
     if (isNaN(schoolId)) {
       return res.status(400).json({ error: "Invalid schoolId" });
     }
+    const [periodError, period] = this.parsePeriod(req);
+    if (periodError) return res.status(400).json({ error: periodError });
     try {
       const stats = await this.getSchoolStatsUseCase.execute(
         schoolId,
         toRequester(req),
+        periodOf(period!),
       );
       res.json(stats);
     } catch (err) {
@@ -136,13 +189,90 @@ export class ResultController {
       return res.status(400).json({ error: "Invalid schoolId" });
     }
     const level = req.query.level as string | undefined;
+    const [periodError, period] = this.parsePeriod(req);
+    if (periodError) return res.status(400).json({ error: periodError });
     try {
       const stats = await this.getStatsByGradeUseCase.execute(
         schoolId,
         level,
         toRequester(req),
+        periodOf(period!),
       );
       res.json(stats);
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  /** HU-49: CSV download of a school's (or grade's) results in a period. */
+  exportCsv = async (req: Request, res: Response, next: NextFunction) => {
+    if (req.query.schoolId === undefined || req.query.schoolId === "") {
+      return res.status(400).json({ error: "schoolId is required" });
+    }
+    const schoolId = Number(req.query.schoolId);
+    if (isNaN(schoolId)) {
+      return res.status(400).json({ error: "Invalid schoolId" });
+    }
+    const gradeId =
+      req.query.gradeId !== undefined && req.query.gradeId !== ""
+        ? Number(req.query.gradeId)
+        : undefined;
+    if (gradeId !== undefined && isNaN(gradeId)) {
+      return res.status(400).json({ error: "Invalid gradeId" });
+    }
+    const [periodError, period] = this.parsePeriod(req);
+    if (periodError) return res.status(400).json({ error: periodError });
+
+    try {
+      const report = await this.exportResultsUseCase.execute(
+        {
+          schoolId,
+          ...(gradeId !== undefined && { gradeId }),
+          ...periodOf(period!),
+        },
+        toRequester(req),
+      );
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${resultsCsvFilename(report)}"`,
+      );
+      res.status(200).send(toResultsCsv(report.rows));
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  /** HU-38: per-student classification variation for a school (or grade). */
+  getSchoolStability = async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => {
+    const schoolId = Number(req.params.schoolId);
+    if (isNaN(schoolId)) {
+      return res.status(400).json({ error: "Invalid schoolId" });
+    }
+    const gradeId =
+      req.query.gradeId !== undefined && req.query.gradeId !== ""
+        ? Number(req.query.gradeId)
+        : undefined;
+    if (gradeId !== undefined && isNaN(gradeId)) {
+      return res.status(400).json({ error: "Invalid gradeId" });
+    }
+    const [periodError, period] = this.parsePeriod(req);
+    if (periodError) return res.status(400).json({ error: periodError });
+
+    try {
+      const report = await this.getSchoolStabilityUseCase.execute(
+        {
+          schoolId,
+          ...(gradeId !== undefined && { gradeId }),
+          ...periodOf(period!),
+        },
+        toRequester(req),
+      );
+      res.json(report);
     } catch (err) {
       next(err);
     }

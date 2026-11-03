@@ -4,6 +4,7 @@ import { MLModelRepository } from "../../repositories/ml-model.repository.js";
 import { ResultRepository } from "../../repositories/result.repository.js";
 import { LambdaClassifierAdapter } from "../../adapters/lambda-classifier.adapter.js";
 import { VakFeedbackAdapter } from "../../adapters/vak-feedback.adapter.js";
+import { RealtimeNotifier } from "../../adapters/realtime-notifier.adapter.js";
 import { CompleteQuestionnaireDto } from "../../dtos/questionnaire/complete-questionnaire.dto.js";
 import { CustomError } from "../../error/custom-error.js";
 import { ResultEntity } from "../../entities/result.entity.js";
@@ -15,6 +16,19 @@ import {
 import { CompleteWithAnswersAndDatasetResult } from "../../interfaces/questionnaire/index.js";
 
 type CompletionFeatures = Omit<CompleteWithAnswersAndDatasetResult, "vakLabel">;
+type SaveResultParams = Parameters<ResultRepository["saveWithNotification"]>[0];
+
+export interface CompleteQuestionnaireConfig {
+  /** Delay before each retry of a failed result save (default 2 retries: 200 ms, 400 ms). */
+  saveRetryDelaysMs?: number[];
+  /** Injectable delay — lets tests skip real waiting. */
+  sleep?: (ms: number) => Promise<void>;
+}
+
+const DEFAULT_SAVE_RETRY_DELAYS_MS = [200, 400];
+
+const defaultSleep = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 export class CompleteQuestionnaireUseCase {
   constructor(
@@ -24,6 +38,9 @@ export class CompleteQuestionnaireUseCase {
     private readonly resultRepository: ResultRepository,
     private readonly lambdaClassifierAdapter: LambdaClassifierAdapter,
     private readonly vakFeedbackAdapter: VakFeedbackAdapter,
+    private readonly config: CompleteQuestionnaireConfig = {},
+    /** HU-35 S1: live `result_available` push; optional and best effort. */
+    private readonly notifier?: RealtimeNotifier,
   ) {}
 
   /**
@@ -189,30 +206,94 @@ export class CompleteQuestionnaireUseCase {
       feedbackSource = "predefined";
     }
 
-    let result: ResultEntity;
-    try {
-      result = await this.resultRepository.saveWithNotification({
-        questionnaireId: id,
-        studentId,
-        mlModelId,
-        ...classification,
-        modelVersion,
-        aiFeedback,
-        feedbackSource,
-      });
-    } catch (err) {
-      // A concurrent retry may have saved the result first (unique questionnaireId).
-      const existing = await this.resultRepository.findByQuestionnaire(id);
-      if (existing) return this.toResponse(existing);
-      throw err;
-    }
+    const saved = await this.saveResultWithRetry({
+      questionnaireId: id,
+      studentId,
+      mlModelId,
+      ...classification,
+      modelVersion,
+      aiFeedback,
+      feedbackSource,
+    });
+    if (saved.alreadyStored) return this.toResponse(saved.result);
+
+    this.notifyResultAvailable(studentId, saved.result.id, id);
 
     return {
-      resultId: result.id,
+      resultId: saved.result.id,
       ...classification,
       aiFeedback,
       feedbackSource,
     };
+  }
+
+  /**
+   * HU-35 S1: the result and its `result_available` notification are already
+   * stored; a live push is a bonus and must never fail the completion.
+   */
+  private notifyResultAvailable(
+    studentId: number,
+    resultId: number,
+    questionnaireId: number,
+  ): void {
+    if (!this.notifier) return;
+    try {
+      this.notifier.notify(studentId, {
+        type: "result_available",
+        resultId,
+        questionnaireId,
+      });
+    } catch (err) {
+      console.error(
+        `[CompleteQuestionnaire] result_available push failed for result ${resultId}:`,
+        errorMessage(err),
+      );
+    }
+  }
+
+  /**
+   * HU-39 S2: a failed save is retried a bounded number of times with backoff.
+   * The answers and dataset are already committed, so after the last failure
+   * the student is told to submit again; that re-submission resumes from the
+   * persisted dataset (see `resumeCompleted`) and never duplicates answers.
+   */
+  private async saveResultWithRetry(
+    params: SaveResultParams,
+  ): Promise<{ result: ResultEntity; alreadyStored: boolean }> {
+    const delays = this.config.saveRetryDelaysMs ?? DEFAULT_SAVE_RETRY_DELAYS_MS;
+    const sleep = this.config.sleep ?? defaultSleep;
+
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const result = await this.resultRepository.saveWithNotification(params);
+        return { result, alreadyStored: false };
+      } catch (err) {
+        // A concurrent retry may have saved the result first (unique questionnaireId).
+        // If the lookup fails too (e.g. the database is down), treat the result
+        // as not saved so the bounded retry and the final 503 still apply.
+        const existing = await this.resultRepository
+          .findByQuestionnaire(params.questionnaireId)
+          .catch((lookupErr: unknown) => {
+            console.error(
+              `[complete] Looking up a stored result failed (attempt ${attempt + 1}):`,
+              errorMessage(lookupErr),
+            );
+            return null;
+          });
+        if (existing) return { result: existing, alreadyStored: true };
+
+        console.error(
+          `[complete] Saving the result failed (attempt ${attempt + 1}):`,
+          errorMessage(err),
+        );
+        if (attempt >= delays.length) {
+          throw CustomError.serviceUnavailable(
+            "Your answers were saved, but your result could not be stored right now. Please submit again in a few moments to get your result.",
+          );
+        }
+        await sleep(delays[attempt]);
+      }
+    }
   }
 
   private toResponse(result: ResultEntity): CompleteQuestionnaireResult {

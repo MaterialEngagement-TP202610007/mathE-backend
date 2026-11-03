@@ -4,7 +4,11 @@ import { CorrectResultLabelDto } from "../../dtos/result/correct-result-label.dt
 import { CustomError } from "../../error/custom-error.js";
 
 export class CorrectResultLabelUseCase {
-  constructor(private readonly resultRepository: ResultRepository) {}
+  constructor(
+    private readonly resultRepository: ResultRepository,
+    /** Clock for the HU-44 correction audit; injectable for tests. */
+    private readonly now: () => Date = () => new Date(),
+  ) {}
 
   async execute(
     resultId: number,
@@ -18,6 +22,7 @@ export class CorrectResultLabelUseCase {
       resultId,
       teacherId,
       vakLabel: dto.vakLabel,
+      correctedAt: this.now(),
     });
   }
 }
