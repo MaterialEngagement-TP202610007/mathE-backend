@@ -20,13 +20,22 @@ describe('LoginUserDto.create', () => {
     expect(err).toBe('Missing Password');
   });
 
-  it('rejects invalid email format', () => {
+  it('does not reveal the field when the email format is wrong', () => {
     const [err] = LoginUserDto.create({ ...valid, email: 'bad-email' });
-    expect(err).toBe('Invalid Email');
+    expect(err).toBe('Invalid credentials');
   });
 
-  it('rejects invalid password format', () => {
-    const [err] = LoginUserDto.create({ ...valid, password: 'short' });
-    expect(err).toBe('Invalid Password');
+  it('does not reveal the field when the password format is wrong', () => {
+    const [err] = LoginUserDto.create({ ...valid, password: 'abc123' });
+    expect(err).toBe('Invalid credentials');
+  });
+
+  it.each([
+    ['email', { email: { contains: 'a' }, password: 'Password1' }],
+    ['password', { email: 'user@example.com', password: 12345678 }],
+  ])('rejects a non-string %s before it reaches the repository', (_field, body) => {
+    const [err, dto] = LoginUserDto.create(body);
+    expect(err).toBe('Invalid credentials');
+    expect(dto).toBeUndefined();
   });
 });

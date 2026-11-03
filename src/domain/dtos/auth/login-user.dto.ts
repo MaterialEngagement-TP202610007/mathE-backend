@@ -11,8 +11,11 @@ export class LoginUserDto {
 
     if (!email) return ["Missing Email"];
     if (!password) return ["Missing Password"];
-    if (!regularExps.email.test(email)) return ["Invalid Email"];
-    if (!regularExps.password.test(password)) return ["Invalid Password"];
+    // Same message as a wrong password, so a failed login never reveals which field failed.
+    if (typeof email !== "string" || typeof password !== "string") return ["Invalid credentials"];
+    if (!regularExps.email.test(email) || !regularExps.password.test(password)) {
+      return ["Invalid credentials"];
+    }
 
     return [undefined, new LoginUserDto(email, password)];
   }

@@ -84,8 +84,8 @@ Body:
 { "email": "user@example.com", "password": "Passw0rd" }
 ```
 - `200` → `LoginResponse` `{ user }` **+** `Set-Cookie: auth_token=...; HttpOnly; Secure; SameSite=Strict; Max-Age=604800; Path=/`
-- `400` → validation error `{ "error": "Invalid Email" }`
-- `400` → `"Invalid credentials"` — unknown email or wrong password, also for inactive accounts (their state is never revealed without the right password)
+- `400` → `"Missing Email"` or `"Missing Password"` when a field is absent
+- `400` → `"Invalid credentials"` — unknown email, wrong password, or a value with an invalid format, also for inactive accounts (neither the failing field nor the account state is revealed without the right password)
 - `401` → inactive account, only after the password is verified — pending teacher: `"Account is inactive. Your teacher account is pending administrator approval."` (always prefixed `Account is inactive`)
 
 ### `POST /api/auth/logout`
