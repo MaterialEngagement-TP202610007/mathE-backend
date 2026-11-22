@@ -9,6 +9,11 @@ import { PaginationDto } from "../../domain/dtos/shared/pagination.dto.js";
 import { UserListFilters } from "../../domain/interfaces/user/index.js";
 import { PaginatedResult } from "../../domain/interfaces/shared/paginated-result.interface.js";
 
+/** Escapes the LIKE/ILIKE metacharacters (backslash is PostgreSQL's default escape). */
+function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, "\\$&");
+}
+
 export class UserRepositoryImpl implements UserRepository {
   async findById(id: number): Promise<UserEntity | null> {
     const user = await prisma.user.findUnique({
@@ -19,11 +24,16 @@ export class UserRepositoryImpl implements UserRepository {
     return UserEntity.fromObject(user);
   }
 
-  /** Case-insensitive, so accounts stored before email normalization are still found. */
+  /**
+   * Case-insensitive, so accounts stored before email normalization are still found.
+   * Prisma compiles this to ILIKE: LIKE wildcards are escaped so "_" and "%" only
+   * match themselves, and the oldest account wins if case variants exist.
+   */
   async findByEmail(email: string): Promise<UserEntity | null> {
     const user = await prisma.user.findFirst({
-      where: { email: { equals: email, mode: "insensitive" } },
+      where: { email: { equals: escapeLikePattern(email), mode: "insensitive" } },
       include: { school: { select: { cenEdu: true } } },
+      orderBy: { id: "asc" },
     });
     if (!user) return null;
     return UserEntity.fromObject(user);

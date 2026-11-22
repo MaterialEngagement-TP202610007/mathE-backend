@@ -34,7 +34,7 @@ function makeVerificationRepo(pending: PendingVerificationCode | null = null) {
   return {
     findByUserId: jest.fn().mockResolvedValue(pending),
     save: jest.fn().mockResolvedValue(undefined),
-    incrementAttempts: jest.fn().mockResolvedValue(undefined),
+    incrementAttempts: jest.fn().mockResolvedValue(true),
     markVerified: jest.fn().mockResolvedValue(undefined),
   } as jest.Mocked<EmailVerificationRepository>;
 }
@@ -191,7 +191,7 @@ describe('VerifyEmailUseCase', () => {
       statusCode: 400,
       message: 'Invalid or expired verification code',
     });
-    expect(repo.incrementAttempts).toHaveBeenCalledWith(7);
+    expect(repo.incrementAttempts).toHaveBeenCalledWith(7, 5);
     expect(repo.markVerified).not.toHaveBeenCalled();
   });
 
@@ -215,6 +215,27 @@ describe('VerifyEmailUseCase', () => {
       message: 'Too many failed attempts. Request a new verification code',
     });
     expect(repo.markVerified).not.toHaveBeenCalled();
+  });
+
+  it('a guess that finds no attempt left (concurrent requests) gets 429 without comparing', async () => {
+    const repo = makeVerificationRepo(pending({ attempts: 4 }));
+    repo.incrementAttempts.mockResolvedValueOnce(false);
+    const codes = makeCodeAdapter();
+    const useCase = new VerifyEmailUseCase(makeUserRepo(makeUser()), repo, codes, CONFIG);
+
+    await expect(useCase.execute(dto())).rejects.toMatchObject({ statusCode: 429 });
+    expect(codes.matches).not.toHaveBeenCalled();
+    expect(repo.markVerified).not.toHaveBeenCalled();
+  });
+
+  it('the right code also uses its attempt before being accepted', async () => {
+    const repo = makeVerificationRepo(pending());
+    const useCase = new VerifyEmailUseCase(makeUserRepo(makeUser()), repo, makeCodeAdapter(), CONFIG);
+
+    await useCase.execute(dto());
+
+    expect(repo.incrementAttempts).toHaveBeenCalledWith(7, 5);
+    expect(repo.markVerified).toHaveBeenCalledWith(7, NOW);
   });
 
   it('answers the same 400 for an unknown email or a missing code', async () => {

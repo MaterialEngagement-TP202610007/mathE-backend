@@ -103,7 +103,18 @@ describe('UserRepositoryImpl.findByEmail', () => {
     expect(mocked.user.findFirst).toHaveBeenCalledWith({
       where: { email: { equals: 'teacher@example.com', mode: 'insensitive' } },
       include: { school: { select: { cenEdu: true } } },
+      orderBy: { id: 'asc' },
     });
     expect(user!.id).toBe(5);
+  });
+
+  it('escapes LIKE wildcards so "_" and "%" only match themselves', async () => {
+    mocked.user.findFirst.mockResolvedValueOnce(null);
+
+    await new UserRepositoryImpl().findByEmail('john_doe%x\\y@gmail.com');
+
+    expect(mocked.user.findFirst.mock.calls.at(-1)[0].where.email.equals).toBe(
+      'john\\_doe\\%x\\\\y@gmail.com',
+    );
   });
 });

@@ -30,11 +30,13 @@ export class EmailVerificationRepositoryImpl implements EmailVerificationReposit
     });
   }
 
-  async incrementAttempts(userId: number): Promise<void> {
-    await prisma.emailVerificationCode.update({
-      where: { userId },
+  async incrementAttempts(userId: number, maxAttempts: number): Promise<boolean> {
+    // Conditional update: concurrent guesses can never use more than maxAttempts.
+    const { count } = await prisma.emailVerificationCode.updateMany({
+      where: { userId, attempts: { lt: maxAttempts } },
       data: { attempts: { increment: 1 } },
     });
+    return count > 0;
   }
 
   async markVerified(userId: number, verifiedAt: Date): Promise<void> {

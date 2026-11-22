@@ -25,14 +25,18 @@ export class VerifyEmailUseCase {
       throw CustomError.badRequest(INVALID_CODE_MESSAGE);
     }
 
-    if (pending.attempts >= this.config.maxAttempts) {
+    // Every guess first reserves an attempt atomically, so parallel requests
+    // cannot try more than maxAttempts codes.
+    const reserved =
+      pending.attempts < this.config.maxAttempts &&
+      (await this.verificationRepository.incrementAttempts(user.id, this.config.maxAttempts));
+    if (!reserved) {
       throw CustomError.tooManyRequests(
         "Too many failed attempts. Request a new verification code",
       );
     }
 
     if (!this.codeAdapter.matches(dto.code, pending.codeHash)) {
-      await this.verificationRepository.incrementAttempts(user.id);
       throw CustomError.badRequest(INVALID_CODE_MESSAGE);
     }
 

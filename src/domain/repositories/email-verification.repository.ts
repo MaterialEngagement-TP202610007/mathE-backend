@@ -13,7 +13,11 @@ export abstract class EmailVerificationRepository {
   /** Replaces any previous code of the user and resets its attempts. */
   abstract save(code: Omit<PendingVerificationCode, "attempts">): Promise<void>;
 
-  abstract incrementAttempts(userId: number): Promise<void>;
+  /**
+   * Atomically uses one attempt while fewer than `maxAttempts` were used.
+   * False when none is left (or the code no longer exists).
+   */
+  abstract incrementAttempts(userId: number, maxAttempts: number): Promise<boolean>;
 
   /** Sets the user's emailVerifiedAt and removes the pending code, atomically. */
   abstract markVerified(userId: number, verifiedAt: Date): Promise<void>;

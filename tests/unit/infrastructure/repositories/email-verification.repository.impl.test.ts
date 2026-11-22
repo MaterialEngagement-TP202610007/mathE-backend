@@ -3,7 +3,7 @@ jest.mock('../../../../src/config/database/index.js', () => ({
     emailVerificationCode: {
       findUnique: jest.fn(),
       upsert: jest.fn(),
-      update: jest.fn(),
+      updateMany: jest.fn(),
       deleteMany: jest.fn(),
     },
     user: { update: jest.fn() },
@@ -15,7 +15,7 @@ import { prisma } from '../../../../src/config/database/index.js';
 import { EmailVerificationRepositoryImpl } from '../../../../src/infrastructure/repositories/email-verification.repository.impl.js';
 
 const mocked = prisma as unknown as {
-  emailVerificationCode: { findUnique: jest.Mock; upsert: jest.Mock; update: jest.Mock; deleteMany: jest.Mock };
+  emailVerificationCode: { findUnique: jest.Mock; upsert: jest.Mock; updateMany: jest.Mock; deleteMany: jest.Mock };
   user: { update: jest.Mock };
   $transaction: jest.Mock;
 };
@@ -39,13 +39,21 @@ describe('EmailVerificationRepositoryImpl', () => {
     });
   });
 
-  it('incrementAttempts adds one atomically', async () => {
-    await repo.incrementAttempts(7);
+  it('incrementAttempts adds one atomically and only while attempts remain', async () => {
+    mocked.emailVerificationCode.updateMany.mockResolvedValueOnce({ count: 1 });
 
-    expect(mocked.emailVerificationCode.update).toHaveBeenCalledWith({
-      where: { userId: 7 },
+    await expect(repo.incrementAttempts(7, 5)).resolves.toBe(true);
+
+    expect(mocked.emailVerificationCode.updateMany).toHaveBeenCalledWith({
+      where: { userId: 7, attempts: { lt: 5 } },
       data: { attempts: { increment: 1 } },
     });
+  });
+
+  it('incrementAttempts reports false when no attempt was left (or the code is gone)', async () => {
+    mocked.emailVerificationCode.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    await expect(repo.incrementAttempts(7, 5)).resolves.toBe(false);
   });
 
   it('markVerified sets emailVerifiedAt and removes the code in one transaction', async () => {
