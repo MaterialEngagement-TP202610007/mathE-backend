@@ -18,12 +18,12 @@ Branches: backend `fix/tp2-peer-review` (from `origin/release` 640b71f), fronten
 
 | ID | Specs | Repo | Route | Status | Evidence |
 |----|-------|------|-------|--------|----------|
-| T1 | S2 | backend | inline | pending | |
-| T2 | S2, S4 | frontend | inline | pending | |
-| T3 | S3 | backend | inline | blocked (Brevo API key) for live send; code can start | |
-| T4 | S3 | frontend | inline | pending | |
+| T1 | S2 | backend | inline | done | 686ef0a; jest 798/798 |
+| T2 | S2, S4 | frontend | inline | done | c840971; tsc+eslint clean; live local check (name, calendar 2005-2021 / 1925-2008, CP030 toast) |
+| T3 | S3 | backend | inline | done (code); deploy pending | 42772b1 + fix 530c86e; jest 850/850; verifier: 1 blocker (ILIKE wildcards) fixed; Brevo test send 201 |
+| T4 | S3 | frontend | inline | done (code); E2E pending deploy | 5c8ab2f; tsc+eslint clean; page rendered locally |
 | T5 | S1 | docs (CP + report) | inline | pending | |
-| T6 | S1–S4 | live re-execution (chrome-devtools) | inline | pending | |
+| T6 | S1–S4 | live re-execution (chrome-devtools) | inline | in progress: CP001–CP009 PASS with token (2026-11-22); CP017–CP019, CP030 after deploy | |
 | T7 | S5 | report .odt | inline | pending | |
 
 Risk notes: T3 touches auth and adds a migration (high-risk items 1 and 2) → independent verifier after its checks.
@@ -35,4 +35,9 @@ Risk notes: T3 touches auth and adds a migration (high-risk items 1 and 2) → i
 - **L3 (2026-11-22, user):** "No, pero dice que no se verifica la existencia del correo, solo en la bd, lo cual es cierto, entones lo del codigo OTP, puede ser una alternativa viable"
 - **L4 (2026-11-22, user):** "lo mejor seria guardar una copia, osea crear una rama y publicarala como se encunetra ahora, y modificar en la rama release o de depsliegue tanto para frontend y para backend [...] vamos a empezar con la integracion"
 - **L5 (evidence):** Resend's `resend.dev` sender only delivers to the account owner (needs an owned domain); Render free blocks SMTP ports 25/465/587; Brevo free rewrites free-mail senders but delivers to any recipient over HTTPS.
-- **Next:** T1.
+- **L6 (assumption):** age ranges student 5-20, teacher 18-100 (pending user confirmation).
+- **L7 (evidence):** T1-T4 committed on `fix/tp2-peer-review` (backend 686ef0a, 42772b1; frontend c840971, 5c8ab2f). Frontend has no test runner: checks are tsc, eslint and live Chrome checks against a local Vite proxied to the production API. Local backend not run (reading `.env` denied; DB target unknown).
+- **L8 (evidence, 2026-11-22):** CP001–CP009 re-executed from the MVI Swagger page (chrome-devtools) with the Bearer token: /salud ok 0.4.0; /reglas 200, 10 rules, only homogeneidad-opciones is advertencia; CP002 401 without token / 200 aprobado with token; CP003 34 words blocked, original approved; CP004 5 words warning / 6 blocked; CP005 simple negation warning / double negation blocked; CP006 longitud-opciones 17 vs 9.25 and exclusividad blocked; CP007 jaccard banco[0] blocked / empty bank approved; CP008 correspondencia (opcion 2 V tiene 0) and composicion (V:3 A:0 K:1) blocked; CP009 approved with homogeneidad warning. All match the expected results.
+- **L9 (verifier, 2026-11-22):** S2 PASS (behaviour), S3 one blocker B1: Prisma `equals`+`mode: insensitive` compiles to ILIKE without escaping, so `_`/`%` were wildcards (wrong duplicate rejection, enumeration, rate-limit bypass, parallel code guessing). Fixed in 530c86e: escape `\ % _`, `orderBy id asc`, attempts reserved atomically with `updateMany ... attempts < max` before comparing. Migration verified on scratch Postgres (backfill correct, no drift). Non-blocking notes kept open: verify-email returns 200 for already verified accounts (minor enumeration); promoteToAdmin does not set emailVerifiedAt; accounts created while the flag is off must verify if the flag is later turned on; after a failed first email the resend waits up to 60 s.
+- **L10 (2026-11-22, user):** provided Brevo key and EMAIL_FROM_ADDRESS (not stored in the repo). Restricted key: /v3/account and /v3/senders answer 403 permission_denied; POST /v3/smtp/email test to the sender's own address answered 201.
+- **Next:** user sets Render env; merge into deploy branches; T5-T7.
