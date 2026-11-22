@@ -47,7 +47,7 @@ function makeDto(roleId: number = ROLES.TEACHER) {
     password: 'Password1',
     email: 'test@example.com',
     name: 'Test User',
-    birthDate: '1990-01-01',
+    birthDate: roleId === ROLES.STUDENT ? '2015-03-10' : '1990-01-01',
     roleId,
     schoolId: 5,
     acceptTerms: true,

@@ -22,8 +22,8 @@ function makeReq(roleId: number): Request {
     body: {
       password: 'Password1',
       email: 'user@example.com',
-      name: 'User',
-      birthDate: '2000-01-01',
+      name: 'Test User',
+      birthDate: roleId === ROLES.STUDENT ? '2015-03-10' : '1990-01-01',
       roleId,
       schoolId: 5,
       acceptTerms: true,

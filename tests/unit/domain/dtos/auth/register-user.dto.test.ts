@@ -26,7 +26,7 @@ describe('RegisterUserDto.create', () => {
   });
 
   it('student is active immediately (isActive=true)', () => {
-    const [, dto] = RegisterUserDto.create({ ...base, roleId: ROLES.STUDENT });
+    const [, dto] = RegisterUserDto.create({ ...base, roleId: ROLES.STUDENT, birthDate: '2015-03-10' });
     expect(dto!.isActive).toBe(true);
   });
 
@@ -47,7 +47,7 @@ describe('RegisterUserDto.create', () => {
   });
 
   it('accepts numeric string roleId for student', () => {
-    const [err, dto] = RegisterUserDto.create({ ...base, roleId: String(ROLES.STUDENT) });
+    const [err, dto] = RegisterUserDto.create({ ...base, roleId: String(ROLES.STUDENT), birthDate: '2015-03-10' });
     expect(err).toBeUndefined();
     expect(dto!.roleId).toBe(ROLES.STUDENT);
     expect(dto!.isActive).toBe(true);
@@ -153,5 +153,65 @@ describe('RegisterUserDto.create', () => {
   it('defaults phoneNumber to null when not provided', () => {
     const [, dto] = RegisterUserDto.create(base);
     expect(dto!.phoneNumber).toBeNull();
+  });
+});
+
+describe('RegisterUserDto.create — personal data rules (TP2 CP017/CP018)', () => {
+  const NOW = new Date('2026-11-22T12:00:00Z');
+  const student = { ...base, roleId: ROLES.STUDENT, birthDate: '2015-03-10' };
+
+  it.each(['x', 'xx', 'Ana', 'Ana B', 'Ana123 Pérez', 'Ana_ Pérez', '   '])(
+    'rejects name %p (needs first name and last name, letters only)',
+    (name) => {
+      const [err, dto] = RegisterUserDto.create({ ...base, name }, NOW);
+      expect(err).toBe('Invalid Name');
+      expect(dto).toBeUndefined();
+    },
+  );
+
+  it.each(['Ana Pérez', 'María José Núñez-Ríos', "Liam O'Connor", 'Juan de la Cruz'])(
+    'accepts name %p',
+    (name) => {
+      const [err, dto] = RegisterUserDto.create({ ...base, name }, NOW);
+      expect(err).toBeUndefined();
+      expect(dto!.name).toBe(name);
+    },
+  );
+
+  it('trims and collapses spaces in the stored name', () => {
+    const [, dto] = RegisterUserDto.create({ ...base, name: '  Ana    Pérez ' }, NOW);
+    expect(dto!.name).toBe('Ana Pérez');
+  });
+
+  it('rejects a birth date in the future', () => {
+    const [err] = RegisterUserDto.create({ ...student, birthDate: '2026-12-01' }, NOW);
+    expect(err).toBe('Invalid Birth Date');
+  });
+
+  it.each([
+    ['2022-01-01', 'younger than 5'],
+    ['2005-01-01', 'older than 20'],
+  ])('rejects student birth date %s (%s)', (birthDate) => {
+    const [err, dto] = RegisterUserDto.create({ ...student, birthDate }, NOW);
+    expect(err).toBe('Birth date out of range for a student (5 to 20 years old)');
+    expect(dto).toBeUndefined();
+  });
+
+  it.each(['2021-11-22', '2006-11-23'])('accepts student birth date %s (age bounds 5 and 20)', (birthDate) => {
+    const [err] = RegisterUserDto.create({ ...student, birthDate }, NOW);
+    expect(err).toBeUndefined();
+  });
+
+  it.each([
+    ['2009-01-01', 'younger than 18'],
+    ['1920-01-01', 'older than 100'],
+  ])('rejects teacher birth date %s (%s)', (birthDate) => {
+    const [err] = RegisterUserDto.create({ ...base, birthDate }, NOW);
+    expect(err).toBe('Birth date out of range for a teacher (18 to 100 years old)');
+  });
+
+  it('accepts a teacher who turns 18 today', () => {
+    const [err] = RegisterUserDto.create({ ...base, birthDate: '2008-11-22' }, NOW);
+    expect(err).toBeUndefined();
   });
 });

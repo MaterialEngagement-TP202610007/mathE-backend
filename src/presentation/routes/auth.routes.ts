@@ -141,9 +141,15 @@ export class AuthRoutes {
      *                 format: email
      *               name:
      *                 type: string
+     *                 description: >
+     *                   First name and last name: at least two words of two or more letters,
+     *                   letters, spaces, hyphens, apostrophes and periods only. Extra spaces are removed.
      *               birthDate:
      *                 type: string
      *                 format: date
+     *                 description: >
+     *                   Not in the future. Students must be 5 to 20 years old and teachers
+     *                   18 to 100 years old.
      *               roleId:
      *                 type: integer
      *               phoneNumber:
@@ -170,8 +176,10 @@ export class AuthRoutes {
      *           administrator approval.", requiresApproval: true }
      *       400:
      *         description: >
-     *           Validation error (including "Invalid Role Id", "Missing School Id",
-     *           "Invalid School Id", "School not found",
+     *           Validation error (including "Invalid Name", "Invalid Birth Date",
+     *           "Birth date out of range for a student (5 to 20 years old)",
+     *           "Birth date out of range for a teacher (18 to 100 years old)",
+     *           "Invalid Role Id", "Missing School Id", "Invalid School Id", "School not found",
      *           "Terms and privacy policy must be accepted")
      *       429:
      *         description: Too many registration attempts — { error }

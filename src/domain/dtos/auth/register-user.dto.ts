@@ -4,6 +4,37 @@ import { isActiveOnRegistration } from "../../policies/account-activation.policy
 
 const PUBLIC_REGISTRATION_ROLES: number[] = [ROLES.STUDENT, ROLES.TEACHER];
 
+/** Letters (including accented ones), spaces, hyphens, apostrophes and periods. */
+const NAME_CHARS = /^[\p{L}\s'.-]+$/u;
+/** A name word must have at least two letters ("Ana", "de"); initials do not count. */
+const NAME_WORD = /^\p{L}[\p{L}'.-]*\p{L}$/u;
+
+/** Accepted ages per role (inclusive), so made-up birth dates cannot register. */
+const AGE_RANGE_BY_ROLE: Record<number, { min: number; max: number; label: string }> = {
+  [ROLES.STUDENT]: { min: 5, max: 20, label: "student" },
+  [ROLES.TEACHER]: { min: 18, max: 100, label: "teacher" },
+};
+
+/** "  Ana   Pérez " → "Ana Pérez"; undefined when it is not a first and last name. */
+function normalizeName(raw: unknown): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  const name = raw.trim().replace(/\s+/g, " ");
+  if (name.length > 100 || !NAME_CHARS.test(name)) return undefined;
+  const fullWords = name.split(" ").filter((word) => NAME_WORD.test(word));
+  return fullWords.length >= 2 ? name : undefined;
+}
+
+/** Whole years between the birth date and `now`, both read as UTC calendar dates. */
+function ageOn(birthDate: Date, now: Date): number {
+  let age = now.getUTCFullYear() - birthDate.getUTCFullYear();
+  const beforeBirthday =
+    now.getUTCMonth() < birthDate.getUTCMonth() ||
+    (now.getUTCMonth() === birthDate.getUTCMonth() &&
+      now.getUTCDate() < birthDate.getUTCDate());
+  if (beforeBirthday) age -= 1;
+  return age;
+}
+
 export class RegisterUserDto {
   private constructor(
     public password: string,
@@ -19,7 +50,10 @@ export class RegisterUserDto {
     public termsAcceptedAt: Date | null,
   ) {}
 
-  static create(object: { [key: string]: any }): [string?, RegisterUserDto?] {
+  static create(
+    object: { [key: string]: any },
+    now: Date = new Date(),
+  ): [string?, RegisterUserDto?] {
     const {
       password,
       email,
@@ -46,8 +80,13 @@ export class RegisterUserDto {
     if (!regularExps.password.test(password)) return ["Invalid Password"];
     if (!regularExps.email.test(email)) return ["Invalid Email"];
 
+    const normalizedName = normalizeName(name);
+    if (!normalizedName) return ["Invalid Name"];
+
     const parsedBirthDate = new Date(birthDate);
-    if (isNaN(parsedBirthDate.getTime())) return ["Invalid Birth Date"];
+    if (isNaN(parsedBirthDate.getTime()) || parsedBirthDate.getTime() > now.getTime()) {
+      return ["Invalid Birth Date"];
+    }
 
     if (
       phoneNumber !== undefined &&
@@ -71,6 +110,14 @@ export class RegisterUserDto {
     if (!Number.isInteger(parsedSchoolId) || parsedSchoolId <= 0) {
       return ["Invalid School Id"];
     }
+
+    const ageRange = AGE_RANGE_BY_ROLE[parsedRoleId];
+    const age = ageOn(parsedBirthDate, now);
+    if (ageRange && (age < ageRange.min || age > ageRange.max)) {
+      return [
+        `Birth date out of range for a ${ageRange.label} (${ageRange.min} to ${ageRange.max} years old)`,
+      ];
+    }
     // Students are active immediately; teachers wait for administrator approval.
     const isActive = isActiveOnRegistration(parsedRoleId);
 
@@ -79,7 +126,7 @@ export class RegisterUserDto {
       new RegisterUserDto(
         password,
         email,
-        name,
+        normalizedName,
         parsedBirthDate,
         parsedRoleId,
         phoneNumber ?? null,
