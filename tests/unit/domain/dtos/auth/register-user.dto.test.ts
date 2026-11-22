@@ -214,4 +214,15 @@ describe('RegisterUserDto.create — personal data rules (TP2 CP017/CP018)', () 
     const [err] = RegisterUserDto.create({ ...base, birthDate: '2008-11-22' }, NOW);
     expect(err).toBeUndefined();
   });
+
+  it('normalizes the email (trim + lowercase) so case variants cannot duplicate an account', () => {
+    const [err, dto] = RegisterUserDto.create({ ...base, email: ' Teacher@Example.com ' }, NOW);
+    expect(err).toBeUndefined();
+    expect(dto!.email).toBe('teacher@example.com');
+  });
+
+  it('new accounts start with an unverified email', () => {
+    const [, dto] = RegisterUserDto.create(base, NOW);
+    expect(dto!.emailVerifiedAt).toBeNull();
+  });
 });

@@ -1,6 +1,6 @@
 jest.mock('../../../../src/config/database/index.js', () => ({
   prisma: {
-    user: { findMany: jest.fn(), count: jest.fn() },
+    user: { findMany: jest.fn(), count: jest.fn(), findFirst: jest.fn() },
   },
 }));
 
@@ -9,7 +9,7 @@ import { UserRepositoryImpl } from '../../../../src/infrastructure/repositories/
 import { PaginationDto } from '../../../../src/domain/dtos/shared/pagination.dto.js';
 
 const mocked = prisma as unknown as {
-  user: { findMany: jest.Mock; count: jest.Mock };
+  user: { findMany: jest.Mock; count: jest.Mock; findFirst: jest.Mock };
 };
 
 const row = {
@@ -91,5 +91,19 @@ describe('UserRepositoryImpl.findAll search (HU-37)', () => {
     await new UserRepositoryImpl().findAll(pagination!, { roleId: 3 });
 
     expect(mocked.user.findMany.mock.calls[0][0].where.OR).toBeUndefined();
+  });
+});
+
+describe('UserRepositoryImpl.findByEmail', () => {
+  it('matches the email case-insensitively so legacy mixed-case accounts are found', async () => {
+    mocked.user.findFirst.mockResolvedValueOnce(row);
+
+    const user = await new UserRepositoryImpl().findByEmail('teacher@example.com');
+
+    expect(mocked.user.findFirst).toHaveBeenCalledWith({
+      where: { email: { equals: 'teacher@example.com', mode: 'insensitive' } },
+      include: { school: { select: { cenEdu: true } } },
+    });
+    expect(user!.id).toBe(5);
   });
 });

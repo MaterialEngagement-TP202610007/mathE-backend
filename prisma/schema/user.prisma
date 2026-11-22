@@ -11,6 +11,10 @@ model User {
   // accounts created before acceptance was tracked).
   termsAcceptedAt DateTime?
 
+  // When the user proved they own the email with a one-time code. Accounts
+  // that existed before verification was introduced are backfilled as verified.
+  emailVerifiedAt DateTime?
+
   // Audit
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -32,4 +36,5 @@ model User {
   correctingResults Result[]        @relation("CorrectingTeacherResults")
   mlDatasets        MLDataset[]     @relation("StudentMLDatasets")
   notifications     Notification[]
+  emailVerificationCode EmailVerificationCode?
 }

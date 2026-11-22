@@ -18,6 +18,8 @@ export class UserEntity {
     public deletedAt: Date | null,
     public schoolName: string | null = null,
     public termsAcceptedAt: Date | null = null,
+    /** Null until the user confirms the email with a one-time code. */
+    public emailVerifiedAt: Date | null = null,
   ) {}
 
   static fromObject(object: { [key: string]: any }): UserEntity {
@@ -37,6 +39,7 @@ export class UserEntity {
       deletedAt,
       school,
       termsAcceptedAt,
+      emailVerifiedAt,
     } = object;
 
     if (!id) throw CustomError.badRequest("Missing Id");
@@ -64,6 +67,7 @@ export class UserEntity {
       deletedAt ? new Date(deletedAt) : null,
       school?.cenEdu ?? object.schoolName ?? null,
       termsAcceptedAt ? new Date(termsAcceptedAt) : null,
+      emailVerifiedAt ? new Date(emailVerifiedAt) : null,
     );
   }
 }

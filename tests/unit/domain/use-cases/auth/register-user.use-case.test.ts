@@ -169,6 +169,52 @@ describe('RegisterUserUseCase', () => {
 
     const result = await useCase.execute(makeDto());
 
-    expect(result).toBe(entity);
+    expect(result.user).toBe(entity);
+  });
+
+  describe('email verification (TP2 CP019)', () => {
+    function makeSender(fails = false) {
+      return {
+        sendTo: fails
+          ? jest.fn().mockRejectedValue(CustomError.serviceUnavailable('Email provider request failed'))
+          : jest.fn().mockResolvedValue(undefined),
+      };
+    }
+
+    it('flag off (no sender): no code is sent and verification is not required', async () => {
+      repo.findByEmail.mockResolvedValueOnce(null);
+      repo.create.mockResolvedValueOnce(makeEntity());
+
+      const result = await useCase.execute(makeDto());
+
+      expect(result).toMatchObject({ emailVerificationRequired: false, verificationEmailSent: false });
+    });
+
+    it('flag on: sends the code to the created user', async () => {
+      const entity = makeEntity();
+      const sender = makeSender();
+      useCase = new RegisterUserUseCase(repo, passwordAdapter, schoolRepo, { emailVerification: sender as never });
+      repo.findByEmail.mockResolvedValueOnce(null);
+      repo.create.mockResolvedValueOnce(entity);
+
+      const result = await useCase.execute(makeDto());
+
+      expect(sender.sendTo).toHaveBeenCalledWith(entity);
+      expect(result).toMatchObject({ user: entity, emailVerificationRequired: true, verificationEmailSent: true });
+    });
+
+    it('flag on: a failed email keeps the account and reports it so the user can resend', async () => {
+      const sender = makeSender(true);
+      useCase = new RegisterUserUseCase(repo, passwordAdapter, schoolRepo, { emailVerification: sender as never });
+      repo.findByEmail.mockResolvedValueOnce(null);
+      repo.create.mockResolvedValueOnce(makeEntity());
+      const log = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+
+      const result = await useCase.execute(makeDto());
+
+      expect(repo.create).toHaveBeenCalledTimes(1);
+      expect(result).toMatchObject({ emailVerificationRequired: true, verificationEmailSent: false });
+      log.mockRestore();
+    });
   });
 });

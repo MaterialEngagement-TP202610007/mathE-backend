@@ -19,9 +19,10 @@ export class UserRepositoryImpl implements UserRepository {
     return UserEntity.fromObject(user);
   }
 
+  /** Case-insensitive, so accounts stored before email normalization are still found. */
   async findByEmail(email: string): Promise<UserEntity | null> {
-    const user = await prisma.user.findUnique({
-      where: { email },
+    const user = await prisma.user.findFirst({
+      where: { email: { equals: email, mode: "insensitive" } },
       include: { school: { select: { cenEdu: true } } },
     });
     if (!user) return null;

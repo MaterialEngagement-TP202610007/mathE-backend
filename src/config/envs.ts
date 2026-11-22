@@ -1,6 +1,11 @@
 import "dotenv/config";
 import envVar from "env-var";
 
+const emailVerificationEnabled = envVar
+  .get("EMAIL_VERIFICATION_ENABLED")
+  .default("false")
+  .asBool();
+
 export const envs = {
   PORT: envVar.get("PORT").default(3000).asPortNumber(),
   DATABASE_URL: envVar.get("DATABASE_URL").required().asString(),
@@ -97,4 +102,17 @@ export const envs = {
     .default("advisory")
     .asEnum(["off", "advisory", "gate"]),
   MVI_NIVEL: envVar.get("MVI_NIVEL").default("6").asIntPositive(),
+
+  // Email verification with a one-time code (TP2 CP019). Off by default: the
+  // registration flow stays as before. When on, the Brevo key and sender are required.
+  EMAIL_VERIFICATION_ENABLED: emailVerificationEnabled,
+  BREVO_API_KEY: envVar.get("BREVO_API_KEY").required(emailVerificationEnabled).default("").asString(),
+  EMAIL_FROM_ADDRESS: envVar
+    .get("EMAIL_FROM_ADDRESS")
+    .required(emailVerificationEnabled)
+    .default("")
+    .asString(),
+  EMAIL_FROM_NAME: envVar.get("EMAIL_FROM_NAME").default("MathE").asString(),
+  EMAIL_TIMEOUT_MS: envVar.get("EMAIL_TIMEOUT_MS").default("10000").asIntPositive(),
+  EMAIL_CODE_TTL_MINUTES: envVar.get("EMAIL_CODE_TTL_MINUTES").default("15").asIntPositive(),
 };

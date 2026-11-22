@@ -21,7 +21,7 @@ describe('AdminBootstrapRepositoryImpl', () => {
     expect(found).toEqual({ id: 9 });
   });
 
-  it('creates an active admin with nullable profile columns left empty', async () => {
+  it('creates an active admin with a verified email (the operator provides it) and empty profile columns', async () => {
     const { client, user } = makePrisma();
     const birthDate = new Date('1970-01-01T00:00:00.000Z');
 
@@ -40,6 +40,7 @@ describe('AdminBootstrapRepositoryImpl', () => {
         phoneNumber: null,
         academicGradeId: null,
         schoolId: null,
+        emailVerifiedAt: expect.any(Date),
       },
       select: { id: true },
     });

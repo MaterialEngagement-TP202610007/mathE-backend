@@ -31,6 +31,8 @@ export class AdminBootstrapRepositoryImpl implements AdminBootstrapRepository {
         phoneNumber: null,
         academicGradeId: null,
         schoolId: null,
+        // The operator sets ADMIN_EMAIL, so it never waits for a verification code.
+        emailVerifiedAt: new Date(),
       },
       select: { id: true },
     });

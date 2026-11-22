@@ -48,6 +48,8 @@ export class RegisterUserDto {
     public isActive: boolean,
     /** Set by the register use case at the moment of acceptance; null until then. */
     public termsAcceptedAt: Date | null,
+    /** Null for new accounts: set only when the email is verified with a code. */
+    public emailVerifiedAt: Date | null = null,
   ) {}
 
   static create(
@@ -78,7 +80,9 @@ export class RegisterUserDto {
     }
 
     if (!regularExps.password.test(password)) return ["Invalid Password"];
-    if (!regularExps.email.test(email)) return ["Invalid Email"];
+    // Emails are compared case-insensitively: "Ana@x.com" and "ana@x.com" are one account.
+    const normalizedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
+    if (!regularExps.email.test(normalizedEmail)) return ["Invalid Email"];
 
     const normalizedName = normalizeName(name);
     if (!normalizedName) return ["Invalid Name"];
@@ -125,7 +129,7 @@ export class RegisterUserDto {
       undefined,
       new RegisterUserDto(
         password,
-        email,
+        normalizedEmail,
         normalizedName,
         parsedBirthDate,
         parsedRoleId,

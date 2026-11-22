@@ -4,10 +4,24 @@ import { SchoolRepository } from "../../repositories/school.repository.js";
 import { PasswordAdapter } from "../../adapters/password.adapter.js";
 import { RegisterUserDto } from "../../dtos/auth/register-user.dto.js";
 import { UserEntity } from "../../entities/user.entity.js";
+import { SendEmailVerificationCodeUseCase } from "./send-email-verification-code.use-case.js";
 
 export interface RegisterUserConfig {
   /** Injectable clock for `termsAcceptedAt` — lets tests pin the timestamp. */
   now?: () => Date;
+  /**
+   * Set when EMAIL_VERIFICATION_ENABLED is on: a code is emailed after the
+   * account is created (TP2 CP019). Absent means the previous flow.
+   */
+  emailVerification?: Pick<SendEmailVerificationCodeUseCase, "sendTo"> | null;
+}
+
+export interface RegisterUserResult {
+  user: UserEntity;
+  /** The user must confirm the email with a code before logging in. */
+  emailVerificationRequired: boolean;
+  /** False when the email provider failed; the user can ask for a new code. */
+  verificationEmailSent: boolean;
 }
 
 export class RegisterUserUseCase {
@@ -18,7 +32,7 @@ export class RegisterUserUseCase {
     private readonly config: RegisterUserConfig = {},
   ) {}
 
-  async execute(dto: RegisterUserDto): Promise<UserEntity> {
+  async execute(dto: RegisterUserDto): Promise<RegisterUserResult> {
     const existing = await this.userRepository.findByEmail(dto.email);
     if (existing) throw CustomError.badRequest("Email already registered");
 
@@ -33,7 +47,21 @@ export class RegisterUserUseCase {
     // The DTO only exists when acceptTerms === true, so acceptance happens now.
     dto.termsAcceptedAt = this.now();
 
-    return this.userRepository.create(dto);
+    const user = await this.userRepository.create(dto);
+
+    const emailVerification = this.config.emailVerification;
+    if (!emailVerification) {
+      return { user, emailVerificationRequired: false, verificationEmailSent: false };
+    }
+
+    try {
+      await emailVerification.sendTo(user);
+      return { user, emailVerificationRequired: true, verificationEmailSent: true };
+    } catch (error) {
+      // The account exists either way: never lose it because the email failed.
+      console.error("Verification email could not be sent:", (error as Error).message);
+      return { user, emailVerificationRequired: true, verificationEmailSent: false };
+    }
   }
 
   private now(): Date {

@@ -144,4 +144,55 @@ describe('LoginUserUseCase', () => {
       roleId: user.roleId,
     });
   });
+
+  describe('email verification gate (TP2 CP019)', () => {
+    function unverifiedUser(): UserEntity {
+      const user = makeActiveUser();
+      user.emailVerifiedAt = null;
+      return user;
+    }
+
+    it('flag on: an unverified email gets 403 "Email not verified" and no token', async () => {
+      useCase = new LoginUserUseCase(repo, passwordAdapter, tokenAdapter, { emailVerificationRequired: true });
+      repo.findByEmail.mockResolvedValueOnce(unverifiedUser());
+      passwordAdapter.compare.mockReturnValueOnce(true);
+
+      const error = await useCase.execute(validDto!).catch((e) => e);
+
+      expect(error).toBeInstanceOf(CustomError);
+      expect(error.statusCode).toBe(403);
+      expect(error.message).toBe('Email not verified. Enter the code sent to your email');
+      expect(tokenAdapter.generate).not.toHaveBeenCalled();
+    });
+
+    it('flag on: a wrong password on an unverified email stays the generic 400', async () => {
+      useCase = new LoginUserUseCase(repo, passwordAdapter, tokenAdapter, { emailVerificationRequired: true });
+      repo.findByEmail.mockResolvedValueOnce(unverifiedUser());
+      passwordAdapter.compare.mockReturnValueOnce(false);
+
+      await expect(useCase.execute(validDto!)).rejects.toMatchObject({
+        statusCode: 400,
+        message: 'Invalid credentials',
+      });
+    });
+
+    it('flag on: a verified email logs in', async () => {
+      useCase = new LoginUserUseCase(repo, passwordAdapter, tokenAdapter, { emailVerificationRequired: true });
+      const user = makeActiveUser();
+      user.emailVerifiedAt = new Date();
+      repo.findByEmail.mockResolvedValueOnce(user);
+      passwordAdapter.compare.mockReturnValueOnce(true);
+      tokenAdapter.generate.mockResolvedValueOnce('jwt-token');
+
+      await expect(useCase.execute(validDto!)).resolves.toMatchObject({ token: 'jwt-token' });
+    });
+
+    it('flag off (default): an unverified email logs in as before', async () => {
+      repo.findByEmail.mockResolvedValueOnce(unverifiedUser());
+      passwordAdapter.compare.mockReturnValueOnce(true);
+      tokenAdapter.generate.mockResolvedValueOnce('jwt-token');
+
+      await expect(useCase.execute(validDto!)).resolves.toMatchObject({ token: 'jwt-token' });
+    });
+  });
 });

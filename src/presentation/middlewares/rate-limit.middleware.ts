@@ -72,6 +72,22 @@ export const registerRateLimiter = createRateLimiter({
   message: "Too many registration attempts, please try again in 15 minutes",
 });
 
+// Each code allows 5 wrong guesses; this also caps guesses across new codes.
+export const verifyEmailRateLimiter = createRateLimiter({
+  windowMs: FIFTEEN_MINUTES,
+  limit: 10,
+  keyGenerator: emailOrIpKey,
+  skipSuccessfulRequests: true,
+  message: "Too many verification attempts, please try again in 15 minutes",
+});
+
+export const resendVerificationRateLimiter = createRateLimiter({
+  windowMs: FIFTEEN_MINUTES,
+  limit: 5,
+  keyGenerator: emailOrIpKey,
+  message: "Too many verification code requests, please try again in 15 minutes",
+});
+
 export const questionGenerationRateLimiter = createRateLimiter({
   windowMs: TEN_MINUTES,
   limit: 10,

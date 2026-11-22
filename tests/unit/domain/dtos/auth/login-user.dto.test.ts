@@ -38,4 +38,10 @@ describe('LoginUserDto.create', () => {
     expect(err).toBe('Invalid credentials');
     expect(dto).toBeUndefined();
   });
+
+  it('normalizes the email (trim + lowercase) so case variants reach the same account', () => {
+    const [err, dto] = LoginUserDto.create({ email: '  Student@Example.COM ', password: 'Password1' });
+    expect(err).toBeUndefined();
+    expect(dto!.email).toBe('student@example.com');
+  });
 });

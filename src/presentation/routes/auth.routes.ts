@@ -4,6 +4,8 @@ import { authMiddleware } from "../middlewares/auth.middleware.js";
 import {
   loginRateLimiter,
   registerRateLimiter,
+  resendVerificationRateLimiter,
+  verifyEmailRateLimiter,
 } from "../middlewares/rate-limit.middleware.js";
 import { LoginUserUseCase } from "../../domain/use-cases/auth/login-user.use-case.js";
 import { RegisterUserUseCase } from "../../domain/use-cases/auth/register-user.use-case.js";
@@ -12,6 +14,12 @@ import { UserRepositoryImpl } from "../../infrastructure/repositories/user.repos
 import { SchoolRepositoryImpl } from "../../infrastructure/repositories/school.repository.impl.js";
 import { BcryptAdapter } from "../../infrastructure/adapters/bcrypt.adapter.impl.js";
 import { JwtAdapter } from "../../infrastructure/adapters/jwt.adapter.impl.js";
+import { SendEmailVerificationCodeUseCase } from "../../domain/use-cases/auth/send-email-verification-code.use-case.js";
+import { VerifyEmailUseCase } from "../../domain/use-cases/auth/verify-email.use-case.js";
+import { EmailVerificationConfig } from "../../domain/use-cases/auth/email-verification.config.js";
+import { EmailVerificationRepositoryImpl } from "../../infrastructure/repositories/email-verification.repository.impl.js";
+import { CryptoVerificationCodeAdapterImpl } from "../../infrastructure/adapters/crypto-verification-code.adapter.impl.js";
+import { BrevoEmailSenderAdapterImpl } from "../../infrastructure/adapters/brevo-email-sender.adapter.impl.js";
 import { envs } from "../../config/envs.js";
 
 export class AuthRoutes {
@@ -22,15 +30,25 @@ export class AuthRoutes {
     const passwordAdapter = new BcryptAdapter();
     const tokenAdapter = new JwtAdapter();
 
+    // TP2 CP019: email verification is wired only when the flag is on, so the
+    // flag off keeps the previous registration and login flow untouched.
+    const emailVerification = envs.EMAIL_VERIFICATION_ENABLED
+      ? AuthRoutes.emailVerificationUseCases(userRepository)
+      : null;
+
     const controller = new AuthController(
-      new LoginUserUseCase(userRepository, passwordAdapter, tokenAdapter),
+      new LoginUserUseCase(userRepository, passwordAdapter, tokenAdapter, {
+        emailVerificationRequired: envs.EMAIL_VERIFICATION_ENABLED,
+      }),
       new RegisterUserUseCase(
         userRepository,
         passwordAdapter,
         new SchoolRepositoryImpl(),
+        { emailVerification: emailVerification?.sendCode ?? null },
       ),
       new GetCurrentUserUseCase(userRepository),
       { sessionTtlMs: envs.SESSION_TTL_HOURS * 60 * 60 * 1000 },
+      emailVerification,
     );
 
     /**
@@ -73,6 +91,10 @@ export class AuthRoutes {
      *           Inactive account, returned only after the password is verified. Pending teachers get "Account is inactive. Your teacher
      *           account is pending administrator approval."; any other inactive account gets
      *           "Account is inactive. Contact an administrator." (both start with "Account is inactive").
+     *       403:
+     *         description: >
+     *           Only with EMAIL_VERIFICATION_ENABLED, after the password is verified: "Email not
+     *           verified. Enter the code sent to your email" (POST /api/auth/verify-email).
      *       429:
      *         description: Too many login attempts — { error }
      */
@@ -173,7 +195,9 @@ export class AuthRoutes {
      *         description: >
      *           Student — { message: "User created successfully", requiresApproval: false }.
      *           Teacher — { message: "User created successfully. Your teacher account is pending
-     *           administrator approval.", requiresApproval: true }
+     *           administrator approval.", requiresApproval: true }. Both also carry
+     *           emailVerificationRequired (EMAIL_VERIFICATION_ENABLED) and verificationEmailSent
+     *           (false when the email provider failed: use POST /api/auth/verify-email/resend).
      *       400:
      *         description: >
      *           Validation error (including "Invalid Name", "Invalid Birth Date",
@@ -186,6 +210,109 @@ export class AuthRoutes {
      */
     router.post("/register", registerRateLimiter, controller.register);
 
+    /**
+     * @openapi
+     * /api/auth/verify-email:
+     *   post:
+     *     tags: [Auth]
+     *     summary: Confirm the email with the 6-digit code sent at registration
+     *     description: >
+     *       Only when EMAIL_VERIFICATION_ENABLED is on (404 otherwise). A code lasts
+     *       EMAIL_CODE_TTL_MINUTES (default 15) and allows 5 wrong attempts. Verifying an
+     *       already verified email succeeds. Rate limited: 10 failed attempts per email
+     *       every 15 minutes.
+     *     requestBody:
+     *       required: true
+     *       content:
+     *         application/json:
+     *           schema:
+     *             type: object
+     *             required: [email, code]
+     *             properties:
+     *               email:
+     *                 type: string
+     *                 format: email
+     *               code:
+     *                 type: string
+     *                 pattern: "^[0-9]{6}$"
+     *     responses:
+     *       200:
+     *         description: '{ message: "Email verified" }'
+     *       400:
+     *         description: >
+     *           "Invalid verification code format", or "Invalid or expired verification code"
+     *           (also for unknown emails)
+     *       404:
+     *         description: Email verification is disabled
+     *       429:
+     *         description: >
+     *           "Too many failed attempts. Request a new verification code", or the rate limit
+     */
+    router.post("/verify-email", verifyEmailRateLimiter, controller.verifyEmail);
+
+    /**
+     * @openapi
+     * /api/auth/verify-email/resend:
+     *   post:
+     *     tags: [Auth]
+     *     summary: Send a new verification code (replaces the previous one)
+     *     description: >
+     *       Only when EMAIL_VERIFICATION_ENABLED is on (404 otherwise). Answers the same
+     *       message whether or not the account exists. One code per minute per account;
+     *       rate limited to 5 requests per email every 15 minutes.
+     *     requestBody:
+     *       required: true
+     *       content:
+     *         application/json:
+     *           schema:
+     *             type: object
+     *             required: [email]
+     *             properties:
+     *               email:
+     *                 type: string
+     *                 format: email
+     *     responses:
+     *       200:
+     *         description: '{ message: "If the account exists and is not verified, a new code was sent" }'
+     *       404:
+     *         description: Email verification is disabled
+     *       429:
+     *         description: '"Please wait N seconds before requesting a new code", or the rate limit'
+     *       502:
+     *         description: The email provider rejected the message
+     */
+    router.post(
+      "/verify-email/resend",
+      resendVerificationRateLimiter,
+      controller.resendVerification,
+    );
+
     return router;
+  }
+
+  private static emailVerificationUseCases(userRepository: UserRepositoryImpl) {
+    const config: EmailVerificationConfig = {
+      codeTtlMinutes: envs.EMAIL_CODE_TTL_MINUTES,
+      maxAttempts: 5,
+      resendCooldownSeconds: 60,
+    };
+    const verificationRepository = new EmailVerificationRepositoryImpl();
+    const codeAdapter = new CryptoVerificationCodeAdapterImpl(envs.JWT_SEED);
+
+    return {
+      sendCode: new SendEmailVerificationCodeUseCase(
+        userRepository,
+        verificationRepository,
+        codeAdapter,
+        new BrevoEmailSenderAdapterImpl(),
+        config,
+      ),
+      verifyEmail: new VerifyEmailUseCase(
+        userRepository,
+        verificationRepository,
+        codeAdapter,
+        config,
+      ),
+    };
   }
 }

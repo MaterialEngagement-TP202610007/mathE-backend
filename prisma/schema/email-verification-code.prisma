@@ -1,0 +1,14 @@
+// The pending email verification code of a user (at most one). Only the
+// SHA-256 hash of the code is stored; the row is removed once verified.
+model EmailVerificationCode {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @unique
+  codeHash  String   @db.VarChar(64)
+  expiresAt DateTime
+  attempts  Int      @default(0)
+
+  // Audit: also the time the code was last sent (resend cooldown).
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
